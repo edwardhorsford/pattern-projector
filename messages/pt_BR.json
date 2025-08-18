@@ -45,7 +45,7 @@
                 "description": "Mostrar ou ocultar o menu superior."
             },
             "invert": {
-                "title": "Inverter cores",
+                "title": "Inverter cor",
                 "description": "Ao projetar, geralmente é mais fácil enxergar linhas verdes ou brancas sobre o fundo preto. Clique/Toque uma vez para linhas verdes, duas vezes para linhas brancas e três vezes para voltar às linhas pretas."
             },
             "moveTool": {
@@ -184,7 +184,8 @@
             "translate": "Traduza esta ferramenta para mais idiomas usando o <weblateLink>Weblate</weblateLink>.",
             "feedback": "Sugestões e pedidos de recursos são bem-vindos!"
         },
-        "contact": "Contato"
+        "contact": "Contato",
+        "youTubeSrc": "https://www.youtube.com/embed/videoseries?si=80RVInkOM45wCyMB&amp;list=PLz35rzAwtPHC0IvLaBdWZWaYQxcr4sMlr"
     },
     "InstallButton": {
         "title": "Instalar Aplicativo",
@@ -256,7 +257,7 @@
         "arrowForward": "Avançar 1 página",
         "info": "Página de informações",
         "recenter": "Centralizar e resetar (C)",
-        "fullscreen": "Tela cheia",
+        "fullscreen": "Iniciar Tela cheia",
         "fullscreenExit": "Sair tela cheia",
         "ok": "OK",
         "calibrationAlertTitle": "Aviso de Calibragem",
