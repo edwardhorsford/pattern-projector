@@ -45,7 +45,7 @@ export default function InlineInput({
       <input
         min={min}
         type={type ? type : "text"}
-        className={`${inputClassName} p-2.5 bg-gray-50 border border-gray-300 text-gray-900text-sm rounded-lg focus:ring-4 focus:outline-none focus:ring-blue-300 w-20 text-right dark:bg-black dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-800 dark:focus:border-blue-800`}
+        className={`${inputClassName} p-2.5 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-4 focus:outline-none focus:ring-blue-300 ${label && "text-right"} dark:bg-black dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-800 dark:focus:border-blue-800`}
         id={id}
         data-test-id={inputTestId}
         name={name}

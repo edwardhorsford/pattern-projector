@@ -30,7 +30,7 @@ import {
   themeFilter,
   Theme,
 } from "@/_lib/display-settings";
-import { getPtDensity, IN } from "@/_lib/unit";
+import { getPtDensity, Unit } from "@/_lib/unit";
 import { visible } from "@/_components/theme/css-functions";
 import { useTranslations } from "next-intl";
 import MeasureCanvas from "@/_components/canvases/measure-canvas";
@@ -115,7 +115,7 @@ export default function Page() {
   const [restoreTransforms, setRestoreTransforms] =
     useState<RestoreTransforms | null>(null);
   const [pageCount, setPageCount] = useState<number>(0);
-  const [unitOfMeasure, setUnitOfMeasure] = useState(IN);
+  const [unitOfMeasure, setUnitOfMeasure] = useState<Unit>(Unit.IN);
   const [layoutWidth, setLayoutWidth] = useState<number>(0);
   const [layoutHeight, setLayoutHeight] = useState<number>(0);
   const [lineThickness, setLineThickness] = useState<number>(0);
@@ -521,6 +521,7 @@ export default function Page() {
     <main
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
+      onKeyDown={resetIdle}
       ref={noZoomRefCallback}
       className={`${menusHidden && "cursor-none"} ${isDarkTheme(displaySettings.theme) && "dark bg-black"} w-screen h-screen absolute overflow-hidden touch-none`}
     >

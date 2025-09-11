@@ -1,4 +1,4 @@
-import { CM } from "@/_lib/unit";
+import { Unit } from "@/_lib/unit";
 import Matrix from "ml-matrix";
 import { Point } from "@/_lib/point";
 import {
@@ -8,14 +8,14 @@ import {
 } from "@/_lib/display-settings";
 import {
   RestoreTransforms,
+  SimpleLine,
   checkIsConcave,
   rectCorners,
-  transformLine,
   transformPoint,
   transformPoints,
+  transformSimpleLine,
   translatePoints,
 } from "@/_lib/geometry";
-import { Line } from "./interfaces/line";
 
 export class CanvasState {
   isConcave: boolean = false;
@@ -32,7 +32,7 @@ export class CanvasState {
     public isCalibrating: boolean,
     public corners: Set<number>,
     public hoverCorners: Set<number>,
-    public unitOfMeasure: string,
+    public unitOfMeasure: Unit,
     public errorFillPattern: CanvasFillStrokeStyles["fillStyle"],
     public displaySettings: DisplaySettings,
     public isFlipped: boolean,
@@ -54,7 +54,10 @@ export enum OverlayMode {
   NONE,
 }
 
-export function drawLine(ctx: CanvasRenderingContext2D, line: Line): void {
+export function drawLine(
+  ctx: CanvasRenderingContext2D,
+  line: SimpleLine,
+): void {
   ctx.save();
   ctx.beginPath();
   ctx.moveTo(line[0].x, line[0].y);
@@ -73,7 +76,10 @@ export function drawCircle(
   ctx.stroke();
 }
 
-export function drawArrow(ctx: CanvasRenderingContext2D, line: Line): void {
+export function drawArrow(
+  ctx: CanvasRenderingContext2D,
+  line: SimpleLine,
+): void {
   const dx = line[1].x - line[0].x;
   const dy = line[1].y - line[0].y;
   const angle = Math.atan2(dy, dx);
@@ -209,7 +215,7 @@ export function drawCenterLines(cs: CanvasState) {
   ctx.strokeStyle = "red";
 
   function drawProjectedLine(p1: Point, p2: Point) {
-    const line = transformLine([p1, p2], perspective);
+    const line = transformSimpleLine([p1, p2], perspective);
     ctx.lineWidth = 2;
     drawLine(ctx, line);
     ctx.stroke();
@@ -232,7 +238,7 @@ export function drawPaperSheet(cs: CanvasState) {
   ctx.fillStyle = "white";
 
   const [text, paperWidth, paperHeight] =
-    unitOfMeasure == CM ? ["A4", 29.7, 21] : ["11x8.5", 11, 8.5];
+    unitOfMeasure == Unit.CM ? ["A4", 29.7, 21] : ["11x8.5", 11, 8.5];
 
   const cornersP = transformPoints(
     translatePoints(
@@ -301,7 +307,7 @@ export function drawGrid(
     if (i % majorLine === 0 || i === cs.width) {
       lineWidth = cs.majorLineWidth;
     }
-    const line = transformLine(
+    const line = transformSimpleLine(
       [
         { x: i, y: -outset },
         { x: i, y: cs.height + outset },
@@ -319,7 +325,7 @@ export function drawGrid(
       lineWidth = cs.majorLineWidth;
     }
     const y = cs.height - i;
-    const line = transformLine(
+    const line = transformSimpleLine(
       [
         { x: -outset, y: y },
         { x: cs.width + outset, y: y },
@@ -347,7 +353,7 @@ export function drawDimensionLabels(
   width: number,
   height: number,
   perspective: Matrix,
-  unitOfMeasure: string,
+  unitOfMeasure: Unit,
 ) {
   const fontSize = 48;
   const inset = 36;
