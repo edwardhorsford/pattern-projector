@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Input line length and angle using textboxes
+
+### Fixed
+
+- Menus will not hide when inputting text
+
 ## [1.3.0] - 2025-06-25
 
 ### Added
