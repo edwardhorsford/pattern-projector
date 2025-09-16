@@ -297,7 +297,7 @@ export default function MeasureCanvas({
       ctx.font = "24px sans-serif";
       ctx.strokeStyle = "#fff";
       ctx.fillStyle = "#000";
-      const text = `${line.distance}${line.unitOfMeasure.toLocaleLowerCase()} ${line.angle}°`;
+      const text = `${magnifying ? Number(line.distance) / 5 : line.distance}${line.unitOfMeasure.toLocaleLowerCase()} ${line.angle}°`; // When magnifying, show the input distance (1/5 scale)
       ctx.lineWidth = 4;
       const location = { x: p1.x, y: p1.y - END_CIRCLE_RADIUS - 8 };
       ctx.strokeText(text, location.x, location.y);
