@@ -50,6 +50,7 @@ export default function StitchMenu({
       <menu
         className={`${sideMenuStyles} ${vh < 478 ? "h-[calc(100vh-8rem)] overflow-y-auto scrollbar" : "h-fit"}`}
       >
+        <h2 className="text-lg font-medium">{file?.name}</h2>
         <Tooltip description={t("zeros")}>
           <StepperInput
             inputClassName="w-36"
