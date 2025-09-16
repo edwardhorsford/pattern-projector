@@ -65,36 +65,38 @@ export default function MeasureCanvas({
 
   const disablePointer = measuring || dragOffset.current;
 
-  const endCircleRadius = 24;
-  const lineTouchRadius = 48;
+  // Use a consistent physical size for the touch area (1/2 inch).
+  const TOUCH_AREA_INCHES = 0.5;
+  const END_CIRCLE_RADIUS = CSS_PIXELS_PER_INCH * TOUCH_AREA_INCHES;
+  const LINE_TOUCH_RADIUS = CSS_PIXELS_PER_INCH * 0.5; // A slightly larger area for the line itself
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     const client = { x: e.clientX, y: e.clientY };
     const patternToClient = calibrationTransform.mmul(transform);
 
-    // Possibly select a line.
+    const scale = Math.sqrt(
+      transform.get(0, 0) ** 2 + transform.get(0, 1) ** 2,
+    );
+    const scaledEndCircleRadius = END_CIRCLE_RADIUS / scale;
+    const scaledLineTouchRadius = LINE_TOUCH_RADIUS / scale;
+
+    let lineToSelect = -1;
+
     for (let i = 0; i < lines.length; i++) {
       const patternLine = lines[i];
       const clientLine = transformLine(patternLine, patternToClient);
       // Start dragging one end of the selected line?
-      if (selectedLine === i) {
-        let minDist = lineTouchRadius;
-        let minEnd = -1;
-        for (const end of [0, 1]) {
-          const clientEnd = clientLine.points[end];
-          const d = dist(clientEnd, client);
-          if (d < minDist) {
-            minDist = d;
-            dragOffset.current = {
-              x: clientEnd.x - client.x,
-              y: clientEnd.y - client.y,
-            };
-            minEnd = end;
-          }
-        }
-        if (minEnd >= 0) {
-          if (minEnd === 0) {
+      for (const end of [0, 1]) {
+        const clientEnd = clientLine.points[end];
+        const d = dist(clientEnd, client);
+        if (d < scaledEndCircleRadius) {
+          setSelectedLine(i);
+          dragOffset.current = {
+            x: clientEnd.x - client.x,
+            y: clientEnd.y - client.y,
+          };
+          if (end === 0) {
             // Swap to always drag the end.
             dispatchLines({
               type: "update-both-points",
@@ -108,12 +110,17 @@ export default function MeasureCanvas({
         }
       }
 
-      if (distToLine(clientLine.points, client) < endCircleRadius) {
-        // select/deselect the line.
-        setSelectedLine(i === selectedLine ? -1 : i);
-        e.stopPropagation();
-        return;
+      const dToLine = distToLine(clientLine.points, client);
+      if (dToLine < scaledLineTouchRadius) {
+        lineToSelect = i;
       }
+    }
+
+    if (lineToSelect !== -1) {
+      setSelectedLine(lineToSelect === selectedLine ? -1 : lineToSelect);
+      dragOffset.current = null;
+      e.stopPropagation();
+      return;
     }
 
     // Nothing selected.
@@ -187,7 +194,6 @@ export default function MeasureCanvas({
     dragOffset.current = null;
 
     e.stopPropagation();
-    // finish the line.
     const patternLine = lines[selectedLine];
     const patternAnchor = patternLine.points[0];
     const matAnchor = transformPoint(patternAnchor, transform);
@@ -293,7 +299,7 @@ export default function MeasureCanvas({
       ctx.fillStyle = "#000";
       const text = `${line.distance}${line.unitOfMeasure.toLocaleLowerCase()} ${line.angle}°`;
       ctx.lineWidth = 4;
-      const location = { x: p1.x, y: p1.y - endCircleRadius - 8 };
+      const location = { x: p1.x, y: p1.y - END_CIRCLE_RADIUS - 8 };
       ctx.strokeText(text, location.x, location.y);
       ctx.fillText(text, location.x, location.y);
       ctx.restore();
