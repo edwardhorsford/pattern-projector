@@ -470,7 +470,7 @@ export default function Header({
           <div className={`flex items-center gap-1 ${visible(isCalibrating)}`}>
             <div className="flex gap-1">
               <InlineInput
-                className="relative flex flex-col w-20"
+                className="relative flex flex-col w-24"
                 inputClassName="pl-6 pr-7 w-24"
                 handleChange={handleWidthChange}
                 id="width"
@@ -482,7 +482,7 @@ export default function Header({
                 min="0"
               />
               <InlineInput
-                className="relative flex flex-col w-20"
+                className="relative flex flex-col w-24"
                 inputClassName="pl-6 pr-7 w-24"
                 handleChange={handleHeightChange}
                 id="height"

@@ -170,7 +170,7 @@ export default function LineMenu({
         />
         <InlineInput
           className="relative flex flex-col w-20"
-          inputClassName="pl-1.5 pr-7 !border-2 !border-black !dark:border-white"
+          inputClassName="pl-1.5 pr-7 !border-2 !border-black dark:!border-white"
           handleChange={(e) => {
             const newDistance = removeNonDigits(
               e.target.value,
@@ -190,7 +190,7 @@ export default function LineMenu({
         />
         <InlineInput
           className="relative flex flex-col w-14"
-          inputClassName="pl-1.5 !border-2 !border-black !dark:border-white"
+          inputClassName="pl-1.5 !border-2 !border-black dark:!border-white"
           handleChange={(e) => {
             const inputValue = e.target.value;
             let newAngle;
