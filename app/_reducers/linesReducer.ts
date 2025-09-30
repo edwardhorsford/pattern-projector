@@ -64,13 +64,14 @@ export function updateLineMeasurements(
   let angle = a.toFixed(0);
 
   if (isConstrained) {
-    angle = (Math.round(a / 90) * 90).toFixed(0);
+    angle = (Math.round(a / 45) * 45).toFixed(0);
   }
   if (angle === "360") angle = "0";
   return { ...line, distance, angle };
 }
 
 // Calculates a point based on a starting point, distance, and angle.
+// This function assumes CCW angle (0 right, 90 up) and corrects for screen's inverted y-axis.
 function calculatePointFromMetrics(
   startPoint: Point,
   distance: number,
@@ -79,7 +80,8 @@ function calculatePointFromMetrics(
   const angleInRadians = (angle * Math.PI) / 180;
   return {
     x: startPoint.x + distance * Math.cos(angleInRadians),
-    y: startPoint.y + distance * Math.sin(angleInRadians),
+    // This ensures 90 degrees moves the point UP (Y-value decreases).
+    y: startPoint.y - distance * Math.sin(angleInRadians),
   };
 }
 
@@ -173,7 +175,6 @@ export default function linesReducer(
           const newAngleNum = parseFloat(newAngleString);
 
           // If the input is not a valid number, only update the angle string.
-          // This prevents the line's geometry from changing while the user is typing or backspacing.
           if (isNaN(newAngleNum)) {
             return { ...line, angle: newAngleString };
           }
@@ -183,13 +184,10 @@ export default function linesReducer(
 
           const p0 = line.points[0];
 
-          // Invert the angle to account for the screen's inverted y-axis.
-          const correctedAngle = 360 - newAngleNum;
-
           const newP1 = calculatePointFromMetrics(
             p0,
             preciseDistance * CSS_PIXELS_PER_INCH,
-            correctedAngle,
+            newAngleNum,
           );
 
           const newPoints = [p0, newP1] as SimpleLine;
