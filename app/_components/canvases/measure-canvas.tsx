@@ -258,7 +258,7 @@ export default function MeasureCanvas({
       if (ctx) {
         ctx.canvas.width = window.innerWidth;
         ctx.canvas.height = window.innerHeight;
-        ctx.strokeStyle = "#9333ea";
+        ctx.strokeStyle = "#FF4500";
 
         ctx.lineWidth = 4;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -270,6 +270,9 @@ export default function MeasureCanvas({
           }
         }
         if (lines.length > 0 && selectedLine >= 0) {
+          // Style selected line differently.
+          ctx.strokeStyle = "#9333ea";
+
           const patternLine = lines[selectedLine];
           const matLine = transformLine(patternLine, transform);
           if (axisConstrained && dragOffset.current) {
