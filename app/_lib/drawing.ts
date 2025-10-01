@@ -212,7 +212,7 @@ function drawViewportOutline(cs: CanvasState) {
 export function drawCenterLines(cs: CanvasState) {
   const { width, height, ctx, perspective } = cs;
   ctx.save();
-  ctx.strokeStyle = "red";
+  ctx.strokeStyle = "#FF4500";
 
   function drawProjectedLine(p1: Point, p2: Point) {
     const line = transformSimpleLine([p1, p2], perspective);
@@ -386,7 +386,7 @@ export function drawDimensionLabels(
 function drawFlippedPattern(cs: CanvasState) {
   const { ctx } = cs;
   ctx.save();
-  ctx.fillStyle = "red";
+  ctx.fillStyle = "#FF4500";
   // draw a grid of dots
   const dotSize = 2;
   const spacing = 72;
