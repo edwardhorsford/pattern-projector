@@ -30,7 +30,7 @@ import {
   themeFilter,
   Theme,
 } from "@/_lib/display-settings";
-import { getPtDensity, IN } from "@/_lib/unit";
+import { getPtDensity, Unit } from "@/_lib/unit";
 import { visible } from "@/_components/theme/css-functions";
 import { useTranslations } from "next-intl";
 import MeasureCanvas from "@/_components/canvases/measure-canvas";
@@ -115,7 +115,7 @@ export default function Page() {
   const [restoreTransforms, setRestoreTransforms] =
     useState<RestoreTransforms | null>(null);
   const [pageCount, setPageCount] = useState<number>(0);
-  const [unitOfMeasure, setUnitOfMeasure] = useState(IN);
+  const [unitOfMeasure, setUnitOfMeasure] = useState<Unit>(Unit.IN);
   const [layoutWidth, setLayoutWidth] = useState<number>(0);
   const [layoutHeight, setLayoutHeight] = useState<number>(0);
   const [lineThickness, setLineThickness] = useState<number>(0);
@@ -521,6 +521,7 @@ export default function Page() {
     <main
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
+      onKeyDown={resetIdle}
       ref={noZoomRefCallback}
       className={`${menusHidden && "cursor-none"} ${isDarkTheme(displaySettings.theme) && "dark bg-black"} w-screen h-screen absolute overflow-hidden touch-none`}
     >
@@ -530,11 +531,11 @@ export default function Page() {
           className="bg-white dark:bg-black transition-all duration-500 w-screen h-screen"
         >
           {showCalibrationAlert ? (
-            <div className="flex flex-col items-center gap-4 absolute left-1/4 top-1/2 -translate-y-1/2 w-1/2 bg-white dark:bg-black dark:text-white z-[150] p-4 rounded border-2 border-black dark:border-white">
+            <div className="flex flex-col items-center gap-4 absolute left-1/4 top-1/2 -translate-y-1/2 w-1/2 bg-white dark:bg-black dark:text-white z-[150] p-4 rounded border-2 border-black dark:border-white pointer-events-none">
               <WarningIcon ariaLabel="warning" />
               <p>{t("calibrationAlert")}</p>
               <Button
-                className="flex items-center justify-center"
+                className="flex items-center justify-center pointer-events-auto"
                 onClick={() => toggleFullScreen(fullScreenHandle)}
               >
                 <span className="mr-1 -mt-1.5 w-4 h-4">
