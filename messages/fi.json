@@ -104,7 +104,7 @@
             "description": "Viivatyökalulla voi mitata etäisyyksiä, merkitä viivoja PDF-kaavaan, kiertää, kääntää ja siirtää sitä. Napsauta (tai napauta) viivatyökalun painiketta ja napsauta (tai napauta) sitten PDF-kaavaa ja vedä piirtääksesi viivan. Kun viiva on piirretty, näytön alareunaan ilmestyy valikko, jossa on seuraavat vaihtoehdot:",
             "delete": {
                 "title": "Poista viiva",
-                "description": "Poistaa valittun viivan"
+                "description": "Poistaa valitun viivan."
             },
             "rotate": {
                 "title": "Keskitä",
