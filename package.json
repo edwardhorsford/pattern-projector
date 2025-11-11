@@ -41,6 +41,7 @@
     "typescript": "^5.4.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.56.0",
     "@tailwindcss/aspect-ratio": "^0.4.2",
     "@tailwindcss/typography": "^0.5.10",
     "@testing-library/jest-dom": "^6.1.3",

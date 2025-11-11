@@ -247,6 +247,7 @@ export default function CalibrationCanvas({
 
   return (
     <canvas
+      data-testid="calibration-canvas"
       tabIndex={0}
       ref={canvasRef}
       className={`${className} outline-none`}

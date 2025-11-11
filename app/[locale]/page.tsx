@@ -68,7 +68,7 @@ export default function Home() {
         </menu>
       </nav>
       <article className="prose lg:prose-xl m-auto">
-        <h1>{t("welcome.title")}</h1>
+        <h1 data-testid="welcome-title">{t("welcome.title")}</h1>
         <p>
           {t.rich("welcome.description", {
             changeLogLink: (chunks) => (
