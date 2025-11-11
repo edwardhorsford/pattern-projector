@@ -8,6 +8,7 @@ export const localeData = {
   de: "Deutsch",
   en: "English",
   es: "Español",
+  fi: "Suomi",
   fr: "Français",
   hu: "Magyar",
   it: "Italiano",
@@ -36,7 +37,7 @@ export const config = {
   // *** IMPORTANT *** New language codes must be added here as well as in the localeData above
   matcher: [
     "/",
-    "/(cs|da|de|en|es|fr|hu|it|nb-NO|nl|pt-BR|sl|sv|ta|zh-Hans)/:path*",
+    "/(cs|da|de|en|es|fi|fr|hu|it|nb-NO|nl|pt-BR|sl|sv|ta|zh-Hans)/:path*",
     "/calibrate",
   ],
 };
