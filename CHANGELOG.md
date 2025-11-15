@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Menus will not hide when inputting text
 - Able to drag ends of lines on touch devices
+- Pressing C resets & recenters the pattern
 
 ## [1.3.0] - 2025-06-25
 

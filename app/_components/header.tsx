@@ -224,7 +224,8 @@ export default function Header({
     );
   };
 
-  const handleRecenter = () => {
+  const handleRecenterReset = () => {
+    transformer.reset();
     transformer.recenter(
       getCalibrationCenterPoint(width, height, unitOfMeasure),
       layoutWidth,
@@ -324,7 +325,7 @@ export default function Header({
   }, [KeyCode.KeyV]);
 
   useKeyDown(() => {
-    handleRecenter();
+    handleRecenterReset();
   }, [KeyCode.KeyC]);
 
   useKeyDown(() => {
@@ -557,14 +558,7 @@ export default function Header({
             <Tooltip description={t("recenter")}>
               <IconButton
                 disabled={zoomedOut || magnifying}
-                onClick={() => {
-                  transformer.reset();
-                  transformer.recenter(
-                    getCalibrationCenterPoint(width, height, unitOfMeasure),
-                    layoutWidth,
-                    layoutHeight,
-                  );
-                }}
+                onClick={handleRecenterReset}
               >
                 <RecenterIcon ariaLabel={t("recenter")} />
               </IconButton>
