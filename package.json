@@ -8,10 +8,12 @@
   "license": "MIT",
   "scripts": {
     "dev": "next dev",
-    "build": "prettier . --write; next build",
+    "build": "prettier . --write; playwright test; next build",
     "start": "next start",
     "lint": "next lint",
     "test:unit": "jest",
+    "test:e2e": "playwright test",
+    "test:e2e:update": "playwright test --update-snapshots",
     "cypress:open": "cypress open",
     "postinstall": "patch-package"
   },
