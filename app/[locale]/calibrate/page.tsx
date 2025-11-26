@@ -605,6 +605,7 @@ export default function Page() {
               magnifying={magnifying}
               menusHidden={menusHidden}
               menuStates={menuStates}
+              isDarkTheme={isDarkTheme(displaySettings.theme)}
             >
               <Draggable
                 className={`absolute ${menusHidden && "!cursor-none"} `}

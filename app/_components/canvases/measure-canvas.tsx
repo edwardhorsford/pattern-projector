@@ -38,6 +38,7 @@ export default function MeasureCanvas({
   magnifying,
   menusHidden,
   menuStates,
+  isDarkTheme,
   children,
 }: {
   perspective: Matrix;
@@ -52,6 +53,7 @@ export default function MeasureCanvas({
   magnifying: boolean;
   menusHidden: boolean;
   menuStates: MenuStates;
+  isDarkTheme: boolean;
   children: React.ReactNode;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -298,8 +300,8 @@ export default function MeasureCanvas({
     ) {
       ctx.save();
       ctx.font = "24px sans-serif";
-      ctx.strokeStyle = "#fff";
-      ctx.fillStyle = "#000";
+      ctx.strokeStyle = isDarkTheme ? "#000" : "#fff";
+      ctx.fillStyle = isDarkTheme ? "#fff" : "#000";
       const text = `${magnifying ? Number(line.distance) / 5 : line.distance}${line.unitOfMeasure.toLocaleLowerCase()} ${line.angle}°`; // When magnifying, show the input distance (1/5 scale)
       ctx.lineWidth = 4;
       const location = { x: p1.x, y: p1.y - END_CIRCLE_RADIUS - 8 };
@@ -316,6 +318,7 @@ export default function MeasureCanvas({
     transform,
     selectedLine,
     measuring,
+    isDarkTheme,
   ]);
 
   useEffect(() => {

@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Able to drag ends of lines on touch devices
 - Pressing C resets & recenters the pattern
 
+### Changed
+
+- Line measurement labels match the theme
+
 ## [1.3.0] - 2025-06-25
 
 ### Added
