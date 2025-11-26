@@ -87,6 +87,7 @@ export default function Page() {
   // Default dimensions should be available on most cutting mats and large enough to get an accurate calibration
   const defaultWidthDimensionValue = "24";
   const defaultHeightDimensionValue = "16";
+  const maxDimensionValue = 1000; // Prevents crashing from excessive grid lines #410
 
   const maxPoints = 4; // One point per vertex in rectangle
 
@@ -267,14 +268,14 @@ export default function Page() {
 
   // Save valid calibration grid height in localStorage
   function handleHeightChange(e: ChangeEvent<HTMLInputElement>) {
-    const h = removeNonDigits(e.target.value, heightInput);
+    const h = removeNonDigits(e.target.value, heightInput, maxDimensionValue);
     setHeightInput(h);
     updateLocalSettings({ height: h });
   }
 
   // Save valid calibration grid width in localStorage
   function handleWidthChange(e: ChangeEvent<HTMLInputElement>) {
-    const w = removeNonDigits(e.target.value, widthInput);
+    const w = removeNonDigits(e.target.value, widthInput, maxDimensionValue);
     setWidthInput(w);
     updateLocalSettings({ width: w });
   }
