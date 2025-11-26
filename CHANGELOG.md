@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Able to drag ends of lines on touch devices
 - Pressing C resets & recenters the pattern
 - App crashing from large width/height inputs by setting the limit to 1000
+- Bright instead of pale green lines for SVGs when the green theme is enabled
 
 ### Changed
 
