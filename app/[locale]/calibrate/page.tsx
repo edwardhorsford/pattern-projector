@@ -34,7 +34,11 @@ import { getPtDensity, IN } from "@/_lib/unit";
 import { visible } from "@/_components/theme/css-functions";
 import { useTranslations } from "next-intl";
 import MeasureCanvas from "@/_components/canvases/measure-canvas";
-import { getDefaultMenuStates, MenuPosition, MenuStates } from "@/_lib/menu-states";
+import {
+  getDefaultMenuStates,
+  MenuPosition,
+  MenuStates,
+} from "@/_lib/menu-states";
 import MovementPad from "@/_components/movement-pad";
 import pointsReducer from "@/_reducers/pointsReducer";
 import Filters from "@/_components/filters";
@@ -71,6 +75,7 @@ import Modal from "@/_components/modal/modal";
 import { ModalTitle } from "@/_components/modal/modal-title";
 import ModalContent from "@/_components/modal/modal-content";
 import { ModalText } from "@/_components/modal/modal-text";
+import { ControlPanelBridge } from "@/_components/control-panel-bridge";
 import { ModalActions } from "@/_components/modal/modal-actions";
 import { Button } from "@/_components/buttons/button";
 import { erosionFilter } from "@/_lib/erode";
@@ -138,6 +143,9 @@ export default function Page() {
   );
   const [mailOpen, setMailOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<null | string>(null);
+
+  // Ref for file input to allow control panel to trigger file open
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [points, dispatch] = useReducer(pointsReducer, []);
   const [stitchSettings, dispatchStitchSettings] = useReducer(
@@ -452,7 +460,9 @@ export default function Page() {
     }
 
     // Load menu position preference
-    const savedMenuPosition = localStorage.getItem("menuPosition") as MenuPosition | null;
+    const savedMenuPosition = localStorage.getItem(
+      "menuPosition",
+    ) as MenuPosition | null;
     if (savedMenuPosition === "top" || savedMenuPosition === "bottom") {
       setMenuStates((prev) => ({ ...prev, menuPosition: savedMenuPosition }));
     }
@@ -531,6 +541,14 @@ export default function Page() {
       ref={noZoomRefCallback}
       className={`${menusHidden && "cursor-none"} ${isDarkTheme(displaySettings.theme) && "dark bg-black"} w-screen h-screen absolute overflow-hidden touch-none`}
     >
+      {/* Hidden file input for control panel to trigger */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf,image/svg+xml"
+        onChange={handleFileChange}
+        className="hidden"
+      />
       <div className="bg-white dark:bg-black dark:text-white w-screen h-screen ">
         <FullScreen
           handle={fullScreenHandle}
@@ -594,6 +612,78 @@ export default function Page() {
           )}
 
           <Transformable fileName={file?.name ?? "default"}>
+            <ControlPanelBridge
+              isCalibrating={isCalibrating}
+              setIsCalibrating={setIsCalibrating}
+              displaySettings={displaySettings}
+              setDisplaySettings={(newSettings) => {
+                setDisplaySettings(newSettings);
+                if (newSettings) {
+                  updateLocalSettings(newSettings);
+                }
+              }}
+              zoomedOut={zoomedOut}
+              setZoomedOut={setZoomedOut}
+              magnifying={magnifying}
+              setMagnifying={setMagnifying}
+              measuring={measuring}
+              setMeasuring={setMeasuring}
+              file={file}
+              setFile={setFile}
+              lineThickness={lineThickness}
+              setLineThickness={(newLineThickness) => {
+                setLineThickness(newLineThickness);
+                if (file) {
+                  localStorage.setItem(
+                    `lineThickness:${file.name}`,
+                    String(newLineThickness),
+                  );
+                }
+              }}
+              pageCount={pageCount}
+              patternScale={patternScale}
+              dispatchPatternScaleAction={dispatchPatternScaleAction}
+              menuStates={menuStates}
+              setMenuStates={setMenuStates}
+              widthInput={widthInput}
+              heightInput={heightInput}
+              handleWidthChange={handleWidthChange}
+              handleHeightChange={handleHeightChange}
+              unitOfMeasure={unitOfMeasure}
+              setUnitOfMeasure={(newUnit) => {
+                setUnitOfMeasure(newUnit);
+                updateLocalSettings({ unitOfMeasure: newUnit });
+              }}
+              handleResetCalibration={() => {
+                localStorage.setItem(
+                  "calibrationContext",
+                  JSON.stringify(
+                    getCalibrationContext(fullScreenHandle.active),
+                  ),
+                );
+                dispatch({ type: "set", points: getDefaultPoints() });
+              }}
+              fileInputRef={fileInputRef}
+              width={width}
+              height={height}
+              layoutWidth={layoutWidth}
+              layoutHeight={layoutHeight}
+              getCalibrationCenterPoint={getCalibrationCenterPoint}
+              layers={layers}
+              dispatchLayerAction={dispatchLayersAction}
+              stitchSettings={stitchSettings}
+              dispatchStitchSettings={dispatchStitchSettings}
+              showingMovePad={showingMovePad}
+              setShowingMovePad={(show) => {
+                setShowingMovePad(show);
+                updateLocalSettings({ showingMovePad: show });
+              }}
+              corners={corners}
+              setCorners={setCorners}
+              dispatchPoints={dispatch}
+              setCalibrationValidated={setCalibrationValidated}
+              fullScreenActive={fullScreenHandle.active}
+            />
             <MeasureCanvas
               className={visible(!isCalibrating)}
               perspective={perspective}
@@ -694,8 +784,12 @@ export default function Page() {
             <menu
               className={`absolute w-screen ${visible(!menusHidden)} ${
                 menuStates.menuPosition === "bottom"
-                  ? menuStates.nav ? "bottom-0" : "-bottom-16"
-                  : menuStates.nav ? "top-0" : "-top-16"
+                  ? menuStates.nav
+                    ? "bottom-0"
+                    : "-bottom-16"
+                  : menuStates.nav
+                    ? "top-0"
+                    : "-top-16"
               } pointer-events-none flex ${menuStates.menuPosition === "bottom" ? "flex-col-reverse" : "flex-col"}`}
             >
               <menu className="pointer-events-auto">
@@ -792,8 +886,12 @@ export default function Page() {
             <IconButton
               className={`${visible(!menusHidden)} !p-1 m-0 border-2 border-black dark:border-white absolute ${
                 menuStates.menuPosition === "bottom"
-                  ? menuStates.nav ? "-bottom-16" : "bottom-2"
-                  : menuStates.nav ? "-top-16" : "top-2"
+                  ? menuStates.nav
+                    ? "-bottom-16"
+                    : "bottom-2"
+                  : menuStates.nav
+                    ? "-top-16"
+                    : "top-2"
               } left-1/4 focus:ring-0`}
               onClick={() => setMenuStates({ ...menuStates, nav: true })}
             >

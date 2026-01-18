@@ -46,7 +46,14 @@ export function getMenuStatesFromPageCount(
   pageCount: number,
 ) {
   if (pageCount > 1) {
-    return { ...menuStates, nav: true, layers: false, scale: false, stitch: true, settings: false };
+    return {
+      ...menuStates,
+      nav: true,
+      layers: false,
+      scale: false,
+      stitch: true,
+      settings: false,
+    };
   } else {
     return menuStates;
   }

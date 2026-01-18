@@ -60,7 +60,10 @@ export default function SideMenu({
     <menu className="pointer-events-auto flex w-fit">
       {/* reverse so the tooltips show on top */}
       <menu className={sideMenuContainerClass}>
-        <Tooltip description={menuStates.scale ? sc("hide") : sc("show")} top={isMenuAtBottom}>
+        <Tooltip
+          description={menuStates.scale ? sc("hide") : sc("show")}
+          top={isMenuAtBottom}
+        >
           <IconButton
             active={menuStates.scale}
             onClick={() =>
@@ -147,7 +150,11 @@ export default function SideMenu({
         />
       )}
       {menuStates.layers && (
-        <LayerMenu dispatchLayerAction={dispatchLayersAction} layers={layers} isMenuAtBottom={isMenuAtBottom} />
+        <LayerMenu
+          dispatchLayerAction={dispatchLayersAction}
+          layers={layers}
+          isMenuAtBottom={isMenuAtBottom}
+        />
       )}
     </menu>
   );
