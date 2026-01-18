@@ -49,12 +49,18 @@ export default function SideMenu({
   const numberOfLayers = Object.entries(layers).length;
   const disableStitchMenu =
     pageCount === 0 || file?.name.toLocaleUpperCase().endsWith(".SVG");
+  const isMenuAtBottom = menuStates.menuPosition === "bottom";
+
+  // For bottom positioning, border changes from bottom to top
+  const sideMenuContainerClass = isMenuAtBottom
+    ? "w-16 flex flex-col-reverse justify-end gap-2 p-2 bg-opacity-60 dark:bg-opacity-50 bg-white dark:bg-black left-0 border-t border-r dark:border-gray-700 transition-all duration-500"
+    : "w-16 flex flex-col-reverse justify-end gap-2 p-2 bg-opacity-60 dark:bg-opacity-50 bg-white dark:bg-black left-0 border-b border-r dark:border-gray-700 transition-all duration-500";
 
   return (
     <menu className="pointer-events-auto flex w-fit">
       {/* reverse so the tooltips show on top */}
-      <menu className="w-16 flex flex-col-reverse justify-end gap-2 p-2 bg-opacity-60 dark:bg-opacity-50 bg-white dark:bg-black left-0 border-b border-r dark:border-gray-700 transition-all duration-500">
-        <Tooltip description={menuStates.scale ? sc("hide") : sc("show")}>
+      <menu className={sideMenuContainerClass}>
+        <Tooltip description={menuStates.scale ? sc("hide") : sc("show")} top={isMenuAtBottom}>
           <IconButton
             active={menuStates.scale}
             onClick={() =>
@@ -77,6 +83,7 @@ export default function SideMenu({
                 : l("layersOn")
               : l("noLayers")
           }
+          top={isMenuAtBottom}
         >
           <IconButton
             className="pointer-events-auto"
@@ -101,6 +108,7 @@ export default function SideMenu({
                 ? h("stitchMenuDisabled")
                 : h("stitchMenuShow")
           }
+          top={isMenuAtBottom}
         >
           <IconButton
             className="pointer-events-auto"
@@ -128,16 +136,18 @@ export default function SideMenu({
           pageCount={pageCount}
           file={file}
           layers={layers}
+          isMenuAtBottom={isMenuAtBottom}
         />
       )}
       {menuStates.scale && (
         <ScaleMenu
           patternScale={patternScale}
           dispatchPatternScaleAction={dispatchPatternScaleAction}
+          isMenuAtBottom={isMenuAtBottom}
         />
       )}
       {menuStates.layers && (
-        <LayerMenu dispatchLayerAction={dispatchLayersAction} layers={layers} />
+        <LayerMenu dispatchLayerAction={dispatchLayersAction} layers={layers} isMenuAtBottom={isMenuAtBottom} />
       )}
     </menu>
   );

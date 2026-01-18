@@ -22,7 +22,7 @@ export default function Tooltip({
       {children}
       {!disabled && (
         <div
-          className={`absolute top-7 flex-col items-center mt-6 group-hover:flex ${visible ? "flex" : "hidden"}`}
+          className={`absolute top-7 flex-col items-center mt-6 group-hover:flex z-50 ${visible ? "flex" : "hidden"}`}
         >
           {top ? (
             <>

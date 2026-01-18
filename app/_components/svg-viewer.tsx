@@ -110,10 +110,10 @@ export default function SvgViewer({
           });
         setLayers(groupLayers);
         if (Object.keys(groupLayers).length > 1) {
-          setMenuStates({ ...getDefaultMenuStates(), layers: true });
+          setMenuStates((prev) => ({ ...getDefaultMenuStates(), layers: true, menuPosition: prev.menuPosition }));
         } else {
           setLayers({});
-          setMenuStates(getDefaultMenuStates());
+          setMenuStates((prev) => ({ ...getDefaultMenuStates(), menuPosition: prev.menuPosition }));
         }
       }}
     ></object>

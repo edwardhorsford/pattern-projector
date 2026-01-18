@@ -34,7 +34,7 @@ import { getPtDensity, IN } from "@/_lib/unit";
 import { visible } from "@/_components/theme/css-functions";
 import { useTranslations } from "next-intl";
 import MeasureCanvas from "@/_components/canvases/measure-canvas";
-import { getDefaultMenuStates, MenuStates } from "@/_lib/menu-states";
+import { getDefaultMenuStates, MenuPosition, MenuStates } from "@/_lib/menu-states";
 import MovementPad from "@/_components/movement-pad";
 import pointsReducer from "@/_reducers/pointsReducer";
 import Filters from "@/_components/filters";
@@ -59,6 +59,7 @@ import FullScreenIcon from "@/_icons/full-screen-icon";
 import { Layers } from "@/_lib/layers";
 import useLayers from "@/_hooks/use-layers";
 import ExpandMoreIcon from "@/_icons/expand-more-icon";
+import ExpandLessIcon from "@/_icons/expand-less-icon";
 import { LoadStatusEnum } from "@/_lib/load-status-enum";
 import LoadingSpinner from "@/_icons/loading-spinner";
 import TroubleshootingButton from "@/_components/troubleshooting-button";
@@ -449,6 +450,12 @@ export default function Page() {
         theme: localSettings.theme ?? defaults.theme,
       });
     }
+
+    // Load menu position preference
+    const savedMenuPosition = localStorage.getItem("menuPosition") as MenuPosition | null;
+    if (savedMenuPosition === "top" || savedMenuPosition === "bottom") {
+      setMenuStates((prev) => ({ ...prev, menuPosition: savedMenuPosition }));
+    }
   }, []);
 
   // Set button color style based on URL: blue for the beta site and gray for old site
@@ -685,7 +692,11 @@ export default function Page() {
             </MeasureCanvas>
 
             <menu
-              className={`absolute w-screen ${visible(!menusHidden)} ${menuStates.nav ? "top-0" : "-top-16"} pointer-events-none`}
+              className={`absolute w-screen ${visible(!menusHidden)} ${
+                menuStates.menuPosition === "bottom"
+                  ? menuStates.nav ? "bottom-0" : "-bottom-16"
+                  : menuStates.nav ? "top-0" : "-top-16"
+              } pointer-events-none flex ${menuStates.menuPosition === "bottom" ? "flex-col-reverse" : "flex-col"}`}
             >
               <menu className="pointer-events-auto">
                 <Header
@@ -779,10 +790,18 @@ export default function Page() {
               )}
             </menu>
             <IconButton
-              className={`${visible(!menusHidden)} !p-1 m-0 border-2 border-black dark:border-white absolute ${menuStates.nav ? "-top-16" : "top-2"} left-1/4 focus:ring-0`}
+              className={`${visible(!menusHidden)} !p-1 m-0 border-2 border-black dark:border-white absolute ${
+                menuStates.menuPosition === "bottom"
+                  ? menuStates.nav ? "-bottom-16" : "bottom-2"
+                  : menuStates.nav ? "-top-16" : "top-2"
+              } left-1/4 focus:ring-0`}
               onClick={() => setMenuStates({ ...menuStates, nav: true })}
             >
-              <ExpandMoreIcon ariaLabel={t("menuShow")} />
+              {menuStates.menuPosition === "bottom" ? (
+                <ExpandLessIcon ariaLabel={t("menuShow")} />
+              ) : (
+                <ExpandMoreIcon ariaLabel={t("menuShow")} />
+              )}
             </IconButton>
             {!isCalibrating && fileLoadStatus === LoadStatusEnum.LOADING ? (
               <LoadingSpinner
