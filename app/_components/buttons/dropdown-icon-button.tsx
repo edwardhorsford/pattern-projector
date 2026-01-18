@@ -16,6 +16,8 @@ export function DropdownIconButton<T>({
   className,
   dropdownClassName,
   loadStatus,
+  openUpward = false,
+  tooltipTop = false,
 }: {
   icon: React.ReactNode;
   selection: T;
@@ -28,6 +30,8 @@ export function DropdownIconButton<T>({
   className?: string;
   dropdownClassName?: string;
   loadStatus?: LoadStatusEnum;
+  openUpward?: boolean;
+  tooltipTop?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -41,8 +45,9 @@ export function DropdownIconButton<T>({
     setIsOpen(false);
   };
 
-  const dropdownClasses =
-    "absolute mt-2 bg-white dark:bg-gray-800 rounded-md shadow-lg";
+  const dropdownClasses = openUpward
+    ? "absolute bottom-full mb-2 bg-white dark:bg-gray-800 rounded-md shadow-lg"
+    : "absolute mt-2 bg-white dark:bg-gray-800 rounded-md shadow-lg";
 
   useOnClickOutside(containerRef, () => setIsOpen(false));
 
@@ -57,6 +62,7 @@ export function DropdownIconButton<T>({
       <Tooltip
         description={description}
         disabled={isOpen || loadStatus === LoadStatusEnum.LOADING}
+        top={tooltipTop}
       >
         <IconButton
           onClick={handleClick}

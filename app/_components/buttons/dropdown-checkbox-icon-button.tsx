@@ -29,6 +29,8 @@ export function DropdownCheckboxIconButton<T>({
   optionSettings,
   setSelectedOptions,
   className,
+  openUpward = false,
+  tooltipTop = false,
 }: {
   description: string;
   icon: React.ReactNode;
@@ -38,6 +40,8 @@ export function DropdownCheckboxIconButton<T>({
   optionSettings: OptionSettings<T>;
   setSelectedOptions: (options: T) => void;
   className?: string;
+  openUpward?: boolean;
+  tooltipTop?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -46,8 +50,9 @@ export function DropdownCheckboxIconButton<T>({
     setIsOpen(!isOpen);
   };
 
-  const dropdownClasses =
-    "absolute left-0 mt-2 min-w-max bg-white dark:bg-gray-800 rounded-md shadow-lg z-10";
+  const dropdownClasses = openUpward
+    ? "absolute left-0 bottom-full mb-2 min-w-max bg-white dark:bg-gray-800 rounded-md shadow-lg z-10"
+    : "absolute left-0 mt-2 min-w-max bg-white dark:bg-gray-800 rounded-md shadow-lg z-10";
 
   useOnClickOutside(containerRef, () => setIsOpen(false));
 
@@ -68,7 +73,7 @@ export function DropdownCheckboxIconButton<T>({
       className={`relative inline-block ${className || ""}`}
       ref={containerRef}
     >
-      <Tooltip description={description} disabled={isOpen}>
+      <Tooltip description={description} disabled={isOpen} top={tooltipTop}>
         <IconButton
           onClick={handleClick}
           aria-haspopup="true"
