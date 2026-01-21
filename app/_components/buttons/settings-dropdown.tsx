@@ -7,6 +7,7 @@ import { MenuPosition, MenuStates } from "@/_lib/menu-states";
 import { useTranslations } from "next-intl";
 import SettingsIcon from "@/_icons/settings-icon";
 import { Dispatch, SetStateAction } from "react";
+import { useLocale } from "next-intl";
 
 export function SettingsDropdown({
   menuStates,
@@ -20,6 +21,7 @@ export function SettingsDropdown({
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const t = useTranslations("SettingsMenu");
+  const locale = useLocale();
 
   useOnClickOutside(containerRef, () => setIsOpen(false));
 
@@ -66,6 +68,35 @@ export function SettingsDropdown({
             <option value="top">{t("top")}</option>
             <option value="bottom">{t("bottom")}</option>
           </select>
+        </div>
+        <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+          <button
+            onClick={() => {
+              window.open(
+                `/${locale}/control`,
+                "controlPanel",
+                "width=400,height=600,menubar=no,toolbar=no,location=no,status=no"
+              );
+              setIsOpen(false);
+            }}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors w-full"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+              />
+            </svg>
+            {t("controlPanel")}
+          </button>
         </div>
       </div>
     </div>

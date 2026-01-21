@@ -321,7 +321,8 @@
     "top": "Top",
     "bottom": "Bottom",
     "show": "Show settings",
-    "hide": "Hide settings"
+    "hide": "Hide settings",
+    "controlPanel": "Open Control Panel"
   },
   "ControlPanel": {
     "title": "Control Panel",
