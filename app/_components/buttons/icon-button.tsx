@@ -11,6 +11,7 @@ export function IconButton({
   active,
   onPointerDown,
   onPointerUp,
+  onPointerLeave,
   style,
   border,
 }: {
@@ -23,6 +24,7 @@ export function IconButton({
   active?: boolean;
   onPointerDown?: PointerEventHandler<HTMLButtonElement>;
   onPointerUp?: PointerEventHandler<HTMLButtonElement>;
+  onPointerLeave?: PointerEventHandler<HTMLButtonElement>;
   style?: React.CSSProperties;
   border?: boolean;
 }) {
@@ -61,6 +63,7 @@ export function IconButton({
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      onPointerLeave={onPointerLeave}
       style={style}
     >
       {children}
