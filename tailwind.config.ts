@@ -7,6 +7,10 @@ const config: Config = {
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
+  safelist: [
+    "cursor-zoom-in",
+    "cursor-zoom-out",
+  ],
   corePlugins: {
     aspectRatio: false,
   },
