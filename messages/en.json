@@ -341,7 +341,14 @@
     "advancedOptions": "Stitch / Layers / Scale",
     "instructions": "How to use",
     "instructionsText": "Keep this window on your laptop screen while the main Pattern Projector window is on the projector. All controls here will update the projected view.",
-    "zoomIn": "Zoom in"
+    "zoomIn": "Zoom in",
+    "preview": "Preview",
+    "previewNoFile": "Open a file to see the preview",
+    "previewClickToNavigate": "Click or drag to navigate",
+    "previewShowImage": "Show pattern image",
+    "previewHideImage": "Hide pattern image",
+    "previewEnlarge": "Enlarge preview",
+    "previewShrink": "Shrink preview"
   },
   "MovementPad": {
     "up": "Up",

@@ -7,7 +7,10 @@ import {
   ActionPayload,
   FileTransferPayload,
 } from "@/_hooks/use-broadcast-channel";
-import { useTransformerContext } from "@/_hooks/use-transform-context";
+import {
+  useTransformerContext,
+  useTransformContext,
+} from "@/_hooks/use-transform-context";
 import { DisplaySettings, themes } from "@/_lib/display-settings";
 import {
   MenuStates,
@@ -17,18 +20,27 @@ import {
 import { Dispatch, SetStateAction, ChangeEvent, RefObject } from "react";
 import { PatternScaleAction } from "@/_reducers/patternScaleReducer";
 import { Layers } from "@/_lib/layers";
+import Matrix from "ml-matrix";
 import {
   StitchSettings,
   LineDirection,
 } from "@/_lib/interfaces/stitch-settings";
 import { StitchSettingsAction } from "@/_reducers/stitchSettingsReducer";
 import { LayerAction } from "@/_reducers/layersReducer";
-import {
-  getCalibrationContext,
-} from "@/_lib/calibration-context";
+import { getCalibrationContext } from "@/_lib/calibration-context";
 import { PointAction } from "@/_reducers/pointsReducer";
 import { Direction } from "@/_lib/direction";
 import { Point } from "@/_lib/point";
+import {
+  transformPoint,
+  rectCorners,
+  getBounds,
+  RestoreTransforms,
+  translate,
+  scaleAboutPoint,
+} from "@/_lib/geometry";
+import { inverse } from "ml-matrix";
+import { getPtDensity, Unit } from "@/_lib/unit";
 
 interface ControlPanelBridgeProps {
   // State to sync
@@ -56,8 +68,8 @@ interface ControlPanelBridgeProps {
   heightInput: string;
   handleWidthChange: (e: ChangeEvent<HTMLInputElement>) => void;
   handleHeightChange: (e: ChangeEvent<HTMLInputElement>) => void;
-  unitOfMeasure: string;
-  setUnitOfMeasure: (unit: string) => void;
+  unitOfMeasure: Unit;
+  setUnitOfMeasure: (unit: Unit) => void;
   handleResetCalibration: () => void;
   // For file input (no longer needed but kept for compatibility)
   fileInputRef: RefObject<HTMLInputElement>;
@@ -69,7 +81,7 @@ interface ControlPanelBridgeProps {
   getCalibrationCenterPoint: (
     width: number,
     height: number,
-    unitOfMeasure: string,
+    unitOfMeasure: Unit,
   ) => { x: number; y: number };
   // Layers
   layers: Layers;
@@ -87,6 +99,18 @@ interface ControlPanelBridgeProps {
   // Calibration validation
   setCalibrationValidated: (value: boolean) => void;
   fullScreenActive: boolean;
+  // For preview viewport calculation
+  perspective: Matrix;
+  // Calibration transform for saving restore state
+  calibrationTransform: Matrix;
+  // Saved transforms when zoomed out or magnifying (to preserve rotation/flip state)
+  restoreTransforms: RestoreTransforms | null;
+  setRestoreTransforms: (value: RestoreTransforms | null) => void;
+  // PDF thumbnail for preview
+  pdfThumbnail: string | null;
+  isPreviewLoading: boolean;
+  showPreviewImage: boolean;
+  setShowPreviewImage: (value: boolean) => void;
 }
 
 /**
@@ -138,9 +162,26 @@ export function ControlPanelBridge({
   dispatchPoints,
   setCalibrationValidated,
   fullScreenActive,
+  perspective,
+  calibrationTransform,
+  restoreTransforms,
+  setRestoreTransforms,
+  pdfThumbnail,
+  isPreviewLoading,
+  showPreviewImage,
+  setShowPreviewImage,
 }: ControlPanelBridgeProps) {
   const transformer = useTransformerContext();
+  const localTransform = useTransformContext();
   const syncRequestedRef = useRef(false);
+
+  // When zoomed out or magnifying, use the saved transform for preview display
+  // This preserves the rotation/flip state in the preview even though the actual
+  // localTransform is reset to identity during zoom out
+  const effectiveTransform =
+    (zoomedOut || magnifying) && restoreTransforms
+      ? restoreTransforms.localTransform
+      : localTransform;
 
   // Helper function to get offset from direction
   function getOffset(direction: Direction, px: number): Point {
@@ -158,6 +199,188 @@ export function ControlPanelBridge({
     }
   }
 
+  // Calculate viewport bounds in PDF coordinates for mini map
+  const calculateViewportBounds = useCallback(() => {
+    if (layoutWidth === 0 || layoutHeight === 0) {
+      return null;
+    }
+
+    // Get screen corners (browser window dimensions)
+    const screenWidth = typeof window !== "undefined" ? window.innerWidth : 0;
+    const screenHeight = typeof window !== "undefined" ? window.innerHeight : 0;
+    const screenCorners = rectCorners(screenWidth, screenHeight);
+
+    // Transform screen corners to PDF coordinates using inverse of combined transform
+    // Combined transform: perspective (calibration inverse) + localTransform
+    // Use the ACTUAL current localTransform for position calculation (not effectiveTransform)
+    // This ensures the viewport shows the real current view position, even during zoom out
+    try {
+      const inverseLocal = inverse(localTransform);
+      const pdfCorners = screenCorners.map((p) => {
+        // First apply perspective (to get to calibrated space)
+        const calibrated = transformPoint(p, perspective);
+        // Then apply inverse local transform (to get to PDF space)
+        return transformPoint(calibrated, inverseLocal);
+      });
+
+      // Get bounding box
+      const [min, max] = getBounds(pdfCorners);
+
+      // For rotation/flip display, use effectiveTransform which preserves the saved state during zoom out
+      // This keeps the mini map image orientation correct even when localTransform is identity
+      const m = effectiveTransform.to1DArray();
+
+      // Detect flip state from the transform matrix
+      // The determinant of the 2x2 scale/rotation part indicates if there's a flip
+      // det = m[0]*m[4] - m[1]*m[3] = scaleX * scaleY
+      // Negative determinant means one axis is flipped (odd number of flips)
+      const det = m[0] * m[4] - m[1] * m[3];
+      const hasFlip = det < 0;
+
+      // Extract the 2x2 rotation/scale part of the matrix for the mini map
+      // This allows us to apply the exact same transform to the mini map image
+      // Normalize by the scale to get just rotation + flip
+      const scaleXMag = Math.sqrt(m[0] * m[0] + m[1] * m[1]);
+      const scaleYMag = Math.sqrt(m[3] * m[3] + m[4] * m[4]);
+
+      // Normalized matrix components (just rotation + flip, no scale)
+      const a = scaleXMag > 0 ? m[0] / scaleXMag : 1;
+      const b = scaleYMag > 0 ? m[1] / scaleYMag : 0;
+      const c = scaleXMag > 0 ? m[3] / scaleXMag : 0;
+      const d = scaleYMag > 0 ? m[4] / scaleYMag : 1;
+
+      // Standard rotation calculation for reference
+      const rotation = Math.atan2(m[3], m[0]) * (180 / Math.PI);
+
+      return {
+        x: min.x,
+        y: min.y,
+        width: max.x - min.x,
+        height: max.y - min.y,
+        rotation,
+        // Pass the normalized transform matrix components for accurate mini map rendering
+        transformA: a,
+        transformB: b,
+        transformC: c,
+        transformD: d,
+        hasFlip,
+      };
+    } catch {
+      return null;
+    }
+  }, [
+    layoutWidth,
+    layoutHeight,
+    perspective,
+    localTransform,
+    effectiveTransform,
+  ]);
+
+  // Calculate calibration bounds in PDF coordinates for mini map border
+  // This represents the fixed calibration rectangle (what the projector can display) in PDF space
+  // The size is fixed (width x height in calibration units), but position changes with pan/rotate
+  const calculateCalibrationBounds = useCallback(() => {
+    if (width === 0 || height === 0) {
+      return null;
+    }
+
+    // Calculate calibration size in PDF units (points)
+    const ptDensity = getPtDensity(unitOfMeasure);
+    const calWidth = width * ptDensity;
+    const calHeight = height * ptDensity;
+
+    // The calibration area in "calibration space" is (0,0) to (calWidth, calHeight)
+    // Transform corners to PDF space using inverse of localTransform
+    // This properly handles rotation and flipping
+    try {
+      const inverseLocal = inverse(localTransform);
+
+      // Transform the 4 corners of the calibration rectangle
+      const corners = [
+        transformPoint({ x: 0, y: 0 }, inverseLocal),
+        transformPoint({ x: calWidth, y: 0 }, inverseLocal),
+        transformPoint({ x: calWidth, y: calHeight }, inverseLocal),
+        transformPoint({ x: 0, y: calHeight }, inverseLocal),
+      ];
+
+      // Get bounding box in PDF space
+      const xs = corners.map((c) => c.x);
+      const ys = corners.map((c) => c.y);
+
+      return {
+        x: Math.min(...xs),
+        y: Math.min(...ys),
+        width: Math.max(...xs) - Math.min(...xs),
+        height: Math.max(...ys) - Math.min(...ys),
+      };
+    } catch {
+      return null;
+    }
+  }, [width, height, unitOfMeasure, localTransform]);
+
+  // Calculate paper sheet bounds in PDF coordinates for mini map
+  // Paper sheet is centered in the calibration area, sized for A4 (CM) or Letter (IN)
+  const calculatePaperBounds = useCallback(() => {
+    if (width === 0 || height === 0) {
+      return null;
+    }
+
+    // Paper dimensions based on unit of measure (matching drawing.ts drawPaperSheet)
+    const [paperWidth, paperHeight] =
+      unitOfMeasure === Unit.CM ? [29.7, 21] : [11, 8.5];
+
+    // Calculate calibration size in the current unit
+    const calWidth = width;
+    const calHeight = height;
+
+    // Paper is centered in calibration area (in calibration units)
+    const paperX = (calWidth - paperWidth) * 0.5;
+    const paperY = (calHeight - paperHeight) * 0.5;
+
+    // Convert to PDF units (points)
+    const ptDensity = getPtDensity(unitOfMeasure);
+    const paperWidthPts = paperWidth * ptDensity;
+    const paperHeightPts = paperHeight * ptDensity;
+    const paperXPts = paperX * ptDensity;
+    const paperYPts = paperY * ptDensity;
+
+    // Transform corners to PDF space using inverse of localTransform
+    // This properly handles rotation and flipping
+    try {
+      const inverseLocal = inverse(localTransform);
+
+      // Transform the 4 corners of the paper rectangle
+      const corners = [
+        transformPoint({ x: paperXPts, y: paperYPts }, inverseLocal),
+        transformPoint(
+          { x: paperXPts + paperWidthPts, y: paperYPts },
+          inverseLocal,
+        ),
+        transformPoint(
+          { x: paperXPts + paperWidthPts, y: paperYPts + paperHeightPts },
+          inverseLocal,
+        ),
+        transformPoint(
+          { x: paperXPts, y: paperYPts + paperHeightPts },
+          inverseLocal,
+        ),
+      ];
+
+      // Get bounding box in PDF space
+      const xs = corners.map((c) => c.x);
+      const ys = corners.map((c) => c.y);
+
+      return {
+        x: Math.min(...xs),
+        y: Math.min(...ys),
+        width: Math.max(...xs) - Math.min(...xs),
+        height: Math.max(...ys) - Math.min(...ys),
+      };
+    } catch {
+      return null;
+    }
+  }, [width, height, unitOfMeasure, localTransform]);
+
   // Build current state object
   const buildState = useCallback(
     () => ({
@@ -165,6 +388,8 @@ export function ControlPanelBridge({
       displaySettings,
       zoomedOut,
       magnifying,
+      // Whether we're actively zoomed in (magnify mode + already magnified)
+      isMagnified: magnifying && restoreTransforms !== null,
       measuring,
       file: file ? { name: file.name, type: file.type } : null,
       lineThickness,
@@ -182,12 +407,22 @@ export function ControlPanelBridge({
       stitchSettings,
       showingMovePad,
       corners: Array.from(corners),
+      // Preview data
+      previewImage: pdfThumbnail,
+      isPreviewLoading,
+      showPreviewImage,
+      viewportBounds: calculateViewportBounds(),
+      calibrationBounds: calculateCalibrationBounds(),
+      paperBounds: calculatePaperBounds(),
+      layoutWidth,
+      layoutHeight,
     }),
     [
       isCalibrating,
       displaySettings,
       zoomedOut,
       magnifying,
+      restoreTransforms,
       measuring,
       file,
       lineThickness,
@@ -201,6 +436,14 @@ export function ControlPanelBridge({
       stitchSettings,
       showingMovePad,
       corners,
+      pdfThumbnail,
+      isPreviewLoading,
+      showPreviewImage,
+      calculateViewportBounds,
+      calculateCalibrationBounds,
+      calculatePaperBounds,
+      layoutWidth,
+      layoutHeight,
     ],
   );
 
@@ -321,7 +564,7 @@ export function ControlPanelBridge({
             } as ChangeEvent<HTMLInputElement>);
             break;
           case "setUnit":
-            setUnitOfMeasure(params as string);
+            setUnitOfMeasure(params as Unit);
             break;
           case "resetCalibration":
             handleResetCalibration();
@@ -364,7 +607,15 @@ export function ControlPanelBridge({
               pixels: number;
             };
             const panOffset = getOffset(panDir, panPixels);
-            transformer.translate(panOffset);
+            // Negate the offset: pressing "right" should move viewport right,
+            // which means moving the pattern left (negative x)
+            transformer.translate({ x: -panOffset.x, y: -panOffset.y });
+            break;
+          }
+          case "panViewDelta": {
+            // Direct delta panning from preview drag (in calibrated space units)
+            const { dx, dy } = params as { dx: number; dy: number };
+            transformer.translate({ x: dx, y: dy });
             break;
           }
           case "rotateView": {
@@ -375,6 +626,82 @@ export function ControlPanelBridge({
               unitOfMeasure,
             );
             transformer.rotate(center, degrees);
+            break;
+          }
+          // Mini map navigation - navigate to a point in PDF coordinates
+          case "navigateToPoint": {
+            const { x, y } = params as { x: number; y: number };
+            const center = getCalibrationCenterPoint(
+              width,
+              height,
+              unitOfMeasure,
+            );
+
+            // If zoomed out, exit zoom out mode and center on the clicked point
+            if (zoomedOut && restoreTransforms) {
+              // Use the saved localTransform to calculate the new centered position
+              const oldLocal = restoreTransforms.localTransform;
+              // Transform the clicked point through the saved transform
+              const current = transformPoint({ x, y }, oldLocal);
+
+              // Create new transform that centers on that point
+              const newLocal = translate({
+                x: center.x - current.x,
+                y: center.y - current.y,
+              }).mmul(oldLocal);
+
+              // Set the new transform and exit zoom out mode
+              transformer.setLocalTransform(newLocal);
+              setZoomedOut(false);
+              break;
+            }
+
+            // Normal navigation (not zoomed out)
+            // Transform the clicked point through localTransform (same as recenter does)
+            const current = transformPoint({ x, y }, localTransform);
+
+            // Move from current position to calibration center
+            const deltaX = center.x - current.x;
+            const deltaY = center.y - current.y;
+
+            transformer.translate({ x: deltaX, y: deltaY });
+            break;
+          }
+          // Magnify at a specific point in PDF coordinates (from mini map)
+          case "magnifyAtPoint": {
+            const { x, y } = params as { x: number; y: number };
+            const center = getCalibrationCenterPoint(
+              width,
+              height,
+              unitOfMeasure,
+            );
+
+            if (magnifying && !restoreTransforms) {
+              // Not yet magnified - save transforms and magnify at the point
+              setRestoreTransforms({
+                localTransform: localTransform.clone(),
+                calibrationTransform: calibrationTransform.clone(),
+              });
+
+              // Transform the clicked point through localTransform
+              const current = transformPoint({ x, y }, localTransform);
+
+              // Create a new transform that centers on that point then scales
+              const translateToCenter = translate({
+                x: center.x - current.x,
+                y: center.y - current.y,
+              });
+              const scaleAtCenter = scaleAboutPoint(5, center);
+
+              // Apply: first translate to center, then scale around center
+              const newTransform = scaleAtCenter
+                .mmul(translateToCenter)
+                .mmul(localTransform);
+              transformer.setLocalTransform(newTransform);
+            } else if (magnifying && restoreTransforms) {
+              // Already magnified - exit magnify mode
+              setMagnifying(false);
+            }
             break;
           }
           // Layer actions
@@ -451,6 +778,10 @@ export function ControlPanelBridge({
               step: params as number,
             });
             break;
+          // Preview image toggle
+          case "togglePreviewImage":
+            setShowPreviewImage(!showPreviewImage);
+            break;
         }
       }
     },
@@ -469,6 +800,9 @@ export function ControlPanelBridge({
       setZoomedOut,
       magnifying,
       setMagnifying,
+      restoreTransforms,
+      setRestoreTransforms,
+      calibrationTransform,
       measuring,
       setMeasuring,
       setLineThickness,
@@ -496,32 +830,49 @@ export function ControlPanelBridge({
       setCalibrationValidated,
       fullScreenActive,
       file,
+      showPreviewImage,
+      setShowPreviewImage,
+      localTransform,
     ],
   );
 
   const { sendStateSync } = useBroadcastChannel(handleMessage);
 
-  // Sync state to control panel whenever it changes
+  // Use a ref to hold the latest buildState function so we can call it from intervals
+  // without causing the intervals to be recreated when buildState changes
+  const buildStateRef = useRef(buildState);
   useEffect(() => {
-    sendStateSync(buildState());
-  }, [buildState, sendStateSync]);
+    buildStateRef.current = buildState;
+  }, [buildState]);
 
-  // Handle sync requests - check periodically if a sync was requested
+  // Track if state has changed since last sync
+  const stateVersionRef = useRef(0);
+  const lastSyncedVersionRef = useRef(0);
+  
+  // Increment version whenever buildState changes (indicates state changed)
+  useEffect(() => {
+    stateVersionRef.current += 1;
+  }, [buildState]);
+
+  // Throttled sync - send updates at most every 150ms, only when state has changed
+  // This provides responsive updates without overwhelming the channel
   useEffect(() => {
     const interval = setInterval(() => {
-      if (syncRequestedRef.current) {
+      // Sync if: explicitly requested OR state has changed since last sync
+      if (syncRequestedRef.current || stateVersionRef.current !== lastSyncedVersionRef.current) {
         syncRequestedRef.current = false;
-        sendStateSync(buildState());
+        lastSyncedVersionRef.current = stateVersionRef.current;
+        sendStateSync(buildStateRef.current());
       }
-    }, 100);
+    }, 150);
     return () => clearInterval(interval);
-  }, [buildState, sendStateSync]);
+  }, [sendStateSync]);
 
   // Send initial sync on mount
   useEffect(() => {
     // Small delay to ensure channel is ready
     const timeout = setTimeout(() => {
-      sendStateSync(buildState());
+      sendStateSync(buildStateRef.current());
     }, 100);
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
