@@ -36,7 +36,7 @@ export function SettingsDropdown({
     window.open(
       controlPanelUrl,
       "PatternProjectorControl",
-      "width=450,height=700,menubar=no,toolbar=no,location=no,status=no",
+      "width=470,height=1150,menubar=no,toolbar=no,location=no,status=no",
     );
   };
 

@@ -33,6 +33,10 @@ import MoveIcon from "@/_icons/move-icon";
 import TuneIcon from "@/_icons/tune-icon";
 import LayersIcon from "@/_icons/layers-icon";
 import FlexWrapIcon from "@/_icons/flex-wrap-icon";
+import VisibilityIcon from "@/_icons/visibility-icon";
+import VisibilityOffIcon from "@/_icons/visibility-off-icon";
+import FullScreenIcon from "@/_icons/full-screen-icon";
+import FullScreenExitIcon from "@/_icons/full-screen-exit-icon";
 import Tooltip from "@/_components/tooltip/tooltip";
 import StepperInput from "@/_components/stepper-input";
 import InlineSelect from "@/_components/inline-select";
@@ -47,6 +51,8 @@ import {
   getDefaultDisplaySettings,
   isDarkTheme,
   strokeColor,
+  themeFilter,
+  Theme,
 } from "@/_lib/display-settings";
 import { rotateRange } from "@/_lib/get-page-numbers";
 import { IN, CM } from "@/_lib/unit";
@@ -65,12 +71,41 @@ const defaultStitchSettings: StitchSettings = {
   lineDirection: LineDirection.Column,
 };
 
+// Viewport bounds for mini map (in PDF coordinate space)
+interface ViewportBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number; // Current rotation in degrees
+  // Normalized transform matrix components (rotation + flip, no scale/translation)
+  // These form a 2x2 matrix: [[a, b], [c, d]]
+  transformA: number;
+  transformB: number;
+  transformC: number;
+  transformD: number;
+  hasFlip: boolean; // Whether there's any flip (determinant < 0)
+}
+
+// Calibration bounds for mini map border (in PDF coordinate space)
+interface CalibrationBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+// Paper bounds for mini map paper sheet overlay (in PDF coordinate space)
+// Uses same structure as CalibrationBounds
+type PaperBounds = CalibrationBounds;
+
 // State synced from main window
 interface SyncedState {
   isCalibrating: boolean;
   displaySettings: DisplaySettings;
   zoomedOut: boolean;
   magnifying: boolean;
+  isMagnified: boolean; // Whether actively zoomed in (magnify mode + already magnified)
   measuring: boolean;
   file: { name: string; type: string } | null;
   connected: boolean;
@@ -89,6 +124,15 @@ interface SyncedState {
   stitchSettings: StitchSettings;
   showingMovePad: boolean;
   corners: number[];
+  // Preview data
+  previewImage: string | null; // Data URL of the PDF thumbnail
+  isPreviewLoading: boolean; // Whether the preview is being generated
+  showPreviewImage: boolean; // Whether to show the PDF preview
+  viewportBounds: ViewportBounds | null; // Current viewport in PDF coordinates
+  calibrationBounds: CalibrationBounds | null; // Fixed calibration rectangle in PDF coordinates
+  paperBounds: PaperBounds | null; // Paper sheet rectangle in PDF coordinates
+  layoutWidth: number;
+  layoutHeight: number;
 }
 
 const defaultSyncedState: SyncedState = {
@@ -96,6 +140,7 @@ const defaultSyncedState: SyncedState = {
   displaySettings: getDefaultDisplaySettings(),
   zoomedOut: false,
   magnifying: false,
+  isMagnified: false,
   measuring: false,
   file: null,
   connected: false,
@@ -114,6 +159,15 @@ const defaultSyncedState: SyncedState = {
   stitchSettings: defaultStitchSettings,
   showingMovePad: false,
   corners: [0],
+  // Preview defaults
+  previewImage: null,
+  isPreviewLoading: false,
+  showPreviewImage: true,
+  viewportBounds: null,
+  calibrationBounds: null,
+  paperBounds: null,
+  layoutWidth: 0,
+  layoutHeight: 0,
 };
 
 // Dropdown menu component with close callback
@@ -200,6 +254,510 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Preview component for bird's eye view navigation
+function Preview({
+  layoutWidth,
+  layoutHeight,
+  viewportBounds,
+  calibrationBounds,
+  paperBounds,
+  previewImage,
+  isPreviewLoading,
+  showPreviewImage,
+  showBorder,
+  showPaper,
+  theme,
+  magnifying,
+  isMagnified,
+  enlarged,
+  onNavigate,
+  onMagnify,
+  onTogglePreview,
+  onToggleSize,
+  t,
+}: {
+  layoutWidth: number;
+  layoutHeight: number;
+  viewportBounds: ViewportBounds | null;
+  calibrationBounds: CalibrationBounds | null;
+  paperBounds: PaperBounds | null;
+  previewImage: string | null;
+  isPreviewLoading: boolean;
+  showPreviewImage: boolean;
+  showBorder: boolean;
+  showPaper: boolean;
+  theme: Theme;
+  magnifying: boolean;
+  isMagnified: boolean;
+  enlarged: boolean;
+  onNavigate: (x: number, y: number) => void;
+  onMagnify: (x: number, y: number) => void;
+  onTogglePreview: () => void;
+  onToggleSize: () => void;
+  t: ReturnType<typeof useTranslations<"ControlPanel">>;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [containerWidth, setContainerWidth] = useState(400);
+  const lastNavigateTime = useRef(0);
+  const handledMagnifyClick = useRef(false); // Track if we handled a magnify click
+  const throttleMs = 16; // Throttle navigation updates (~60fps)
+
+  // Measure available width from parent container
+  useEffect(() => {
+    const updateWidth = () => {
+      if (wrapperRef.current) {
+        // Get the width of the wrapper (minus some padding for aesthetics)
+        const availableWidth = wrapperRef.current.offsetWidth;
+        setContainerWidth(availableWidth);
+      }
+    };
+
+    updateWidth();
+    window.addEventListener("resize", updateWidth);
+    return () => window.removeEventListener("resize", updateWidth);
+  }, []);
+
+  // Calculate scale to fit the PDF in the preview container
+  // Both sizes are capped to prevent size jumps when rotating
+  // Normal: 400px max, Enlarged: 800px max
+  const maxWidth = Math.min(containerWidth, enlarged ? 800 : 400);
+  const maxHeight = enlarged ? 675 : 450;
+
+  if (layoutWidth === 0 || layoutHeight === 0) {
+    return (
+      <div ref={wrapperRef} className="w-full">
+        <div className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4 text-center text-sm text-gray-500 dark:text-gray-400">
+          {t("previewNoFile")}
+        </div>
+      </div>
+    );
+  }
+
+  // Get rotation and normalize to 0, 90, 180, 270
+  const rotation = viewportBounds?.rotation ?? 0;
+  const normalizedRotation = ((rotation % 360) + 360) % 360;
+  const isRotated90or270 =
+    (normalizedRotation > 45 && normalizedRotation < 135) ||
+    (normalizedRotation > 225 && normalizedRotation < 315);
+  const isRotated180 = normalizedRotation > 135 && normalizedRotation < 225;
+
+  // Get the normalized transform matrix from viewport bounds
+  // This represents the exact rotation + flip transformation
+  const transformA = viewportBounds?.transformA ?? 1;
+  const transformB = viewportBounds?.transformB ?? 0;
+  const transformC = viewportBounds?.transformC ?? 0;
+  const transformD = viewportBounds?.transformD ?? 1;
+  const hasFlip = viewportBounds?.hasFlip ?? false;
+
+  // When rotated 90/270 and "rotate with view" is on, swap effective dimensions
+  const effectiveLayoutWidth = isRotated90or270 ? layoutHeight : layoutWidth;
+  const effectiveLayoutHeight = isRotated90or270 ? layoutWidth : layoutHeight;
+
+  // Add buffer around the PDF to show when view goes off-edge
+  // Use uniform buffer based on the smaller dimension for consistent appearance
+  const smallerDimension = Math.min(
+    effectiveLayoutWidth,
+    effectiveLayoutHeight,
+  );
+  const buffer = smallerDimension * 0.15;
+  const bufferX = buffer;
+  const bufferY = buffer;
+
+  // Total area including buffer
+  const totalWidth = effectiveLayoutWidth + bufferX * 2;
+  const totalHeight = effectiveLayoutHeight + bufferY * 2;
+
+  const scale = Math.min(maxWidth / totalWidth, maxHeight / totalHeight);
+  const scaledWidth = totalWidth * scale;
+  const scaledHeight = totalHeight * scale;
+  const scaledBufferX = bufferX * scale;
+  const scaledBufferY = bufferY * scale;
+
+  // Convert screen coordinates to PDF coordinates
+  // Uses the inverse of the transform matrix to correctly handle any rotation + flip combination
+  const screenToPdfCoords = (
+    screenX: number,
+    screenY: number,
+  ): { x: number; y: number } => {
+    // Get position relative to the PDF area center
+    const centerX = scaledBufferX + (effectiveLayoutWidth * scale) / 2;
+    const centerY = scaledBufferY + (effectiveLayoutHeight * scale) / 2;
+
+    // Position relative to center, in PDF units
+    const relX = (screenX - centerX) / scale;
+    const relY = (screenY - centerY) / scale;
+
+    // Apply inverse of the transform matrix to get back to original PDF coordinates
+    // The transform matrix is [a, b; c, d], so inverse is (1/det) * [d, -b; -c, a]
+    const det = transformA * transformD - transformB * transformC;
+    if (Math.abs(det) < 0.0001) {
+      // Fallback for degenerate matrix
+      return {
+        x: layoutWidth / 2 + relX,
+        y: layoutHeight / 2 + relY,
+      };
+    }
+
+    // Apply inverse transform
+    const invA = transformD / det;
+    const invB = -transformB / det;
+    const invC = -transformC / det;
+    const invD = transformA / det;
+
+    const pdfRelX = invA * relX + invB * relY;
+    const pdfRelY = invC * relX + invD * relY;
+
+    // Convert back to PDF coordinates (from center-relative)
+    const pdfX = layoutWidth / 2 + pdfRelX;
+    const pdfY = layoutHeight / 2 + pdfRelY;
+
+    return { x: pdfX, y: pdfY };
+  };
+
+  // Handle pointer events for click and drag
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!containerRef.current) return;
+
+    e.preventDefault();
+    const rect = containerRef.current.getBoundingClientRect();
+    const coords = screenToPdfCoords(
+      e.clientX - rect.left,
+      e.clientY - rect.top,
+    );
+
+    // If magnifying mode is active, trigger magnify at this point instead of navigating
+    if (magnifying) {
+      handledMagnifyClick.current = true;
+      onMagnify(coords.x, coords.y);
+      return;
+    }
+
+    setIsDragging(true);
+    containerRef.current.setPointerCapture(e.pointerId);
+    lastNavigateTime.current = Date.now();
+    onNavigate(coords.x, coords.y);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging || !containerRef.current) return;
+
+    // Throttle navigation updates to prevent glitchiness
+    const now = Date.now();
+    if (now - lastNavigateTime.current < throttleMs) return;
+    lastNavigateTime.current = now;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const coords = screenToPdfCoords(
+      e.clientX - rect.left,
+      e.clientY - rect.top,
+    );
+    onNavigate(coords.x, coords.y);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!containerRef.current) return;
+
+    // If we handled a magnify click, don't navigate on pointer up
+    if (handledMagnifyClick.current) {
+      handledMagnifyClick.current = false;
+      return;
+    }
+
+    setIsDragging(false);
+    containerRef.current.releasePointerCapture(e.pointerId);
+
+    // Send final position on release
+    const rect = containerRef.current.getBoundingClientRect();
+    const coords = screenToPdfCoords(
+      e.clientX - rect.left,
+      e.clientY - rect.top,
+    );
+    onNavigate(coords.x, coords.y);
+  };
+
+  // Transform a point from PDF coordinates to mini map display coordinates
+  // Uses the transform matrix to correctly handle any rotation + flip combination
+  const pdfToDisplayCoords = (
+    pdfX: number,
+    pdfY: number,
+  ): { x: number; y: number } => {
+    // Convert to center-relative coordinates
+    const relX = pdfX - layoutWidth / 2;
+    const relY = pdfY - layoutHeight / 2;
+
+    // Apply transform matrix
+    const transformedX = transformA * relX + transformB * relY;
+    const transformedY = transformC * relX + transformD * relY;
+
+    // Convert to display coordinates (accounting for buffer and scale)
+    // The effective layout is centered in the display area
+    const displayX =
+      scaledBufferX + (effectiveLayoutWidth * scale) / 2 + transformedX * scale;
+    const displayY =
+      scaledBufferY +
+      (effectiveLayoutHeight * scale) / 2 +
+      transformedY * scale;
+
+    return { x: displayX, y: displayY };
+  };
+
+  // Calculate viewport indicator position and size
+  const getViewportIndicator = () => {
+    if (!viewportBounds) return null;
+
+    // Transform the four corners of the viewport bounds
+    const corners = [
+      pdfToDisplayCoords(viewportBounds.x, viewportBounds.y),
+      pdfToDisplayCoords(
+        viewportBounds.x + viewportBounds.width,
+        viewportBounds.y,
+      ),
+      pdfToDisplayCoords(
+        viewportBounds.x + viewportBounds.width,
+        viewportBounds.y + viewportBounds.height,
+      ),
+      pdfToDisplayCoords(
+        viewportBounds.x,
+        viewportBounds.y + viewportBounds.height,
+      ),
+    ];
+
+    // Get bounding box of transformed corners
+    const minX = Math.min(...corners.map((c) => c.x));
+    const maxX = Math.max(...corners.map((c) => c.x));
+    const minY = Math.min(...corners.map((c) => c.y));
+    const maxY = Math.max(...corners.map((c) => c.y));
+
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+      rotation: viewportBounds.rotation,
+    };
+  };
+
+  // Calculate calibration border position (similar to viewport but uses calibrationBounds)
+  const getCalibrationBorderIndicator = () => {
+    if (!calibrationBounds) return null;
+
+    // Transform the four corners of the calibration bounds
+    const corners = [
+      pdfToDisplayCoords(calibrationBounds.x, calibrationBounds.y),
+      pdfToDisplayCoords(
+        calibrationBounds.x + calibrationBounds.width,
+        calibrationBounds.y,
+      ),
+      pdfToDisplayCoords(
+        calibrationBounds.x + calibrationBounds.width,
+        calibrationBounds.y + calibrationBounds.height,
+      ),
+      pdfToDisplayCoords(
+        calibrationBounds.x,
+        calibrationBounds.y + calibrationBounds.height,
+      ),
+    ];
+
+    // Get bounding box of transformed corners
+    const minX = Math.min(...corners.map((c) => c.x));
+    const maxX = Math.max(...corners.map((c) => c.x));
+    const minY = Math.min(...corners.map((c) => c.y));
+    const maxY = Math.max(...corners.map((c) => c.y));
+
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+  };
+
+  // Calculate paper sheet position (similar to calibration border but uses paperBounds)
+  const getPaperIndicator = () => {
+    if (!paperBounds) return null;
+
+    // Transform the four corners of the paper bounds
+    const corners = [
+      pdfToDisplayCoords(paperBounds.x, paperBounds.y),
+      pdfToDisplayCoords(paperBounds.x + paperBounds.width, paperBounds.y),
+      pdfToDisplayCoords(
+        paperBounds.x + paperBounds.width,
+        paperBounds.y + paperBounds.height,
+      ),
+      pdfToDisplayCoords(paperBounds.x, paperBounds.y + paperBounds.height),
+    ];
+
+    // Get bounding box of transformed corners
+    const minX = Math.min(...corners.map((c) => c.x));
+    const maxX = Math.max(...corners.map((c) => c.x));
+    const minY = Math.min(...corners.map((c) => c.y));
+    const maxY = Math.max(...corners.map((c) => c.y));
+
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+  };
+
+  const viewport = getViewportIndicator();
+  const calibrationBorder = getCalibrationBorderIndicator();
+  const paperSheet = getPaperIndicator();
+
+  return (
+    <div ref={wrapperRef} className="space-y-2 w-full">
+      <div className="flex items-center gap-1">
+        <Tooltip
+          description={
+            showPreviewImage ? t("previewHideImage") : t("previewShowImage")
+          }
+        >
+          <IconButton onClick={onTogglePreview}>
+            {showPreviewImage ? (
+              <VisibilityIcon ariaLabel={t("previewHideImage")} />
+            ) : (
+              <VisibilityOffIcon ariaLabel={t("previewShowImage")} />
+            )}
+          </IconButton>
+        </Tooltip>
+        <Tooltip
+          description={enlarged ? t("previewShrink") : t("previewEnlarge")}
+        >
+          <IconButton onClick={onToggleSize}>
+            {enlarged ? (
+              <FullScreenIcon ariaLabel={t("previewShrink")} />
+            ) : (
+              <FullScreenExitIcon ariaLabel={t("previewEnlarge")} />
+            )}
+          </IconButton>
+        </Tooltip>
+      </div>
+      <div
+        ref={containerRef}
+        className="relative bg-gray-300 dark:bg-gray-700 rounded-lg overflow-hidden mx-auto"
+        style={{
+          width: scaledWidth,
+          height: scaledHeight,
+          touchAction: "none", // Prevent scrolling while dragging
+          // Inline cursor style - zoom-in/zoom-out may not work in Safari
+          cursor: isMagnified
+            ? "zoom-out"
+            : magnifying
+              ? "zoom-in"
+              : isDragging
+                ? "grabbing"
+                : "crosshair",
+        }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+      >
+        {/* PDF area representation */}
+        <div
+          className="absolute bg-white dark:bg-gray-800 border border-gray-400 dark:border-gray-500 overflow-hidden"
+          style={{
+            left: scaledBufferX,
+            top: scaledBufferY,
+            width: effectiveLayoutWidth * scale,
+            height: effectiveLayoutHeight * scale,
+          }}
+        >
+          {/* Loading indicator */}
+          {isPreviewLoading && showPreviewImage && (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-gray-800/50">
+              <div className="w-6 h-6 border-2 border-gray-300 dark:border-gray-600 border-t-purple-500 rounded-full animate-spin" />
+            </div>
+          )}
+          {/* PDF thumbnail image */}
+          {showPreviewImage && previewImage && (
+            <img
+              src={previewImage}
+              alt=""
+              className="pointer-events-none"
+              style={{
+                // Use CSS matrix transform to apply the exact same transformation
+                // as the main view (rotation + flip in correct order)
+                position: "absolute" as const,
+                top: "50%",
+                left: "50%",
+                // Size the image based on whether axes are swapped
+                width: isRotated90or270
+                  ? effectiveLayoutHeight * scale
+                  : effectiveLayoutWidth * scale,
+                height: isRotated90or270
+                  ? effectiveLayoutWidth * scale
+                  : effectiveLayoutHeight * scale,
+                // Use CSS matrix() to apply the exact transform
+                // matrix(a, c, b, d, tx, ty) - note CSS uses column-major order
+                transform: `translate(-50%, -50%) matrix(${transformA}, ${transformC}, ${transformB}, ${transformD}, 0, 0)`,
+                transformOrigin: "center center",
+                // Apply theme filter (invert for dark themes)
+                filter: themeFilter(theme),
+              }}
+              draggable={false}
+            />
+          )}
+        </div>
+
+        {/* Calibration border - shows the original calibration rectangle */}
+        {showBorder && calibrationBorder && (
+          <div
+            className="absolute border-2 border-purple-500 pointer-events-none"
+            style={{
+              left: calibrationBorder.x,
+              top: calibrationBorder.y,
+              width: Math.max(calibrationBorder.width, 4),
+              height: Math.max(calibrationBorder.height, 4),
+            }}
+          />
+        )}
+
+        {/* Paper sheet indicator - shows A4/Letter paper size rectangle */}
+        {showPaper && paperSheet && (
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              left: paperSheet.x,
+              top: paperSheet.y,
+              width: Math.max(paperSheet.width, 4),
+              height: Math.max(paperSheet.height, 4),
+              border: "2px dashed #9333ea",
+            }}
+          />
+        )}
+
+        {/* Viewport indicator */}
+        {viewport && (
+          <div
+            className="absolute border-2 border-purple-500 pointer-events-none"
+            style={{
+              left: viewport.x,
+              top: viewport.y,
+              width: Math.max(viewport.width, 4),
+              height: Math.max(viewport.height, 4),
+              // No transform needed - viewport is already in rotated coordinates
+              transformOrigin: "top left",
+              backgroundColor: "rgba(147, 51, 234, 0.15)",
+            }}
+          />
+        )}
+
+        {/* Center crosshair when no viewport */}
+        {!viewport && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-4 h-0.5 bg-purple-500" />
+            <div className="absolute w-0.5 h-4 bg-purple-500" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Movement pad constants
 const PIXEL_LIST = [1, 4, 8, 16];
 const REPEAT_MS = 100;
@@ -257,7 +815,9 @@ function MovementPadControl({
       if (i < PIXEL_LIST.length * REPEAT_PX_COUNT - 1) {
         ++i;
       }
-      const pixels = getEffectivePixels(PIXEL_LIST[Math.floor(i / REPEAT_PX_COUNT)]);
+      const pixels = getEffectivePixels(
+        PIXEL_LIST[Math.floor(i / REPEAT_PX_COUNT)],
+      );
       if (mode === "calibrate") {
         handleAction("moveCorner", { direction, pixels });
       } else {
@@ -376,6 +936,8 @@ export default function ControlPanelPage() {
   // Local state for control panel move pads (independent from main window)
   const [showCalibrateMovepad, setShowCalibrateMovepad] = useState(false);
   const [showProjectMovepad, setShowProjectMovepad] = useState(false);
+  const [previewExpanded, setPreviewExpanded] = useState(true);
+  const [previewEnlarged, setPreviewEnlarged] = useState(false); // Toggle between compact and large view
 
   // Handle incoming messages from main window
   const handleMessage = useCallback((message: BroadcastMessage) => {
@@ -435,9 +997,9 @@ export default function ControlPanelPage() {
 
   return (
     <main
-      className={`min-h-screen p-4 ${isDark ? "dark bg-gray-900 text-white" : "bg-gray-100"}`}
+      className={`h-screen overflow-y-auto p-4 ${isDark ? "dark bg-gray-900 text-white" : "bg-gray-100"}`}
     >
-      <div className="w-full max-w-[480px] mx-auto">
+      <div className="w-full">
         {/* Header */}
         <header className="mb-4 pb-3 border-b dark:border-gray-700">
           <div className="flex items-center justify-between">
@@ -531,9 +1093,7 @@ export default function ControlPanelPage() {
                   ]}
                 />
                 <Tooltip description={tHeader("delete")}>
-                  <IconButton
-                    onClick={() => handleAction("resetCalibration")}
-                  >
+                  <IconButton onClick={() => handleAction("resetCalibration")}>
                     <DeleteIcon ariaLabel={tHeader("delete")} />
                   </IconButton>
                 </Tooltip>
@@ -545,7 +1105,9 @@ export default function ControlPanelPage() {
                   }
                 >
                   <IconButton
-                    onClick={() => setShowCalibrateMovepad(!showCalibrateMovepad)}
+                    onClick={() =>
+                      setShowCalibrateMovepad(!showCalibrateMovepad)
+                    }
                     active={showCalibrateMovepad}
                   >
                     <MoveIcon ariaLabel={tHeader("showMovement")} />
@@ -789,6 +1351,60 @@ export default function ControlPanelPage() {
                     corners={state.corners}
                     handleAction={handleAction}
                     t={tMove}
+                  />
+                </div>
+              )}
+            </section>
+
+            {/* Mini Map for navigation */}
+            <section className="bg-white dark:bg-gray-800 rounded-lg shadow">
+              <button
+                onClick={() => setPreviewExpanded(!previewExpanded)}
+                className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 dark:hover:bg-gray-750 rounded-t-lg transition-colors"
+              >
+                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  {t("preview")}
+                </span>
+                <svg
+                  className={`w-4 h-4 text-gray-500 dark:text-gray-400 transition-transform ${previewExpanded ? "rotate-180" : ""}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </button>
+              {previewExpanded && (
+                <div className="px-4 pb-4">
+                  <Preview
+                    layoutWidth={state.layoutWidth}
+                    layoutHeight={state.layoutHeight}
+                    viewportBounds={state.viewportBounds}
+                    calibrationBounds={state.calibrationBounds}
+                    paperBounds={state.paperBounds}
+                    previewImage={state.previewImage}
+                    isPreviewLoading={state.isPreviewLoading}
+                    showPreviewImage={state.showPreviewImage}
+                    showBorder={!!state.displaySettings.overlay?.border}
+                    showPaper={!!state.displaySettings.overlay?.paper}
+                    theme={state.displaySettings.theme}
+                    magnifying={state.magnifying}
+                    isMagnified={state.isMagnified}
+                    enlarged={previewEnlarged}
+                    onNavigate={(x, y) =>
+                      handleAction("navigateToPoint", { x, y })
+                    }
+                    onMagnify={(x, y) =>
+                      handleAction("magnifyAtPoint", { x, y })
+                    }
+                    onTogglePreview={() => handleAction("togglePreviewImage")}
+                    onToggleSize={() => setPreviewEnlarged((e) => !e)}
+                    t={t}
                   />
                 </div>
               )}

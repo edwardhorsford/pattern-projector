@@ -81,6 +81,7 @@ import { Button } from "@/_components/buttons/button";
 import { erosionFilter } from "@/_lib/erode";
 import SvgViewer from "@/_components/svg-viewer";
 import { toggleFullScreen } from "@/_lib/full-screen";
+import { usePdfThumbnail } from "@/_hooks/use-pdf-thumbnail";
 
 const defaultStitchSettings = {
   lineCount: 1,
@@ -163,6 +164,17 @@ export default function Page() {
   );
   const patternScaleFactor =
     Number(patternScale) === 0 ? 1 : Number(patternScale);
+
+  // State for preview thumbnail
+  const [showPreviewImage, setShowPreviewImage] = useState(true);
+  const { thumbnail: pdfThumbnail, isLoading: isPreviewLoading } =
+    usePdfThumbnail(
+      file?.type === "application/pdf" ? file : null,
+      pageCount,
+      stitchSettings,
+      lineThickness,
+      showPreviewImage,
+    );
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -683,6 +695,14 @@ export default function Page() {
               dispatchPoints={dispatch}
               setCalibrationValidated={setCalibrationValidated}
               fullScreenActive={fullScreenHandle.active}
+              perspective={perspective}
+              calibrationTransform={calibrationTransform}
+              restoreTransforms={restoreTransforms}
+              setRestoreTransforms={setRestoreTransforms}
+              pdfThumbnail={pdfThumbnail}
+              isPreviewLoading={isPreviewLoading}
+              showPreviewImage={showPreviewImage}
+              setShowPreviewImage={setShowPreviewImage}
             />
             <MeasureCanvas
               className={visible(!isCalibrating)}
