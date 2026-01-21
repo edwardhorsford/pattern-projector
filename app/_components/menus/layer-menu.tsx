@@ -1,18 +1,20 @@
 import { Dispatch } from "react";
 import { useTranslations } from "next-intl";
 import { Layers } from "@/_lib/layers";
-import { ButtonStyle, sideMenuStyles } from "@/_components/theme/styles";
-import { Button } from "@/_components/buttons/button";
 import { LayerAction } from "@/_reducers/layersReducer";
+import { ButtonStyle } from "@/_components/theme/styles";
+import { Button } from "@/_components/buttons/button";
 
 export default function LayerMenu({
   className,
   layers,
   dispatchLayerAction,
+  isMenuAtBottom = false,
 }: {
   className?: string | undefined;
   dispatchLayerAction: Dispatch<LayerAction>;
   layers: Layers;
+  isMenuAtBottom?: boolean;
 }) {
   const t = useTranslations("LayerMenu");
 
@@ -22,9 +24,13 @@ export default function LayerMenu({
   const numberOfLayers = Object.entries(layers).length;
   const hasLayers = numberOfLayers > 0;
 
+  const menuStyles = isMenuAtBottom
+    ? "flex flex-col gap-2 p-2 w-64 items-start bg-white dark:bg-black border-t border-r border-gray-200 dark:border-gray-700"
+    : "flex flex-col gap-2 p-2 w-64 items-start bg-white dark:bg-black border-b border-r border-gray-200 dark:border-gray-700";
+
   return (
     <div
-      className={`${className ?? ""} ${sideMenuStyles} ${hasLayers && numberOfLayers * 40 < 200 ? "h-fit" : "h-[calc(100vh-8rem)]"} text-sm font-medium border-top-0`}
+      className={`${className ?? ""} ${menuStyles} ${hasLayers && numberOfLayers * 40 < 200 ? "h-fit" : "h-[calc(100vh-8rem)]"} text-sm font-medium`}
     >
       <menu
         key="global"

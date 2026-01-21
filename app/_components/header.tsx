@@ -39,6 +39,7 @@ import { IconButton } from "@/_components/buttons/icon-button";
 import { DropdownCheckboxIconButton } from "@/_components/buttons/dropdown-checkbox-icon-button";
 import Tooltip from "@/_components/tooltip/tooltip";
 import ExpandLessIcon from "@/_icons/expand-less-icon";
+import ExpandMoreIcon from "@/_icons/expand-more-icon";
 import LineWeightIcon from "@/_icons/line-weight-icon";
 import { useKeyDown } from "@/_hooks/use-key-down";
 import { KeyCode } from "@/_lib/key-code";
@@ -68,6 +69,7 @@ import MailIcon from "@/_icons/mail-icon";
 import ZoomInIcon from "@/_icons/zoom-in-icon";
 import { acceptedMimeTypes } from "@/_lib/is-valid-file";
 import { toggleFullScreen } from "@/_lib/full-screen";
+import { SettingsDropdown } from "./buttons/settings-dropdown";
 
 export default function Header({
   isCalibrating,
@@ -153,6 +155,8 @@ export default function Header({
   const mailRead = useRef(true);
   const transformer = useTransformerContext();
   const t = useTranslations("Header");
+
+  const isMenuAtBottom = menuStates.menuPosition === "bottom";
 
   const fileInputClassNames = useMemo(() => {
     if (!isCalibrating && fileLoadStatus === LoadStatusEnum.LOADING) {
@@ -383,7 +387,7 @@ export default function Header({
         </ModalActions>
       </Modal>
       <header
-        className={`relative z-10 bg-opacity-60 dark:bg-opacity-50 bg-white dark:bg-black left-0 w-full border-b dark:border-gray-700 transition-all duration-500 h-16 flex items-center ${menuStates.nav ? "translate-y-0" : "-translate-y-16"}`}
+        className={`relative z-10 bg-opacity-60 dark:bg-opacity-50 bg-white dark:bg-black left-0 w-full ${menuStates.menuPosition === "bottom" ? "border-t" : "border-b"} dark:border-gray-700 transition-all duration-500 h-16 flex items-center ${menuStates.nav ? "translate-y-0" : menuStates.menuPosition === "bottom" ? "translate-y-16" : "-translate-y-16"}`}
       >
         <nav
           className="mx-auto flex max-w-7xl items-center justify-between p-2 lg:px-8 w-full"
@@ -396,6 +400,7 @@ export default function Header({
                 fullScreenHandle.active ? t("fullscreenExit") : t("fullscreen")
               }
               visible={fullScreenTooltipVisible}
+              top={isMenuAtBottom}
             >
               <IconButton onClick={() => toggleFullScreen(fullScreenHandle)}>
                 {fullScreenHandle.active ? (
@@ -408,15 +413,20 @@ export default function Header({
             <Tooltip
               description={t("menuHide")}
               className={visible(isCalibrating)}
+              top={isMenuAtBottom}
             >
               <IconButton
                 className={`!p-1 border-2 border-black dark:border-white`}
                 onClick={() => setMenuStates({ ...menuStates, nav: false })}
               >
-                <ExpandLessIcon ariaLabel={t("menuHide")} />
+                {isMenuAtBottom ? (
+                  <ExpandMoreIcon ariaLabel={t("menuHide")} />
+                ) : (
+                  <ExpandLessIcon ariaLabel={t("menuHide")} />
+                )}
               </IconButton>
             </Tooltip>
-            <Tooltip description={t("invertColor")}>
+            <Tooltip description={t("invertColor")} top={isMenuAtBottom}>
               <IconButton
                 onClick={() => {
                   const currentIdx = themes().indexOf(displaySettings.theme);
@@ -454,6 +464,8 @@ export default function Header({
                     },
                   });
                 }}
+                openUpward={isMenuAtBottom}
+                tooltipTop={isMenuAtBottom}
               />
             )}
             {!isCalibrating && (
@@ -465,6 +477,8 @@ export default function Header({
                 options={lineThicknessOptions}
                 setSelection={setLineThickness}
                 selection={lineThickness}
+                openUpward={isMenuAtBottom}
+                tooltipTop={isMenuAtBottom}
               />
             )}
           </div>
@@ -505,7 +519,7 @@ export default function Header({
                 ]}
               />
             </div>
-            <Tooltip description={t("delete")}>
+            <Tooltip description={t("delete")} top={isMenuAtBottom}>
               <IconButton
                 className={`${visible(isCalibrating)}`}
                 onClick={handleResetCalibration}
@@ -517,6 +531,7 @@ export default function Header({
               description={
                 showingMovePad ? t("hideMovement") : t("showMovement")
               }
+              top={isMenuAtBottom}
             >
               <IconButton
                 className={`${visible(isCalibrating)}`}
@@ -531,7 +546,7 @@ export default function Header({
             </Tooltip>
           </div>
           <div className={`flex items-center gap-1 ${visible(!isCalibrating)}`}>
-            <Tooltip description={t("flipHorizontal")}>
+            <Tooltip description={t("flipHorizontal")} top={isMenuAtBottom}>
               <IconButton
                 onClick={handleFlipHorizontal}
                 disabled={zoomedOut || magnifying}
@@ -539,7 +554,7 @@ export default function Header({
                 <FlipVerticalIcon ariaLabel={t("flipHorizontal")} />
               </IconButton>
             </Tooltip>
-            <Tooltip description={t("flipVertical")}>
+            <Tooltip description={t("flipVertical")} top={isMenuAtBottom}>
               <IconButton
                 onClick={handleFlipVertical}
                 disabled={zoomedOut || magnifying}
@@ -547,7 +562,7 @@ export default function Header({
                 <FlipHorizontalIcon ariaLabel={t("flipVertical")} />
               </IconButton>
             </Tooltip>
-            <Tooltip description={t("rotate90")}>
+            <Tooltip description={t("rotate90")} top={isMenuAtBottom}>
               <IconButton
                 onClick={handleRotate90}
                 disabled={zoomedOut || magnifying}
@@ -555,7 +570,7 @@ export default function Header({
                 <Rotate90DegreesCWIcon ariaLabel={t("rotate90")} />
               </IconButton>
             </Tooltip>
-            <Tooltip description={t("recenter")}>
+            <Tooltip description={t("recenter")} top={isMenuAtBottom}>
               <IconButton
                 disabled={zoomedOut || magnifying}
                 onClick={handleRecenterReset}
@@ -563,7 +578,7 @@ export default function Header({
                 <RecenterIcon ariaLabel={t("recenter")} />
               </IconButton>
             </Tooltip>
-            <Tooltip description={t("magnify")}>
+            <Tooltip description={t("magnify")} top={isMenuAtBottom}>
               <IconButton
                 onClick={() => setMagnifying(!magnifying)}
                 active={magnifying}
@@ -572,7 +587,7 @@ export default function Header({
                 <ZoomInIcon ariaLabel={t("magnify")} />
               </IconButton>
             </Tooltip>
-            <Tooltip description={t("zoomOut")}>
+            <Tooltip description={t("zoomOut")} top={isMenuAtBottom}>
               <IconButton
                 onClick={() => setZoomedOut(!zoomedOut)}
                 active={zoomedOut}
@@ -581,7 +596,7 @@ export default function Header({
                 <ZoomOutIcon ariaLabel={t("zoomOut")} />
               </IconButton>
             </Tooltip>
-            <Tooltip description={t("measure")}>
+            <Tooltip description={t("measure")} top={isMenuAtBottom}>
               <IconButton
                 onClick={() => setMeasuring(!measuring)}
                 active={measuring}
@@ -622,12 +637,12 @@ export default function Header({
             >
               {isCalibrating ? t("project") : t("calibrate")}
             </Button>
-            <Tooltip description={t("info")} className={visible(isCalibrating)}>
+            <Tooltip description={t("info")} className={visible(isCalibrating)} top={isMenuAtBottom}>
               <IconButton href="/">
                 <InfoIcon ariaLabel={t("info")} />
               </IconButton>
             </Tooltip>
-            <Tooltip description={t("mail")} className={visible(isCalibrating)}>
+            <Tooltip description={t("mail")} className={visible(isCalibrating)} top={isMenuAtBottom}>
               <IconButton
                 onClick={() => handleOpenMail()}
                 active={!mailRead.current}
@@ -635,6 +650,11 @@ export default function Header({
                 <MailIcon ariaLabel={t("mail")} />
               </IconButton>
             </Tooltip>
+            <SettingsDropdown
+              menuStates={menuStates}
+              setMenuStates={setMenuStates}
+              isMenuAtBottom={isMenuAtBottom}
+            />
           </div>
         </nav>
       </header>

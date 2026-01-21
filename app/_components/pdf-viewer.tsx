@@ -89,12 +89,12 @@ export default function PdfViewer({
     getLayersFromPdf(docProxy).then((l) => {
       if (numPages === 1) {
         if (Object.entries(l).length > 1) {
-          setMenuStates({ ...getDefaultMenuStates(), layers: true });
+          setMenuStates((prev) => ({ ...getDefaultMenuStates(), layers: true, menuPosition: prev.menuPosition }));
         } else {
-          setMenuStates(getDefaultMenuStates());
+          setMenuStates((prev) => ({ ...getDefaultMenuStates(), menuPosition: prev.menuPosition }));
         }
       } else {
-        setMenuStates({ ...getDefaultMenuStates(), stitch: true });
+        setMenuStates((prev) => ({ ...getDefaultMenuStates(), stitch: true, menuPosition: prev.menuPosition }));
       }
       setLayers(l);
     });

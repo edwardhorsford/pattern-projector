@@ -315,6 +315,14 @@
     "layersOff": "Hide layer menu",
     "noLayers": "No layers in pattern"
   },
+  "SettingsMenu": {
+    "title": "Settings",
+    "menuPosition": "Menu bar position",
+    "top": "Top",
+    "bottom": "Bottom",
+    "show": "Show settings",
+    "hide": "Hide settings"
+  },
   "MovementPad": {
     "up": "Up",
     "down": "Down",

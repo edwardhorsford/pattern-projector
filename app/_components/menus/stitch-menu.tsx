@@ -9,7 +9,6 @@ import { StitchSettingsAction } from "@/_reducers/stitchSettingsReducer";
 import { allowInteger } from "@/_lib/remove-non-digits";
 import SaveButton from "@/_components/save-button";
 import { Layers } from "@/_lib/layers";
-import { sideMenuStyles } from "@/_components/theme/styles";
 import Tooltip from "@/_components/tooltip/tooltip";
 import { rotateRange } from "@/_lib/get-page-numbers";
 import InlineSelect from "../inline-select";
@@ -20,14 +19,20 @@ export default function StitchMenu({
   pageCount,
   file,
   layers,
+  isMenuAtBottom = false,
 }: {
   dispatchStitchSettings: Dispatch<StitchSettingsAction>;
   stitchSettings: StitchSettings;
   pageCount: number;
   file: File | null;
   layers: Layers;
+  isMenuAtBottom?: boolean;
 }) {
   const t = useTranslations("StitchMenu");
+
+  const menuStyles = isMenuAtBottom
+    ? "flex flex-col gap-2 p-2 w-64 items-start bg-white dark:bg-black border-t border-r border-gray-200 dark:border-gray-700"
+    : "flex flex-col gap-2 p-2 w-64 items-start bg-white dark:bg-black border-b border-r border-gray-200 dark:border-gray-700";
 
   function handleEdgeInsetChange(e: ChangeEvent<HTMLInputElement>) {
     const { name, value } = e.target;
@@ -48,7 +53,7 @@ export default function StitchMenu({
   return (
     <>
       <menu
-        className={`${sideMenuStyles} ${vh < 478 ? "h-[calc(100vh-8rem)] overflow-y-auto scrollbar" : "h-fit"}`}
+        className={`${menuStyles} ${vh < 478 ? "h-[calc(100vh-8rem)] overflow-y-auto scrollbar" : "h-fit"}`}
       >
         <h2 className="text-lg font-medium">{file?.name}</h2>
         <Tooltip description={t("zeros")}>
