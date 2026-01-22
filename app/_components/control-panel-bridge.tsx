@@ -838,27 +838,41 @@ export function ControlPanelBridge({
 
   const { sendStateSync } = useBroadcastChannel(handleMessage);
 
-  // Sync state to control panel whenever it changes
+  // Use a ref to hold the latest buildState function so we can call it from intervals
+  // without causing the intervals to be recreated when buildState changes
+  const buildStateRef = useRef(buildState);
   useEffect(() => {
-    sendStateSync(buildState());
-  }, [buildState, sendStateSync]);
+    buildStateRef.current = buildState;
+  }, [buildState]);
 
-  // Handle sync requests - check periodically if a sync was requested
+  // Track if state has changed since last sync
+  const stateVersionRef = useRef(0);
+  const lastSyncedVersionRef = useRef(0);
+  
+  // Increment version whenever buildState changes (indicates state changed)
+  useEffect(() => {
+    stateVersionRef.current += 1;
+  }, [buildState]);
+
+  // Throttled sync - send updates at most every 150ms, only when state has changed
+  // This provides responsive updates without overwhelming the channel
   useEffect(() => {
     const interval = setInterval(() => {
-      if (syncRequestedRef.current) {
+      // Sync if: explicitly requested OR state has changed since last sync
+      if (syncRequestedRef.current || stateVersionRef.current !== lastSyncedVersionRef.current) {
         syncRequestedRef.current = false;
-        sendStateSync(buildState());
+        lastSyncedVersionRef.current = stateVersionRef.current;
+        sendStateSync(buildStateRef.current());
       }
-    }, 100);
+    }, 150);
     return () => clearInterval(interval);
-  }, [buildState, sendStateSync]);
+  }, [sendStateSync]);
 
   // Send initial sync on mount
   useEffect(() => {
     // Small delay to ensure channel is ready
     const timeout = setTimeout(() => {
-      sendStateSync(buildState());
+      sendStateSync(buildStateRef.current());
     }, 100);
     return () => clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps

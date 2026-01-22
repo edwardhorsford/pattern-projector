@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { pdfjs } from "react-pdf";
 import { getPageNumbers, getRowsColumns } from "@/_lib/get-page-numbers";
 import {
@@ -9,6 +9,10 @@ import {
 } from "@/_lib/interfaces/stitch-settings";
 import { erodeImageData } from "@/_lib/erode";
 import { Layers } from "@/_lib/layers";
+
+// Stable empty object for default layers parameter
+// Using a constant prevents creating a new object reference on each render
+const EMPTY_LAYERS: Layers = {};
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -82,12 +86,21 @@ export function usePdfThumbnail(
   stitchSettings: StitchSettings,
   lineThickness: number,
   enabled: boolean = true,
-  layers: Layers = {},
+  layers: Layers = EMPTY_LAYERS,
 ): { thumbnail: string | null; isLoading: boolean } {
   // Store the cached thumbnail separately from what we return
   const [cachedThumbnail, setCachedThumbnail] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Create stable key for layers to avoid unnecessary re-renders
+  // Layers object reference can change even when contents are the same
+  const layersKey = useMemo(
+    () => JSON.stringify(
+      Object.entries(layers).map(([id, layer]) => [id, layer.visible, layer.color])
+    ),
+    [layers]
+  );
 
   useEffect(() => {
     // Only regenerate if file or settings change, not when enabled toggles
@@ -286,7 +299,7 @@ export function usePdfThumbnail(
     stitchSettings.lineCount,
     stitchSettings.lineDirection,
     lineThickness,
-    layers,
+    layersKey,
   ]);
   // Note: 'enabled' is NOT in the dependency array - we cache regardless of enabled state
 
