@@ -41,6 +41,9 @@ import {
 } from "@/_lib/geometry";
 import { inverse } from "ml-matrix";
 import { getPtDensity, Unit } from "@/_lib/unit";
+import { Marker, createMarker } from "@/_lib/marker";
+import { useKeyDown } from "@/_hooks/use-key-down";
+import { KeyCode } from "@/_lib/key-code";
 
 interface ControlPanelBridgeProps {
   // State to sync
@@ -111,6 +114,13 @@ interface ControlPanelBridgeProps {
   isPreviewLoading: boolean;
   showPreviewImage: boolean;
   setShowPreviewImage: (value: boolean) => void;
+  // Markers for "mark complete" feature
+  markers: Marker[];
+  setMarkers: (markers: Marker[]) => void;
+  markingMode: boolean;
+  setMarkingMode: (value: boolean) => void;
+  clearingMode: boolean;
+  setClearingMode: (value: boolean) => void;
 }
 
 /**
@@ -170,6 +180,12 @@ export function ControlPanelBridge({
   isPreviewLoading,
   showPreviewImage,
   setShowPreviewImage,
+  markers,
+  setMarkers,
+  markingMode,
+  setMarkingMode,
+  clearingMode,
+  setClearingMode,
 }: ControlPanelBridgeProps) {
   const transformer = useTransformerContext();
   const localTransform = useTransformContext();
@@ -381,6 +397,40 @@ export function ControlPanelBridge({
     }
   }, [width, height, unitOfMeasure, localTransform]);
 
+  // Keyboard shortcut X for "mark area complete" - marks the center of the current viewport
+  useKeyDown(() => {
+    // Only work when projecting (not calibrating), not zoomed out, and not magnifying
+    if (!isCalibrating && !zoomedOut && !magnifying) {
+      const viewBounds = calculateViewportBounds();
+      if (viewBounds) {
+        const centerX = viewBounds.x + viewBounds.width / 2;
+        const centerY = viewBounds.y + viewBounds.height / 2;
+        const newMarker = createMarker({ x: centerX, y: centerY });
+        setMarkers([...markers, newMarker]);
+      }
+    }
+  }, [KeyCode.KeyX]);
+
+  // Keyboard shortcut Cmd/Ctrl+Z for undo last marker placement
+  useEffect(() => {
+    const handleUndo = (e: KeyboardEvent) => {
+      // Check for Cmd+Z (Mac) or Ctrl+Z (Windows/Linux)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        // Only undo markers when projecting (not calibrating), not in special modes
+        if (!isCalibrating && !zoomedOut && !magnifying && markers.length > 0) {
+          e.preventDefault();
+          // Remove the most recently placed marker (last in array)
+          const newMarkers = [...markers];
+          newMarkers.pop();
+          setMarkers(newMarkers);
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleUndo);
+    return () => document.removeEventListener('keydown', handleUndo);
+  }, [isCalibrating, zoomedOut, magnifying, markers, setMarkers]);
+
   // Build current state object
   const buildState = useCallback(
     () => ({
@@ -416,6 +466,10 @@ export function ControlPanelBridge({
       paperBounds: calculatePaperBounds(),
       layoutWidth,
       layoutHeight,
+      // Markers for "mark complete" feature
+      markers,
+      markingMode,
+      clearingMode,
     }),
     [
       isCalibrating,
@@ -444,6 +498,9 @@ export function ControlPanelBridge({
       calculatePaperBounds,
       layoutWidth,
       layoutHeight,
+      markers,
+      markingMode,
+      clearingMode,
     ],
   );
 
@@ -782,6 +839,55 @@ export function ControlPanelBridge({
           case "togglePreviewImage":
             setShowPreviewImage(!showPreviewImage);
             break;
+          // Marker actions for "mark complete" feature
+          case "toggleMarkingMode":
+            // When enabling marking mode, disable clearing mode
+            if (!markingMode) {
+              setClearingMode(false);
+            }
+            setMarkingMode(!markingMode);
+            break;
+          case "toggleClearingMode":
+            // When enabling clearing mode, disable marking mode
+            if (!clearingMode) {
+              setMarkingMode(false);
+            }
+            setClearingMode(!clearingMode);
+            break;
+          case "markViewCenter": {
+            // Place a marker at the center of the current viewport
+            const viewBounds = calculateViewportBounds();
+            if (viewBounds) {
+              const centerX = viewBounds.x + viewBounds.width / 2;
+              const centerY = viewBounds.y + viewBounds.height / 2;
+              const newMarker = createMarker({ x: centerX, y: centerY });
+              setMarkers([...markers, newMarker]);
+            }
+            break;
+          }
+          case "addMarker": {
+            const position = params as Point;
+            const newMarker = createMarker(position);
+            setMarkers([...markers, newMarker]);
+            break;
+          }
+          case "removeMarker": {
+            const markerId = params as string;
+            setMarkers(markers.filter((m) => m.id !== markerId));
+            break;
+          }
+          case "clearMarkers":
+            setMarkers([]);
+            setClearingMode(false);
+            break;
+          case "undoMarker":
+            // Remove the most recently placed marker (last in array)
+            if (markers.length > 0) {
+              const newMarkers = [...markers];
+              newMarkers.pop();
+              setMarkers(newMarkers);
+            }
+            break;
         }
       }
     },
@@ -833,6 +939,13 @@ export function ControlPanelBridge({
       showPreviewImage,
       setShowPreviewImage,
       localTransform,
+      markers,
+      setMarkers,
+      markingMode,
+      setMarkingMode,
+      clearingMode,
+      setClearingMode,
+      calculateViewportBounds,
     ],
   );
 

@@ -78,6 +78,8 @@ import { erosionFilter } from "@/_lib/erode";
 import SvgViewer from "@/_components/svg-viewer";
 import { toggleFullScreen } from "@/_lib/full-screen";
 import { usePdfThumbnail } from "@/_hooks/use-pdf-thumbnail";
+import { Marker } from "@/_lib/marker";
+import MarkerCanvas from "@/_components/canvases/marker-canvas";
 
 const defaultStitchSettings = {
   lineCount: 1,
@@ -141,6 +143,11 @@ export default function Page() {
   );
   const [mailOpen, setMailOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<null | string>(null);
+
+  // Markers for "mark complete" feature - positions in PDF coordinates
+  const [markers, setMarkers] = useState<Marker[]>([]);
+  const [markingMode, setMarkingMode] = useState<boolean>(false);
+  const [clearingMode, setClearingMode] = useState<boolean>(false);
 
   // Ref for file input to allow control panel to trigger file open
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -537,6 +544,7 @@ export default function Page() {
       clearInterval(interval);
     };
   }, [calibrationValidated, setCalibrationValidated, fullScreenHandle.active]);
+
   const dataUrl = useMemo(
     () => (file ? URL.createObjectURL(file) : null),
     [file],
@@ -699,6 +707,12 @@ export default function Page() {
               isPreviewLoading={isPreviewLoading}
               showPreviewImage={showPreviewImage}
               setShowPreviewImage={setShowPreviewImage}
+              markers={markers}
+              setMarkers={setMarkers}
+              markingMode={markingMode}
+              setMarkingMode={setMarkingMode}
+              clearingMode={clearingMode}
+              setClearingMode={setClearingMode}
             />
             <MeasureCanvas
               className={visible(!isCalibrating)}
@@ -742,6 +756,12 @@ export default function Page() {
                 )}
                 menuStates={menuStates}
                 file={file}
+                markingMode={markingMode}
+                setMarkingMode={setMarkingMode}
+                clearingMode={clearingMode}
+                setClearingMode={setClearingMode}
+                markers={markers}
+                setMarkers={setMarkers}
               >
                 {file === null || file.type === "application/pdf" ? (
                   <PdfViewer
@@ -796,6 +816,14 @@ export default function Page() {
                 restoreTransforms={restoreTransforms}
                 patternScale={String(patternScaleFactor)}
               />
+              {!isCalibrating && (
+                <MarkerCanvas
+                  markers={markers}
+                  calibrationTransform={calibrationTransform}
+                  unitOfMeasure={unitOfMeasure}
+                  theme={displaySettings.theme}
+                />
+              )}
             </MeasureCanvas>
 
             <menu

@@ -357,7 +357,14 @@
     "previewShowImage": "Show pattern image",
     "previewHideImage": "Hide pattern image",
     "previewEnlarge": "Enlarge preview",
-    "previewShrink": "Shrink preview"
+    "previewShrink": "Shrink preview",
+    "markComplete": "Markers",
+    "markAreaComplete": "Mark area complete (X)",
+    "placeMarker": "Place marker",
+    "placeMarkerActive": "Click on pattern or preview to place marker",
+    "clearMarker": "Clear marker",
+    "clearMarkerActive": "Click on a marker to remove it",
+    "clearMarkers": "Clear all markers"
   },
   "MovementPad": {
     "up": "Up",

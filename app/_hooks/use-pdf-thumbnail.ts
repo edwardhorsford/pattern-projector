@@ -97,7 +97,7 @@ export function usePdfThumbnail(
   // Layers object reference can change even when contents are the same
   const layersKey = useMemo(
     () => JSON.stringify(
-      Object.entries(layers).map(([id, layer]) => [id, layer.visible, layer.color])
+      Object.entries(layers).map(([id, layer]) => [id, layer.visible])
     ),
     [layers]
   );
