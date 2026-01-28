@@ -96,11 +96,10 @@ export function usePdfThumbnail(
   // Create stable key for layers to avoid unnecessary re-renders
   // Layers object reference can change even when contents are the same
   const layersKey = useMemo(
-    () =>
-      JSON.stringify(
-        Object.entries(layers).map(([id, layer]) => [id, layer.visible]),
-      ),
-    [layers],
+    () => JSON.stringify(
+      Object.entries(layers).map(([id, layer]) => [id, layer.visible])
+    ),
+    [layers]
   );
 
   useEffect(() => {

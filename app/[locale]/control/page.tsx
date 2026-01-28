@@ -6,6 +6,8 @@ import {
   useBroadcastChannel,
   BroadcastMessage,
 } from "@/_hooks/use-broadcast-channel";
+import { useKeyDown } from "@/_hooks/use-key-down";
+import { KeyCode } from "@/_lib/key-code";
 import { Button } from "@/_components/buttons/button";
 import { ButtonStyle } from "@/_components/theme/styles";
 import { ButtonColor } from "@/_components/theme/colors";
@@ -27,6 +29,10 @@ import FlipCenterOnIcon from "@/_icons/flip-center-on-icon";
 import FlippedPatternIcon from "@/_icons/flipped-pattern-icon";
 import LineWeightIcon from "@/_icons/line-weight-icon";
 import MarkAndMeasureIcon from "@/_icons/mark-and-measure-icon";
+import MarkCompleteIcon from "@/_icons/mark-complete-icon";
+import CheckIcon from "@/_icons/check-icon";
+import AddBoxIcon from "@/_icons/add-box-icon";
+import CloseIcon from "@/_icons/close-icon";
 import PdfIcon from "@/_icons/pdf-icon";
 import DeleteIcon from "@/_icons/delete-icon";
 import MoveIcon from "@/_icons/move-icon";
@@ -61,6 +67,7 @@ import {
   StitchSettings,
   LineDirection,
 } from "@/_lib/interfaces/stitch-settings";
+import { Marker, MARKER_SIZE_INCHES } from "@/_lib/marker";
 
 // Default stitch settings for initial state
 const defaultStitchSettings: StitchSettings = {
@@ -133,6 +140,10 @@ interface SyncedState {
   paperBounds: PaperBounds | null; // Paper sheet rectangle in PDF coordinates
   layoutWidth: number;
   layoutHeight: number;
+  // Markers for "mark complete" feature
+  markers: Marker[];
+  markingMode: boolean;
+  clearingMode: boolean;
 }
 
 const defaultSyncedState: SyncedState = {
@@ -168,9 +179,13 @@ const defaultSyncedState: SyncedState = {
   paperBounds: null,
   layoutWidth: 0,
   layoutHeight: 0,
+  // Marker defaults
+  markers: [],
+  markingMode: false,
+  clearingMode: false,
 };
 
-// Dropdown menu component with close callback
+// Dropdown menu component with close callback and smart positioning
 function DropdownMenu({
   trigger,
   children,
@@ -183,7 +198,9 @@ function DropdownMenu({
   closeOnSelect?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [alignRight, setAlignRight] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -195,6 +212,31 @@ function DropdownMenu({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Check if menu would overflow and adjust alignment
+  useEffect(() => {
+    if (isOpen && menuRef.current && ref.current) {
+      const menuRect = menuRef.current.getBoundingClientRect();
+      const triggerRect = ref.current.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      
+      // Check if left-aligned menu would overflow right edge
+      const leftAlignedRight = triggerRect.left + menuRect.width;
+      // Check if right-aligned menu would overflow left edge
+      const rightAlignedLeft = triggerRect.right - menuRect.width;
+      
+      if (leftAlignedRight > viewportWidth && rightAlignedLeft >= 0) {
+        // Would overflow right, align to right instead
+        setAlignRight(true);
+      } else if (rightAlignedLeft < 0) {
+        // Would overflow left, align to left
+        setAlignRight(false);
+      } else {
+        // Default to left alignment
+        setAlignRight(false);
+      }
+    }
+  }, [isOpen]);
+
   const close = () => setIsOpen(false);
 
   return (
@@ -202,7 +244,8 @@ function DropdownMenu({
       <div onClick={() => setIsOpen(!isOpen)}>{trigger}</div>
       {isOpen && (
         <div
-          className="absolute left-0 mt-1 bg-white dark:bg-gray-800 rounded-md shadow-lg z-50 border dark:border-gray-700"
+          ref={menuRef}
+          className={`absolute ${alignRight ? "right-0" : "left-0"} mt-1 bg-white dark:bg-gray-800 rounded-md shadow-lg z-50 border dark:border-gray-700`}
           onClick={closeOnSelect ? close : undefined}
         >
           {typeof children === "function" ? children(close) : children}
@@ -270,8 +313,13 @@ function Preview({
   magnifying,
   isMagnified,
   enlarged,
+  markers,
+  markingMode,
+  clearingMode,
   onNavigate,
   onPanDelta,
+  onPlaceMarker,
+  onRemoveMarker,
   onMagnify,
   onTogglePreview,
   onToggleSize,
@@ -291,8 +339,13 @@ function Preview({
   magnifying: boolean;
   isMagnified: boolean;
   enlarged: boolean;
+  markers: Marker[];
+  markingMode: boolean;
+  clearingMode: boolean;
   onNavigate: (x: number, y: number) => void;
   onPanDelta: (dx: number, dy: number) => void;
+  onPlaceMarker: (x: number, y: number) => void;
+  onRemoveMarker: (markerId: string) => void;
   onMagnify: (x: number, y: number) => void;
   onTogglePreview: () => void;
   onToggleSize: () => void;
@@ -430,6 +483,37 @@ function Preview({
       e.clientX - rect.left,
       e.clientY - rect.top,
     );
+
+    // If in marking mode, place a marker at this PDF position
+    if (markingMode) {
+      onPlaceMarker(coords.x, coords.y);
+      return;
+    }
+
+    // If in clearing mode, check if we clicked near a marker
+    if (clearingMode) {
+      // Use half the marker size (2 inches = 144 points) as the click radius
+      const clickRadius = 144; // 2 inches in PDF points (half of 4 inch marker)
+      let closestMarker: Marker | null = null;
+      let closestDistance = Infinity;
+      
+      for (const marker of markers) {
+        const dx = marker.position.x - coords.x;
+        const dy = marker.position.y - coords.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < clickRadius && distance < closestDistance) {
+          closestDistance = distance;
+          closestMarker = marker;
+        }
+      }
+      
+      if (closestMarker) {
+        onRemoveMarker(closestMarker.id);
+      }
+      // Always auto-disable after a click (one-time action)
+      // Note: This is handled by the callback that also calls toggleClearingMode
+      return;
+    }
 
     // If magnifying mode is active, trigger magnify at this point instead of navigating
     if (magnifying) {
@@ -653,14 +737,18 @@ function Preview({
           width: scaledWidth,
           height: scaledHeight,
           touchAction: "none", // Prevent scrolling while dragging
-          // Inline cursor style - zoom-in/zoom-out may not work in Safari
-          cursor: isMagnified
-            ? "zoom-out"
-            : magnifying
-              ? "zoom-in"
-              : isDragging
-                ? "grabbing"
-                : "crosshair",
+          // Inline cursor style based on mode
+          cursor: clearingMode
+            ? "cell"
+            : markingMode
+              ? "crosshair"
+              : isMagnified
+                ? "zoom-out"
+                : magnifying
+                  ? "zoom-in"
+                  : isDragging
+                    ? "grabbing"
+                    : "crosshair",
         }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
@@ -740,6 +828,79 @@ function Preview({
             }}
           />
         )}
+
+        {/* Markers - tick marks indicating completed sections (rendered before viewport so they appear below) */}
+        {markers.map((marker) => {
+          // Convert marker position from PDF coordinates to preview coordinates
+          // Need to apply the same transform as the preview image
+          
+          // Get position relative to PDF center
+          const relX = marker.position.x - layoutWidth / 2;
+          const relY = marker.position.y - layoutHeight / 2;
+          
+          // Apply the transform matrix to get rotated/flipped position
+          const transformedX = transformA * relX + transformB * relY;
+          const transformedY = transformC * relX + transformD * relY;
+          
+          // Convert to preview coordinates (relative to center of effective layout)
+          const centerX = scaledBufferX + (effectiveLayoutWidth * scale) / 2;
+          const centerY = scaledBufferY + (effectiveLayoutHeight * scale) / 2;
+          
+          const markerX = centerX + transformedX * scale;
+          const markerY = centerY + transformedY * scale;
+          
+          // Marker size in preview pixels - use a larger minimum size so they're visible
+          const markerSize = Math.max(MARKER_SIZE_INCHES * 72 * scale, 24); // At least 24px
+          
+          return (
+            <div
+              key={marker.id}
+              className="absolute pointer-events-none"
+              style={{
+                left: markerX - markerSize / 2,
+                top: markerY - markerSize / 2,
+                width: markerSize,
+                height: markerSize,
+                // Apply theme filter to invert colors when in dark mode
+                filter: themeFilter(theme),
+              }}
+            >
+              <svg
+                viewBox="0 0 100 100"
+                width="100%"
+                height="100%"
+              >
+                {/* White background circle with border */}
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="48"
+                  fill="white"
+                  stroke="white"
+                  strokeWidth="4"
+                />
+                {/* Purple outer circle */}
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="42"
+                  fill="none"
+                  stroke="#a855f7"
+                  strokeWidth="8"
+                />
+                {/* Purple checkmark */}
+                <path
+                  d="M28 50 L44 66 L72 34"
+                  fill="none"
+                  stroke="#a855f7"
+                  strokeWidth="10"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+          );
+        })}
 
         {/* Viewport indicator */}
         {viewport && (
@@ -978,6 +1139,31 @@ export default function ControlPanelPage() {
   const handleAction = (action: string, params?: unknown) => {
     sendAction(action, params);
   };
+
+  // Keyboard shortcut X for "mark area complete" in control window
+  useKeyDown(() => {
+    // Only work when projecting (not calibrating), not zoomed out, and not magnifying
+    if (!state.isCalibrating && !state.zoomedOut && !state.magnifying) {
+      handleAction("markViewCenter");
+    }
+  }, [KeyCode.KeyX]);
+
+  // Keyboard shortcut Cmd/Ctrl+Z for undo last marker placement
+  useEffect(() => {
+    const handleUndo = (e: KeyboardEvent) => {
+      // Check for Cmd+Z (Mac) or Ctrl+Z (Windows/Linux)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        // Only undo markers when projecting (not calibrating), not in special modes
+        if (!state.isCalibrating && !state.zoomedOut && !state.magnifying && state.markers.length > 0) {
+          e.preventDefault();
+          sendAction("undoMarker");
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleUndo);
+    return () => document.removeEventListener('keydown', handleUndo);
+  }, [state.isCalibrating, state.zoomedOut, state.magnifying, state.markers, sendAction]);
 
   // Handle file selection in control panel - send to main window
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -1353,6 +1539,74 @@ export default function ControlPanelPage() {
                     <MarkAndMeasureIcon ariaLabel={tHeader("measure")} />
                   </IconButton>
                 </Tooltip>
+                <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />
+                {/* Markers dropdown menu */}
+                <DropdownMenu
+                  trigger={
+                    <Tooltip description={t("markComplete")}>
+                      <IconButton
+                        active={state.markingMode || state.clearingMode}
+                        disabled={state.magnifying || state.zoomedOut}
+                      >
+                        <MarkCompleteIcon ariaLabel={t("markComplete")} />
+                      </IconButton>
+                    </Tooltip>
+                  }
+                >
+                  {(close) => (
+                    <div className="py-1 min-w-[200px]">
+                      <button
+                        onClick={() => {
+                          handleAction("markViewCenter");
+                          close();
+                        }}
+                        disabled={state.magnifying || state.zoomedOut}
+                        className="w-full flex items-center gap-3 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-left disabled:opacity-50"
+                      >
+                        <CheckIcon ariaLabel="" />
+                        <span>{t("markAreaComplete")}</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleAction("toggleMarkingMode");
+                          close();
+                        }}
+                        disabled={state.magnifying || state.zoomedOut}
+                        className={`w-full flex items-center gap-3 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-left disabled:opacity-50 ${
+                          state.markingMode ? "bg-purple-100 dark:bg-purple-900" : ""
+                        }`}
+                      >
+                        <AddBoxIcon ariaLabel="" />
+                        <span>{state.markingMode ? t("placeMarkerActive") : t("placeMarker")}</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleAction("toggleClearingMode");
+                          close();
+                        }}
+                        disabled={state.markers.length === 0}
+                        className={`w-full flex items-center gap-3 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-left disabled:opacity-50 ${
+                          state.clearingMode ? "bg-purple-100 dark:bg-purple-900" : ""
+                        }`}
+                      >
+                        <CloseIcon ariaLabel="" />
+                        <span>{state.clearingMode ? t("clearMarkerActive") : t("clearMarker")}</span>
+                      </button>
+                      <div className="border-t dark:border-gray-700 my-1" />
+                      <button
+                        onClick={() => {
+                          handleAction("clearMarkers");
+                          close();
+                        }}
+                        disabled={state.markers.length === 0}
+                        className="w-full flex items-center gap-3 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-left disabled:opacity-50"
+                      >
+                        <DeleteIcon ariaLabel="" />
+                        <span>{t("clearMarkers")}</span>
+                      </button>
+                    </div>
+                  )}
+                </DropdownMenu>
               </div>
               {/* Movement Pad for Panning/Rotating View */}
               {showProjectMovepad && (
@@ -1407,12 +1661,23 @@ export default function ControlPanelPage() {
                     magnifying={state.magnifying}
                     isMagnified={state.isMagnified}
                     enlarged={previewEnlarged}
+                    markers={state.markers}
+                    markingMode={state.markingMode}
+                    clearingMode={state.clearingMode}
                     onNavigate={(x, y) =>
                       handleAction("navigateToPoint", { x, y })
                     }
                     onPanDelta={(dx, dy) =>
                       handleAction("panViewDelta", { dx, dy })
                     }
+                    onPlaceMarker={(x, y) => {
+                      handleAction("addMarker", { x, y });
+                      handleAction("toggleMarkingMode"); // Auto-disable after placing
+                    }}
+                    onRemoveMarker={(markerId) => {
+                      handleAction("removeMarker", markerId);
+                      handleAction("toggleClearingMode"); // Auto-disable after removing
+                    }}
                     onMagnify={(x, y) =>
                       handleAction("magnifyAtPoint", { x, y })
                     }

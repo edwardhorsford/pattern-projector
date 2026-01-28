@@ -9,6 +9,7 @@ export enum KeyCode {
   KeyM = "m",
   KeyR = "r",
   KeyV = "v",
+  KeyX = "x",
   KeyZ = "z",
   Escape = "Escape",
   Tab = "Tab",

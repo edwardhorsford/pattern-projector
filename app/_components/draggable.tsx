@@ -29,6 +29,7 @@ import {
 } from "@/_hooks/use-transform-context";
 import { MenuStates } from "@/_lib/menu-states";
 import { inverse } from "ml-matrix";
+import { Marker, createMarker } from "@/_lib/marker";
 
 export default function Draggable({
   children,
@@ -50,6 +51,12 @@ export default function Draggable({
   calibrationCenter,
   menuStates,
   file,
+  markingMode,
+  setMarkingMode,
+  clearingMode,
+  setClearingMode,
+  markers,
+  setMarkers,
 }: {
   children: ReactNode;
   perspective: Matrix;
@@ -70,6 +77,12 @@ export default function Draggable({
   calibrationCenter: Point;
   menuStates: MenuStates;
   file: File | null;
+  markingMode: boolean;
+  setMarkingMode: Dispatch<SetStateAction<boolean>>;
+  clearingMode: boolean;
+  setClearingMode: Dispatch<SetStateAction<boolean>>;
+  markers: Marker[];
+  setMarkers: Dispatch<SetStateAction<Marker[]>>;
 }) {
   const [dragStart, setDragStart] = useState<Point | null>(null);
   const [transformStart, setTransformStart] = useState<Matrix | null>(null);
@@ -120,6 +133,46 @@ export default function Draggable({
   function handleOnStart(e: React.PointerEvent): void {
     const p = { x: e.clientX, y: e.clientY };
     const pt = transformPoint(p, perspective);
+    
+    // Convert screen position to PDF coordinates for marker operations
+    const inverseLocal = inverse(transform);
+    const pdfPoint = transformPoint(pt, inverseLocal);
+    
+    // If in clearing mode, check if click is near a marker and remove it
+    if (clearingMode) {
+      // Find the closest marker within a reasonable distance
+      // Use half the marker size (2 inches = 144 points) as the click radius
+      const clickRadius = 144; // 2 inches in PDF points (half of 4 inch marker)
+      let closestMarker: Marker | null = null;
+      let closestDistance = Infinity;
+      
+      for (const marker of markers) {
+        const dx = marker.position.x - pdfPoint.x;
+        const dy = marker.position.y - pdfPoint.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance < clickRadius && distance < closestDistance) {
+          closestDistance = distance;
+          closestMarker = marker;
+        }
+      }
+      
+      if (closestMarker) {
+        setMarkers(markers.filter(m => m.id !== closestMarker!.id));
+      }
+      // Always disable clearing mode after a click (one-time action)
+      setClearingMode(false);
+      return;
+    }
+    
+    // If in marking mode, place a marker and return
+    if (markingMode) {
+      const newMarker = createMarker(pdfPoint);
+      setMarkers([...markers, newMarker]);
+      // Auto-disable marking mode after placing a marker
+      setMarkingMode(false);
+      return;
+    }
+    
     if (magnifying) {
       if (restoreTransforms === null) {
         setRestoreTransforms({
@@ -228,7 +281,11 @@ export default function Draggable({
 
   let cursorMode = "cursor-grab";
 
-  if (zoomedOut || magnifying) {
+  if (clearingMode) {
+    cursorMode = "cursor-cell"; // Cell cursor for removal selection
+  } else if (markingMode) {
+    cursorMode = "cursor-crosshair";
+  } else if (zoomedOut || magnifying) {
     cursorMode = "cursor-zoom-in";
   }
   if (magnifying && restoreTransforms !== null) {
