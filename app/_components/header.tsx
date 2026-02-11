@@ -470,7 +470,6 @@ export default function Header({
             )}
             {!isCalibrating && (
               <DropdownIconButton
-                loadStatus={lineThicknessStatus}
                 dropdownClassName="w-fit -left-5"
                 description={t("lineWeight")}
                 icon={<LineWeightIcon ariaLabel={t("lineWeight")} />}
@@ -637,12 +636,20 @@ export default function Header({
             >
               {isCalibrating ? t("project") : t("calibrate")}
             </Button>
-            <Tooltip description={t("info")} className={visible(isCalibrating)} top={isMenuAtBottom}>
+            <Tooltip
+              description={t("info")}
+              className={visible(isCalibrating)}
+              top={isMenuAtBottom}
+            >
               <IconButton href="/">
                 <InfoIcon ariaLabel={t("info")} />
               </IconButton>
             </Tooltip>
-            <Tooltip description={t("mail")} className={visible(isCalibrating)} top={isMenuAtBottom}>
+            <Tooltip
+              description={t("mail")}
+              className={visible(isCalibrating)}
+              top={isMenuAtBottom}
+            >
               <IconButton
                 onClick={() => handleOpenMail()}
                 active={!mailRead.current}

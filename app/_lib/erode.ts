@@ -1,8 +1,7 @@
 export function erosionFilter(erosions: number): string {
-  if (erosions <= 0) {
-    return "none";
-  }
   const result = [];
+
+  // Apply erosion filters if needed
   while (erosions > 0) {
     if (erosions >= 3) {
       result.push("url(#erode-3)");
@@ -15,7 +14,49 @@ export function erosionFilter(erosions: number): string {
       erosions -= 1;
     }
   }
+
+  // Always add push-darks and contrast for better line quality
+  result.push("url(#push-darks)");
+  result.push("contrast(1.5)");
   return result.join(" ");
+}
+
+/**
+ * Generate an enhanced line filter string that combines sharpen, erode, and push-darks.
+ * This produces better quality than plain erosion.
+ *
+ * @param lineThickness - The amount of thickening (0-6+)
+ * @returns CSS filter string
+ */
+export function enhancedLineFilter(lineThickness: number): string {
+  if (lineThickness <= 0) {
+    return "none";
+  }
+
+  // Use the combined enhance-lines filters for 1-3
+  if (lineThickness <= 3) {
+    return `url(#enhance-lines-${lineThickness})`;
+  }
+
+  // For higher values, chain the highest combined filter with additional erosion
+  const base = "url(#enhance-lines-3)";
+  let remaining = lineThickness - 3;
+  const additional: string[] = [];
+
+  while (remaining > 0) {
+    if (remaining >= 3) {
+      additional.push("url(#erode-3)");
+      remaining -= 3;
+    } else if (remaining >= 2) {
+      additional.push("url(#erode-2)");
+      remaining -= 2;
+    } else {
+      additional.push("url(#erode-1)");
+      remaining -= 1;
+    }
+  }
+
+  return [base, ...additional].join(" ");
 }
 
 export function erodeImageData(imageData: ImageData, output: ImageData) {
@@ -34,6 +75,231 @@ export function erodeImageData(imageData: ImageData, output: ImageData) {
           height,
         );
       }
+    }
+  }
+}
+
+// Apply threshold to push greys to black or white after erosion
+export function thresholdImageData(
+  imageData: ImageData,
+  threshold: number = 128,
+) {
+  const { data, width, height } = imageData;
+  for (let i = 0; i < width * height * 4; i += 4) {
+    // Calculate luminance from RGB
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+    const value = luminance < threshold ? 0 : 255;
+    data[i] = value;
+    data[i + 1] = value;
+    data[i + 2] = value;
+    // Keep alpha as-is
+  }
+}
+
+// Apply contrast boost to push greys toward black/white while preserving some anti-aliasing
+export function contrastImageData(imageData: ImageData, factor: number = 2) {
+  const { data, width, height } = imageData;
+  for (let i = 0; i < width * height * 4; i += 4) {
+    // Apply contrast around midpoint (128)
+    for (let c = 0; c < 3; c++) {
+      const value = data[i + c];
+      const adjusted = (value - 128) * factor + 128;
+      data[i + c] = Math.max(0, Math.min(255, Math.round(adjusted)));
+    }
+    // Keep alpha as-is
+  }
+}
+
+/**
+ * Combined push-darks and contrast in a single pass for better performance.
+ * Applies gamma correction to darken midtones, then contrast boost.
+ */
+export function enhanceLineQuality(
+  imageData: ImageData,
+  gamma: number = 2,
+  contrast: number = 1.5,
+) {
+  const { data, width, height } = imageData;
+  const len = width * height * 4;
+
+  for (let i = 0; i < len; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      let value = data[i + c] / 255;
+
+      // Apply gamma (> 1 darkens midtones)
+      value = Math.pow(value, gamma);
+
+      // Apply contrast around midpoint
+      value = (value - 0.5) * contrast + 0.5;
+
+      // Clamp and convert back to 0-255
+      data[i + c] = Math.max(0, Math.min(255, Math.round(value * 255)));
+    }
+    // Keep alpha as-is
+  }
+}
+
+// Cached lookup tables for fast enhancement
+let cachedLUT: Uint8Array | null = null;
+let cachedLUTParams: { gamma: number; contrast: number } | null = null;
+
+/**
+ * Build a lookup table for gamma + contrast transformation.
+ * This precomputes all 256 possible output values.
+ */
+function buildEnhancementLUT(gamma: number, contrast: number): Uint8Array {
+  // Return cached LUT if params match
+  if (
+    cachedLUT &&
+    cachedLUTParams?.gamma === gamma &&
+    cachedLUTParams?.contrast === contrast
+  ) {
+    return cachedLUT;
+  }
+
+  const lut = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) {
+    let value = i / 255;
+    // Apply gamma (> 1 darkens midtones)
+    value = Math.pow(value, gamma);
+    // Apply contrast around midpoint
+    value = (value - 0.5) * contrast + 0.5;
+    // Clamp and convert to 0-255
+    lut[i] = Math.max(0, Math.min(255, Math.round(value * 255)));
+  }
+
+  cachedLUT = lut;
+  cachedLUTParams = { gamma, contrast };
+  return lut;
+}
+
+/**
+ * Fast enhancement using a lookup table.
+ * Much faster than enhanceLineQuality because it avoids Math.pow() per pixel.
+ * Use this for Safari where we need pixel-by-pixel processing.
+ */
+export function enhanceLineQualityFast(
+  imageData: ImageData,
+  gamma: number = 2,
+  contrast: number = 1.5,
+) {
+  const lut = buildEnhancementLUT(gamma, contrast);
+  const data = imageData.data;
+  const len = data.length;
+
+  // Process 4 bytes at a time (RGBA), only transform RGB
+  for (let i = 0; i < len; i += 4) {
+    data[i] = lut[data[i]]; // R
+    data[i + 1] = lut[data[i + 1]]; // G
+    data[i + 2] = lut[data[i + 2]]; // B
+    // Alpha unchanged
+  }
+}
+
+/**
+ * Apply a levels adjustment to push dark colors darker while preserving anti-aliasing.
+ * This is gentler than a hard threshold - it compresses the tonal range.
+ *
+ * @param imageData - The image data to modify
+ * @param blackPoint - Input values below this become black (0-255, default 0)
+ * @param whitePoint - Input values above this become white (0-255, default 255)
+ * @param gamma - Gamma adjustment (< 1 = darker midtones, > 1 = lighter midtones, default 1)
+ * @param outputBlack - Output black level (0-255, default 0)
+ * @param outputWhite - Output white level (0-255, default 255)
+ */
+export function levelsImageData(
+  imageData: ImageData,
+  blackPoint: number = 0,
+  whitePoint: number = 255,
+  gamma: number = 1,
+  outputBlack: number = 0,
+  outputWhite: number = 255,
+) {
+  const { data, width, height } = imageData;
+  const inputRange = whitePoint - blackPoint;
+  const outputRange = outputWhite - outputBlack;
+
+  for (let i = 0; i < width * height * 4; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      let value = data[i + c];
+
+      // Map input range to 0-1
+      value = Math.max(0, Math.min(1, (value - blackPoint) / inputRange));
+
+      // Apply gamma
+      value = Math.pow(value, 1 / gamma);
+
+      // Map to output range
+      value = outputBlack + value * outputRange;
+
+      data[i + c] = Math.max(0, Math.min(255, Math.round(value)));
+    }
+    // Keep alpha as-is
+  }
+}
+
+/**
+ * Push dark pixels toward pure black using a curve.
+ * Pixels darker than the threshold get pushed more aggressively toward black.
+ * This preserves anti-aliasing edges while making lines more solid.
+ *
+ * @param imageData - The image data to modify
+ * @param threshold - Luminance threshold (0-255). Pixels darker than this get pushed toward black.
+ * @param strength - How aggressively to push toward black (0-1, where 1 = fully black below threshold)
+ */
+export function pushDarksToBlack(
+  imageData: ImageData,
+  threshold: number = 200,
+  strength: number = 0.8,
+) {
+  const { data, width, height } = imageData;
+
+  for (let i = 0; i < width * height * 4; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+
+    if (luminance < threshold) {
+      // Calculate how much to darken based on how dark it already is
+      // Darker pixels get pushed more toward black
+      const darknessRatio = 1 - luminance / threshold; // 0 at threshold, 1 at black
+      const pushAmount = darknessRatio * strength;
+
+      // Interpolate toward black
+      data[i] = Math.round(r * (1 - pushAmount));
+      data[i + 1] = Math.round(g * (1 - pushAmount));
+      data[i + 2] = Math.round(b * (1 - pushAmount));
+    }
+    // Keep alpha and pixels above threshold as-is
+  }
+}
+
+/**
+ * Apply an S-curve to increase contrast while preserving smooth gradients.
+ * This is similar to Photoshop's "S-curve" in Curves adjustment.
+ *
+ * @param imageData - The image data to modify
+ * @param intensity - Intensity of the S-curve (0-1, where 0 = no change, 1 = maximum contrast)
+ */
+export function sCurveContrast(imageData: ImageData, intensity: number = 0.5) {
+  const { data, width, height } = imageData;
+
+  for (let i = 0; i < width * height * 4; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      let value = data[i + c] / 255; // Normalize to 0-1
+
+      // Apply S-curve using sine function
+      // sin gives a nice smooth curve that darkens darks and lightens lights
+      const curved = 0.5 - Math.cos(value * Math.PI) / 2;
+
+      // Blend between original and curved based on intensity
+      value = value * (1 - intensity) + curved * intensity;
+
+      data[i + c] = Math.max(0, Math.min(255, Math.round(value * 255)));
     }
   }
 }

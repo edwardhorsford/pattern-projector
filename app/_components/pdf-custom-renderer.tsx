@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useCallback } from "react";
 import invariant from "tiny-invariant";
 import { usePageContext, useDocumentContext } from "react-pdf";
 
@@ -8,11 +8,38 @@ import type {
 } from "pdfjs-dist/types/src/display/api.js";
 import { PDFPageProxy } from "pdfjs-dist";
 import { PDF_TO_CSS_UNITS } from "@/_lib/pixels-per-inch";
-import { erodeImageData, erosionFilter } from "@/_lib/erode";
+import {
+  erodeImageData,
+  erosionFilter,
+  enhanceLineQualityFast,
+} from "@/_lib/erode";
 import useRenderContext from "@/_hooks/use-render-context";
 
+// Cache for rendered pages at different erosion levels (Safari only)
+// Key format: `${pageNumber}-${erosions}-${width}-${height}`
+const renderCache = new Map<string, ImageData>();
+const MAX_CACHE_SIZE = 20; // Limit cache to prevent memory issues
+
+function getCacheKey(
+  pageNumber: number,
+  erosions: number,
+  width: number,
+  height: number,
+): string {
+  return `${pageNumber}-${erosions}-${width}-${height}`;
+}
+
+function addToCache(key: string, data: ImageData) {
+  // Evict oldest entries if cache is full
+  if (renderCache.size >= MAX_CACHE_SIZE) {
+    const firstKey = renderCache.keys().next().value;
+    if (firstKey) renderCache.delete(firstKey);
+  }
+  renderCache.set(key, data);
+}
+
 export default function CustomRenderer() {
-  const { erosions, layers, magnifying, onPageRenderSuccess, patternScale } =
+  const { erosions, layers, magnifying, onPageRenderStart, onPageRenderSuccess, patternScale } =
     useRenderContext();
   const pageContext = usePageContext();
 
@@ -26,16 +53,31 @@ export default function CustomRenderer() {
     const ua = navigator.userAgent.toLowerCase();
     return ua.indexOf("safari") != -1 && ua.indexOf("chrome") == -1;
   }, []);
-  const filter = isSafari ? "none" : erosionFilter(magnifying ? 0 : erosions);
 
-  // Safari does not support the feMorphology filter in CSS.
-  const renderErosions = isSafari ? erosions : 0;
+  // Safari doesn't support feMorphology (erode) or SVG filter references on canvas CSS
+  // So on Safari: do all image processing via pixels
+  // On other browsers: do everything via CSS filters
+  const cssFilter = isSafari
+    ? undefined // Safari: all processing done via pixels (no CSS filter on canvas)
+    : erosionFilter(magnifying ? 0 : erosions); // Others: full filter chain via CSS
+
+  // Safari does erosion and enhancement via pixel manipulation
+  const renderErosions = isSafari ? (magnifying ? 0 : erosions) : 0;
 
   const _className = pageContext._className;
   const page = pageContext.page;
   const pdf = docContext.pdf;
+  
   const canvasElement = useRef<HTMLCanvasElement>(null);
+  const backCanvas = useRef<HTMLCanvasElement | null>(null);
   const offscreen = useRef<OffscreenCanvas | null>(null);
+  
+  // Track rendering state
+  const renderTaskRef = useRef<ReturnType<PDFPageProxy["render"]> | null>(null);
+  
+  // Track last rendered params to only signal loading when they change
+  const lastRenderedParams = useRef<string>("");
+  
   const userUnit = (page as PDFPageProxy).userUnit || 1;
 
   invariant(page, "Unable to find page.");
@@ -58,6 +100,12 @@ export default function CustomRenderer() {
 
   const renderWidth = Math.floor(renderViewport.width);
   const renderHeight = Math.floor(renderViewport.height);
+  const pageNumber = (page as PDFPageProxy).pageNumber;
+
+  // Ensure back canvas exists for Safari pixel processing
+  if (isSafari && backCanvas.current === null) {
+    backCanvas.current = document.createElement("canvas");
+  }
 
   if (
     offscreen.current === null ||
@@ -70,17 +118,58 @@ export default function CustomRenderer() {
     }
   }
 
-  function drawPageOnCanvas() {
-    if (!page) {
+  const drawPageOnCanvas = useCallback(() => {
+    const visibleCanvas = canvasElement.current;
+    if (!page || !visibleCanvas) {
       return;
+    }
+
+    // Check cache first (Safari only, since non-Safari uses CSS filters)
+    const cacheKey = getCacheKey(pageNumber, renderErosions, renderWidth, renderHeight);
+    const cachedData = isSafari ? renderCache.get(cacheKey) : null;
+
+    if (cachedData && isSafari) {
+      // Use cached data - instant display
+      lastRenderedParams.current = cacheKey;
+      visibleCanvas.width = renderWidth;
+      visibleCanvas.height = renderHeight;
+      const ctx = visibleCanvas.getContext("2d", { alpha: false });
+      if (ctx) {
+        ctx.putImageData(cachedData, 0, 0);
+      }
+      onPageRenderSuccess();
+      return;
+    }
+
+    // Only signal loading if params actually changed (not just a re-render)
+    const currentParams = `${pageNumber}-${renderErosions}-${renderWidth}-${renderHeight}`;
+    if (lastRenderedParams.current !== currentParams) {
+      onPageRenderStart();
+      lastRenderedParams.current = currentParams;
+    }
+
+    // Cancel any existing render task
+    if (renderTaskRef.current) {
+      renderTaskRef.current.cancel();
     }
 
     page.cleanup();
 
-    const canvas = offscreen.current ?? canvasElement.current;
-    if (!canvas) {
+    // For Safari, render to back buffer first for pixel processing
+    const renderTarget = isSafari
+      ? backCanvas.current
+      : offscreen.current ?? visibleCanvas;
+
+    if (!renderTarget) {
       return;
     }
+
+    // Set up render target dimensions
+    if (renderTarget instanceof HTMLCanvasElement) {
+      renderTarget.width = renderWidth;
+      renderTarget.height = renderHeight;
+    }
+
     async function optionalContentConfigPromise(pdf: PDFDocumentProxy) {
       const optionalContentConfig = await pdf.getOptionalContentConfig();
       for (const layer of Object.values(layers)) {
@@ -91,7 +180,7 @@ export default function CustomRenderer() {
       return optionalContentConfig;
     }
 
-    const ctx = canvas.getContext("2d", {
+    const ctx = renderTarget.getContext("2d", {
       alpha: false,
       willReadFrequently: true,
     }) as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
@@ -107,68 +196,93 @@ export default function CustomRenderer() {
     };
 
     const cancellable = page.render(renderContext);
-    const runningTask = cancellable;
+    renderTaskRef.current = cancellable;
 
     cancellable.promise
       .then(() => {
-        if (renderErosions > 0) {
-          let result = ctx.getImageData(0, 0, renderWidth, renderHeight);
-          let buffer = new ImageData(renderWidth, renderHeight);
-          for (let i = 0; i < renderErosions; i++) {
-            erodeImageData(result, buffer);
-            [result, buffer] = [buffer, result];
-          }
-          ctx.putImageData(result, 0, 0);
-        } else if (offscreen.current) {
-          // draw offscreen canvas to onscreen canvas with filter.
-          const dest = canvasElement.current?.getContext("2d");
+        if (isSafari) {
+          // Safari path: do erosion and enhancement via pixels
+          // Use setTimeout to yield to browser and keep UI responsive
+          setTimeout(() => {
+            let result = ctx.getImageData(0, 0, renderWidth, renderHeight);
+
+            if (renderErosions > 0) {
+              let buffer = new ImageData(renderWidth, renderHeight);
+              for (let i = 0; i < renderErosions; i++) {
+                erodeImageData(result, buffer);
+                [result, buffer] = [buffer, result];
+              }
+            }
+
+            // Always apply enhancement (gamma + contrast) for Safari using fast LUT
+            enhanceLineQualityFast(result, 2, 1.5);
+
+            // Cache the processed result for quick switching
+            addToCache(cacheKey, result);
+
+            // Yield again before final canvas update
+            setTimeout(() => {
+              visibleCanvas.width = renderWidth;
+              visibleCanvas.height = renderHeight;
+              const dest = visibleCanvas.getContext("2d", { alpha: false });
+              if (dest) {
+                dest.putImageData(result, 0, 0);
+              }
+              onPageRenderSuccess();
+            }, 0);
+          }, 0);
+        } else {
+          // Non-Safari: draw from offscreen to visible canvas with CSS filter
+          visibleCanvas.width = renderWidth;
+          visibleCanvas.height = renderHeight;
+          const dest = visibleCanvas.getContext("2d");
           if (!dest) {
             return;
           }
           dest.imageSmoothingEnabled = false;
-          dest.filter = filter;
-          dest.drawImage(canvas, 0, 0);
+          dest.filter = cssFilter ?? "none";
+          dest.drawImage(renderTarget, 0, 0);
+          onPageRenderSuccess();
         }
-        onPageRenderSuccess();
       })
       .catch(() => {
-        // Intentionally empty
+        // Render was cancelled
       });
 
     return () => {
-      runningTask.cancel();
+      if (renderTaskRef.current) {
+        renderTaskRef.current.cancel();
+      }
     };
-  }
-
-  useEffect(drawPageOnCanvas, [
-    canvasElement,
+  }, [
     page,
     renderViewport,
     layers,
     pdf,
-    erosions,
-    filter,
+    cssFilter,
     renderErosions,
     renderWidth,
     renderHeight,
+    isSafari,
+    pageNumber,
+    onPageRenderStart,
+    onPageRenderSuccess,
   ]);
+
+  useEffect(() => {
+    drawPageOnCanvas();
+  }, [drawPageOnCanvas]);
+
+  const canvasStyle = {
+    width: Math.floor(viewport.width * PDF_TO_CSS_UNITS * userUnit * patternScale) + "px",
+    height: Math.floor(viewport.height * PDF_TO_CSS_UNITS * userUnit * patternScale) + "px",
+  };
 
   return (
     <canvas
       className={`${_className}__canvas`}
       ref={canvasElement}
-      width={renderWidth}
-      height={renderHeight}
-      style={{
-        width:
-          Math.floor(
-            viewport.width * PDF_TO_CSS_UNITS * userUnit * patternScale,
-          ) + "px",
-        height:
-          Math.floor(
-            viewport.height * PDF_TO_CSS_UNITS * userUnit * patternScale,
-          ) + "px",
-      }}
+      style={canvasStyle}
     />
   );
 }

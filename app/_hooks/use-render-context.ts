@@ -6,6 +6,7 @@ export interface RenderContextType {
   erosions: number;
   layers: Layers;
   magnifying: boolean;
+  onPageRenderStart: () => void;
   onPageRenderSuccess: () => void;
   patternScale: number;
 }
@@ -14,6 +15,7 @@ export const RenderContext = createContext<RenderContextType>({
   erosions: 0,
   layers: {},
   magnifying: false,
+  onPageRenderStart: () => {},
   onPageRenderSuccess: () => {},
   patternScale: 1,
 });

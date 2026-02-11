@@ -7,6 +7,7 @@ import {
   useCallback,
   useEffect,
   useReducer,
+  useRef,
 } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 
@@ -89,12 +90,23 @@ export default function PdfViewer({
     getLayersFromPdf(docProxy).then((l) => {
       if (numPages === 1) {
         if (Object.entries(l).length > 1) {
-          setMenuStates((prev) => ({ ...getDefaultMenuStates(), layers: true, menuPosition: prev.menuPosition }));
+          setMenuStates((prev) => ({
+            ...getDefaultMenuStates(),
+            layers: true,
+            menuPosition: prev.menuPosition,
+          }));
         } else {
-          setMenuStates((prev) => ({ ...getDefaultMenuStates(), menuPosition: prev.menuPosition }));
+          setMenuStates((prev) => ({
+            ...getDefaultMenuStates(),
+            menuPosition: prev.menuPosition,
+          }));
         }
       } else {
-        setMenuStates((prev) => ({ ...getDefaultMenuStates(), stitch: true, menuPosition: prev.menuPosition }));
+        setMenuStates((prev) => ({
+          ...getDefaultMenuStates(),
+          stitch: true,
+          menuPosition: prev.menuPosition,
+        }));
       }
       setLayers(l);
     });
@@ -115,10 +127,39 @@ export default function PdfViewer({
     }
   }
 
-  function onPageRenderSuccess() {
-    setFileLoadStatus(LoadStatusEnum.SUCCESS);
-    setLineThicknessStatus(LoadStatusEnum.SUCCESS);
-  }
+  // Debounce refs to prevent multiple pages triggering many state updates
+  const renderStartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const renderSuccessTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  const onPageRenderStart = useCallback(() => {
+    // Debounce: only set loading if not already pending
+    if (renderStartTimeoutRef.current) return;
+    renderStartTimeoutRef.current = setTimeout(() => {
+      setLineThicknessStatus(LoadStatusEnum.LOADING);
+      renderStartTimeoutRef.current = null;
+    }, 0);
+  }, [setLineThicknessStatus]);
+
+  const onPageRenderSuccess = useCallback(() => {
+    // Clear any pending start timeout
+    if (renderStartTimeoutRef.current) {
+      clearTimeout(renderStartTimeoutRef.current);
+      renderStartTimeoutRef.current = null;
+    }
+    // Debounce success: wait for all pages to finish
+    if (renderSuccessTimeoutRef.current) {
+      clearTimeout(renderSuccessTimeoutRef.current);
+    }
+    renderSuccessTimeoutRef.current = setTimeout(() => {
+      setFileLoadStatus(LoadStatusEnum.SUCCESS);
+      setLineThicknessStatus(LoadStatusEnum.SUCCESS);
+      renderSuccessTimeoutRef.current = null;
+    }, 50); // Small delay to batch multiple page completions
+  }, [setFileLoadStatus, setLineThicknessStatus]);
 
   const customTextRenderer = useCallback(({ str }: { str: string }) => {
     return `<span class="opacity-0 hover:opacity-100 hover:text-6xl" style="background-color: #FFF; color: #000;">${str}</span>`;
@@ -207,6 +248,7 @@ export default function PdfViewer({
                     erosions: lineThickness,
                     layers,
                     magnifying,
+                    onPageRenderStart,
                     onPageRenderSuccess,
                     patternScale,
                   }}
@@ -218,7 +260,6 @@ export default function PdfViewer({
                     customRenderer={CustomRenderer}
                     customTextRenderer={customTextRenderer}
                     renderTextLayer={true}
-                    canvasBackground="#ccc"
                     onLoadSuccess={onPageLoadSuccess}
                   />
                 </RenderContext.Provider>

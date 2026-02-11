@@ -34,7 +34,11 @@ import { getPtDensity, Unit } from "@/_lib/unit";
 import { visible } from "@/_components/theme/css-functions";
 import { useTranslations } from "next-intl";
 import MeasureCanvas from "@/_components/canvases/measure-canvas";
-import { getDefaultMenuStates, MenuPosition, MenuStates } from "@/_lib/menu-states";
+import {
+  getDefaultMenuStates,
+  MenuPosition,
+  MenuStates,
+} from "@/_lib/menu-states";
 import MovementPad from "@/_components/movement-pad";
 import pointsReducer from "@/_reducers/pointsReducer";
 import Filters from "@/_components/filters";
@@ -195,13 +199,16 @@ export default function Page() {
   function filter(magnifying: boolean, lineThickness: number, theme: Theme) {
     const t = themeFilter(theme);
     const thicken = erosionFilter(magnifying ? 0 : lineThickness);
+    // Add contrast after erosion to clean up grey anti-aliased edges before inverting
+    const contrastBoost =
+      isDarkTheme(theme) && thicken !== "none" ? "contrast(2)" : "";
     if (thicken == "none") {
       return t;
     }
     if (t == "none") {
       return thicken;
     }
-    return `${thicken} ${t}`;
+    return `${thicken} ${contrastBoost} ${t}`.trim().replace(/\s+/g, " ");
   }
 
   // Manage the timeout used for hiding menus when the user hasn't interacted with the site for the specified timeout
@@ -476,7 +483,9 @@ export default function Page() {
     }
 
     // Load menu position preference
-    const savedMenuPosition = localStorage.getItem("menuPosition") as MenuPosition | null;
+    const savedMenuPosition = localStorage.getItem(
+      "menuPosition",
+    ) as MenuPosition | null;
     if (savedMenuPosition === "top" || savedMenuPosition === "bottom") {
       setMenuStates((prev) => ({ ...prev, menuPosition: savedMenuPosition }));
     }
@@ -829,8 +838,12 @@ export default function Page() {
             <menu
               className={`absolute w-screen ${visible(!menusHidden)} ${
                 menuStates.menuPosition === "bottom"
-                  ? menuStates.nav ? "bottom-0" : "-bottom-16"
-                  : menuStates.nav ? "top-0" : "-top-16"
+                  ? menuStates.nav
+                    ? "bottom-0"
+                    : "-bottom-16"
+                  : menuStates.nav
+                    ? "top-0"
+                    : "-top-16"
               } pointer-events-none flex ${menuStates.menuPosition === "bottom" ? "flex-col-reverse" : "flex-col"}`}
             >
               <menu className="pointer-events-auto">
@@ -927,8 +940,12 @@ export default function Page() {
             <IconButton
               className={`${visible(!menusHidden)} !p-1 m-0 border-2 border-black dark:border-white absolute ${
                 menuStates.menuPosition === "bottom"
-                  ? menuStates.nav ? "-bottom-16" : "bottom-2"
-                  : menuStates.nav ? "-top-16" : "top-2"
+                  ? menuStates.nav
+                    ? "-bottom-16"
+                    : "bottom-2"
+                  : menuStates.nav
+                    ? "-top-16"
+                    : "top-2"
               } left-1/4 focus:ring-0`}
               onClick={() => setMenuStates({ ...menuStates, nav: true })}
             >
@@ -939,11 +956,16 @@ export default function Page() {
               )}
             </IconButton>
             {!isCalibrating && fileLoadStatus === LoadStatusEnum.LOADING ? (
-              <LoadingSpinner
-                height={100}
-                width={100}
-                className="absolute left-1/2 top-1/2"
-              />
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                <LoadingSpinner height={100} width={100} />
+              </div>
+            ) : null}
+            {!isCalibrating &&
+            fileLoadStatus !== LoadStatusEnum.LOADING &&
+            lineThicknessStatus === LoadStatusEnum.LOADING ? (
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                <LoadingSpinner height={80} width={80} />
+              </div>
             ) : null}
           </Transformable>
         </FullScreen>
