@@ -102,9 +102,9 @@ export default function PdfViewer({
           }));
         }
       } else {
+        // For multi-page PDFs, don't auto-open stitch menu - just reset to defaults
         setMenuStates((prev) => ({
           ...getDefaultMenuStates(),
-          stitch: true,
           menuPosition: prev.menuPosition,
         }));
       }
@@ -162,7 +162,7 @@ export default function PdfViewer({
   }, [setFileLoadStatus, setLineThicknessStatus]);
 
   const customTextRenderer = useCallback(({ str }: { str: string }) => {
-    return `<span class="opacity-0 hover:opacity-100 hover:text-6xl" style="background-color: #FFF; color: #000;">${str}</span>`;
+    return `<span class="opacity-0 hover:opacity-100" style="background-color: #FFF; color: #000; padding: 2px 4px; border-radius: 2px; transform-origin: center; display: inline-block;" onmouseover="this.style.transform='scale(2)'" onmouseout="this.style.transform='scale(1)'">${str}</span>`;
   }, []);
 
   useEffect(() => {
@@ -211,8 +211,8 @@ export default function PdfViewer({
     <Document
       file={file}
       onLoadSuccess={onDocumentLoadSuccess}
-      noData={<p className="text-9xl">{t("noData")}</p>}
-      error={<p className="text-9xl">{t("error")}</p>}
+      noData={null}
+      error={null}
       onLoadError={() => setFileLoadStatus(LoadStatusEnum.FAILED)}
     >
       <div

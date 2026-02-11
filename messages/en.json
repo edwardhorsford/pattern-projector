@@ -292,7 +292,8 @@
   "ScaleMenu": {
     "scale": "Scale Pattern",
     "hide": "Hide scale menu",
-    "show": "Show scale menu"
+    "show": "Show scale menu",
+    "reset": "Reset to 100%"
   },
   "StitchMenu": {
     "columnCount": "Columns",

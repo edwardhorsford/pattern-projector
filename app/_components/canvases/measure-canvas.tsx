@@ -6,7 +6,6 @@ import React, {
   Dispatch,
   SetStateAction,
   useEffect,
-  useReducer,
   useRef,
   useState,
 } from "react";
@@ -19,8 +18,9 @@ import { useKeyDown } from "@/_hooks/use-key-down";
 import { useKeyUp } from "@/_hooks/use-key-up";
 import { Unit } from "@/_lib/unit";
 import { MenuStates } from "@/_lib/menu-states";
-import linesReducer, {
+import {
   Line,
+  LinesAction,
   createLine,
   transformLine,
 } from "@/_reducers/linesReducer";
@@ -39,6 +39,10 @@ export default function MeasureCanvas({
   menusHidden,
   menuStates,
   isDarkTheme,
+  lines,
+  dispatchLines,
+  selectedLine,
+  setSelectedLine,
   children,
 }: {
   perspective: Matrix;
@@ -54,13 +58,15 @@ export default function MeasureCanvas({
   menusHidden: boolean;
   menuStates: MenuStates;
   isDarkTheme: boolean;
+  lines: Line[];
+  dispatchLines: Dispatch<LinesAction>;
+  selectedLine: number;
+  setSelectedLine: Dispatch<SetStateAction<number>>;
   children: React.ReactNode;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragOffset = useRef<Point | null>(null);
 
-  const [selectedLine, setSelectedLine] = useState<number>(-1);
-  const [lines, dispatchLines] = useReducer(linesReducer, []);
   const [axisConstrained, setAxisConstrained] = useState<boolean>(false);
 
   const transform = useTransformContext();
@@ -324,14 +330,14 @@ export default function MeasureCanvas({
   useEffect(() => {
     dispatchLines({ type: "reset" });
     setSelectedLine(-1);
-  }, [file]);
+  }, [file, dispatchLines, setSelectedLine]);
 
   useEffect(() => {
     if (zoomedOut || magnifying) {
       setMeasuring(false);
       setSelectedLine(-1);
     }
-  }, [zoomedOut, magnifying, setMeasuring]);
+  }, [zoomedOut, magnifying, setMeasuring, setSelectedLine]);
 
   return (
     <div className={className}>

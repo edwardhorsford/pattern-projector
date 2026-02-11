@@ -68,6 +68,9 @@ import {
   LineDirection,
 } from "@/_lib/interfaces/stitch-settings";
 import { Marker, MARKER_SIZE_INCHES } from "@/_lib/marker";
+import { Line } from "@/_reducers/linesReducer";
+import RotateToHorizontalIcon from "@/_icons/rotate-to-horizontal";
+import ShiftIcon from "@/_icons/shift-icon";
 
 // Default stitch settings for initial state
 const defaultStitchSettings: StitchSettings = {
@@ -144,6 +147,9 @@ interface SyncedState {
   markers: Marker[];
   markingMode: boolean;
   clearingMode: boolean;
+  // Lines for measure tool
+  lines: Line[];
+  selectedLine: number;
 }
 
 const defaultSyncedState: SyncedState = {
@@ -183,6 +189,9 @@ const defaultSyncedState: SyncedState = {
   markers: [],
   markingMode: false,
   clearingMode: false,
+  // Lines defaults
+  lines: [],
+  selectedLine: -1,
 };
 
 // Dropdown menu component with close callback and smart positioning
@@ -392,13 +401,8 @@ function Preview({
     );
   }
 
-  // Get rotation and normalize to 0, 90, 180, 270
+  // Get rotation (kept for reference, but bounding box calculation handles all angles)
   const rotation = viewportBounds?.rotation ?? 0;
-  const normalizedRotation = ((rotation % 360) + 360) % 360;
-  const isRotated90or270 =
-    (normalizedRotation > 45 && normalizedRotation < 135) ||
-    (normalizedRotation > 225 && normalizedRotation < 315);
-  const isRotated180 = normalizedRotation > 135 && normalizedRotation < 225;
 
   // Get the normalized transform matrix from viewport bounds
   // This represents the exact rotation + flip transformation
@@ -408,9 +412,28 @@ function Preview({
   const transformD = viewportBounds?.transformD ?? 1;
   const hasFlip = viewportBounds?.hasFlip ?? false;
 
-  // When rotated 90/270 and "rotate with view" is on, swap effective dimensions
-  const effectiveLayoutWidth = isRotated90or270 ? layoutHeight : layoutWidth;
-  const effectiveLayoutHeight = isRotated90or270 ? layoutWidth : layoutHeight;
+  // Calculate the bounding box of the transformed PDF
+  // Transform the four corners of the original PDF and find the bounds
+  const halfW = layoutWidth / 2;
+  const halfH = layoutHeight / 2;
+  const corners = [
+    { x: -halfW, y: -halfH },
+    { x: halfW, y: -halfH },
+    { x: halfW, y: halfH },
+    { x: -halfW, y: halfH },
+  ];
+  const transformedCorners = corners.map((c) => ({
+    x: transformA * c.x + transformB * c.y,
+    y: transformC * c.x + transformD * c.y,
+  }));
+  const minX = Math.min(...transformedCorners.map((c) => c.x));
+  const maxX = Math.max(...transformedCorners.map((c) => c.x));
+  const minY = Math.min(...transformedCorners.map((c) => c.y));
+  const maxY = Math.max(...transformedCorners.map((c) => c.y));
+
+  // The effective dimensions are the bounding box of the rotated/transformed PDF
+  const effectiveLayoutWidth = maxX - minX;
+  const effectiveLayoutHeight = maxY - minY;
 
   // Add buffer around the PDF to show when view goes off-edge
   // Use uniform buffer based on the smaller dimension for consistent appearance
@@ -757,12 +780,17 @@ function Preview({
       >
         {/* PDF area representation */}
         <div
-          className="absolute bg-white dark:bg-gray-800 border border-gray-400 dark:border-gray-500 overflow-hidden"
+          className="absolute border border-gray-400 dark:border-gray-500 overflow-hidden"
           style={{
             left: scaledBufferX,
             top: scaledBufferY,
             width: effectiveLayoutWidth * scale,
             height: effectiveLayoutHeight * scale,
+            // Apply filter to container - Safari has issues with filter on transformed children
+            filter: showPreviewImage && previewImage ? themeFilter(theme) : undefined,
+            // Background: for inverted themes, set to white so it inverts to black
+            // (filter inverts the background too)
+            backgroundColor: isDarkTheme(theme) ? "#fff" : "#fff",
           }}
         >
           {/* Loading indicator */}
@@ -778,24 +806,15 @@ function Preview({
               alt=""
               className="pointer-events-none"
               style={{
-                // Use CSS matrix transform to apply the exact same transformation
-                // as the main view (rotation + flip in correct order)
                 position: "absolute" as const,
                 top: "50%",
                 left: "50%",
-                // Size the image based on whether axes are swapped
-                width: isRotated90or270
-                  ? effectiveLayoutHeight * scale
-                  : effectiveLayoutWidth * scale,
-                height: isRotated90or270
-                  ? effectiveLayoutWidth * scale
-                  : effectiveLayoutHeight * scale,
-                // Use CSS matrix() to apply the exact transform
-                // matrix(a, c, b, d, tx, ty) - note CSS uses column-major order
+                // Image is the original PDF size (before transformation)
+                width: layoutWidth * scale,
+                height: layoutHeight * scale,
+                // Apply the transform (rotation/flip)
                 transform: `translate(-50%, -50%) matrix(${transformA}, ${transformC}, ${transformB}, ${transformD}, 0, 0)`,
                 transformOrigin: "center center",
-                // Apply theme filter (invert for dark themes)
-                filter: themeFilter(theme),
               }}
               draggable={false}
             />
@@ -926,10 +945,11 @@ function Preview({
   );
 }
 
-// Movement pad constants
-const PIXEL_LIST = [1, 4, 8, 16];
-const REPEAT_MS = 100;
-const REPEAT_PX_COUNT = 6;
+// Movement pad constants - match main view (1/8 inch = 12 pixels at 96 DPI)
+const BASE_PIXEL_SCALE = 12; // CSS_PIXELS_PER_INCH / 8
+const PIXEL_LIST = [1, 2, 4]; // Multiplied by BASE_PIXEL_SCALE
+const REPEAT_MS = 150; // Slightly slower than browser key repeat to match main window feel
+const REPEAT_PX_COUNT = 4; // 4 * 150ms = 600ms to match main window acceleration timing
 
 // Movement pad for control panel - can be used for calibration (moving corners) or projecting (panning view)
 function MovementPadControl({
@@ -944,33 +964,11 @@ function MovementPadControl({
   t: ReturnType<typeof useTranslations<"MovementPad">>;
 }) {
   const [intervalFunc, setIntervalFunc] = useState<NodeJS.Timeout | null>(null);
-  const [shiftHeld, setShiftHeld] = useState(false);
   const border = "border-2 border-purple-600";
-
-  // Track shift key for 10x speed
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Shift") setShiftHeld(true);
-    };
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key === "Shift") setShiftHeld(false);
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-    };
-  }, []);
-
-  // Get effective pixels based on shift key
-  const getEffectivePixels = (basePixels: number) => {
-    return shiftHeld ? basePixels * 10 : basePixels;
-  };
 
   const handleStart = (direction: Direction) => {
     // First immediate move
-    const initialPixels = getEffectivePixels(PIXEL_LIST[0]);
+    const initialPixels = PIXEL_LIST[0] * BASE_PIXEL_SCALE;
     if (mode === "calibrate") {
       handleAction("moveCorner", { direction, pixels: initialPixels });
     } else {
@@ -983,9 +981,8 @@ function MovementPadControl({
       if (i < PIXEL_LIST.length * REPEAT_PX_COUNT - 1) {
         ++i;
       }
-      const pixels = getEffectivePixels(
-        PIXEL_LIST[Math.floor(i / REPEAT_PX_COUNT)],
-      );
+      const pixels =
+        PIXEL_LIST[Math.floor(i / REPEAT_PX_COUNT)] * BASE_PIXEL_SCALE;
       if (mode === "calibrate") {
         handleAction("moveCorner", { direction, pixels });
       } else {
@@ -1094,6 +1091,7 @@ export default function ControlPanelPage() {
   const tLayers = useTranslations("LayerMenu");
   const tScale = useTranslations("ScaleMenu");
   const tMove = useTranslations("MovementPad");
+  const tLines = useTranslations("MeasureCanvas");
   const [state, setState] = useState<SyncedState>(defaultSyncedState);
   const [lastSync, setLastSync] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1104,6 +1102,7 @@ export default function ControlPanelPage() {
   // Local state for control panel move pads (independent from main window)
   const [showCalibrateMovepad, setShowCalibrateMovepad] = useState(false);
   const [showProjectMovepad, setShowProjectMovepad] = useState(false);
+  const [showLinesPanel, setShowLinesPanel] = useState(false);
   const [previewExpanded, setPreviewExpanded] = useState(true);
   const [previewEnlarged, setPreviewEnlarged] = useState(false); // Toggle between compact and large view
 
@@ -1170,6 +1169,113 @@ export default function ControlPanelPage() {
     state.magnifying,
     state.markers,
     sendAction,
+  ]);
+
+  // Arrow key handling for panning (project mode) or moving corners (calibrate mode)
+  const [arrowKeyInterval, setArrowKeyInterval] =
+    useState<NodeJS.Timeout | null>(null);
+  const [activeArrowKey, setActiveArrowKey] = useState<string | null>(null);
+  const [shiftHeld, setShiftHeld] = useState(false);
+
+  useEffect(() => {
+    const keyToDirection = (key: string): Direction | null => {
+      switch (key) {
+        case "ArrowUp":
+          return Direction.Up;
+        case "ArrowDown":
+          return Direction.Down;
+        case "ArrowLeft":
+          return Direction.Left;
+        case "ArrowRight":
+          return Direction.Right;
+        default:
+          return null;
+      }
+    };
+
+    const getPixels = (baseMultiplier: number) => {
+      const pixels = baseMultiplier * BASE_PIXEL_SCALE;
+      return shiftHeld ? pixels * 10 : pixels;
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Shift") {
+        setShiftHeld(true);
+        return;
+      }
+
+      // Don't handle arrow keys if focused on an input
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+
+      const direction = keyToDirection(e.key);
+      if (direction && !activeArrowKey) {
+        e.preventDefault();
+        setActiveArrowKey(e.key);
+
+        // First immediate move
+        const initialPixels = getPixels(PIXEL_LIST[0]);
+        if (state.isCalibrating) {
+          sendAction("moveCorner", { direction, pixels: initialPixels });
+        } else {
+          sendAction("panView", { direction, pixels: initialPixels });
+        }
+
+        // Then repeated moves with acceleration
+        let i = 0;
+        const interval = setInterval(() => {
+          if (i < PIXEL_LIST.length * REPEAT_PX_COUNT - 1) {
+            ++i;
+          }
+          const pixels = getPixels(PIXEL_LIST[Math.floor(i / REPEAT_PX_COUNT)]);
+          if (state.isCalibrating) {
+            sendAction("moveCorner", { direction, pixels });
+          } else {
+            sendAction("panView", { direction, pixels });
+          }
+        }, REPEAT_MS);
+        setArrowKeyInterval(interval);
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Shift") {
+        setShiftHeld(false);
+        return;
+      }
+
+      if (e.key === activeArrowKey) {
+        setActiveArrowKey(null);
+        if (arrowKeyInterval) {
+          clearInterval(arrowKeyInterval);
+          setArrowKeyInterval(null);
+        }
+        // Save calibration context after move (only in calibrate mode)
+        if (state.isCalibrating) {
+          sendAction("saveCalibrationContext");
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      if (arrowKeyInterval) {
+        clearInterval(arrowKeyInterval);
+      }
+    };
+  }, [
+    activeArrowKey,
+    arrowKeyInterval,
+    state.isCalibrating,
+    sendAction,
+    shiftHeld,
   ]);
 
   // Handle file selection in control panel - send to main window
@@ -1546,6 +1652,24 @@ export default function ControlPanelPage() {
                     <MarkAndMeasureIcon ariaLabel={tHeader("measure")} />
                   </IconButton>
                 </Tooltip>
+                {/* Lines toggle button - show as active when there are lines */}
+                <Tooltip
+                  description={
+                    showLinesPanel
+                      ? tLines("lines")
+                      : state.lines.length > 0
+                        ? `${tLines("lines")} (${state.lines.length})`
+                        : tLines("lines")
+                  }
+                >
+                  <IconButton
+                    onClick={() => setShowLinesPanel(!showLinesPanel)}
+                    active={showLinesPanel || state.lines.length > 0}
+                    disabled={state.magnifying || state.zoomedOut}
+                  >
+                    <MarkAndMeasureIcon ariaLabel={tLines("lines")} />
+                  </IconButton>
+                </Tooltip>
                 <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />
                 {/* Markers dropdown menu */}
                 <DropdownMenu
@@ -1638,13 +1762,154 @@ export default function ControlPanelPage() {
                   />
                 </div>
               )}
+              {/* Lines Panel for measure tool */}
+              {showLinesPanel && (
+                <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
+                    {state.lines.length === 1
+                      ? `1 ${tLines("line")}`
+                      : `${state.lines.length} ${tLines("lines")}`}
+                  </div>
+                  {state.lines.length === 0 ? (
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">
+                        {tHeader("measure")}
+                      </span>
+                      <button
+                        onClick={() => handleAction("toggleMeasure")}
+                        className="w-8 h-8 flex items-center justify-center text-lg font-medium rounded bg-purple-500 text-white hover:bg-purple-600"
+                      >
+                        +
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Line selector */}
+                      <div className="flex items-center gap-2 flex-wrap mb-3">
+                        {state.lines.map((line, i) => (
+                          <button
+                            key={i}
+                            onClick={() => handleAction("selectLine", i)}
+                            className={`w-8 h-8 flex items-center justify-center text-sm font-medium rounded ${
+                              i === state.selectedLine
+                                ? "bg-purple-500 text-white"
+                                : "bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500"
+                            }`}
+                          >
+                            {i + 1}
+                          </button>
+                        ))}
+                        {/* Add new line button */}
+                        <button
+                          onClick={() => handleAction("toggleMeasure")}
+                          className={`w-8 h-8 flex items-center justify-center text-lg font-medium rounded ${
+                            state.measuring
+                              ? "bg-purple-500 text-white"
+                              : "bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500"
+                          }`}
+                        >
+                          +
+                        </button>
+                      </div>
+                      {/* Selected line info */}
+                      {state.selectedLine >= 0 &&
+                        state.lines[state.selectedLine] && (
+                          <div className="mb-3 text-sm">
+                            <span className="font-medium">
+                              {parseFloat(
+                                state.lines[state.selectedLine].distance,
+                              ).toFixed(1)}
+                              {state.lines[
+                                state.selectedLine
+                              ].unitOfMeasure.toLowerCase()}
+                            </span>
+                            <span className="ml-2 text-gray-500 dark:text-gray-400">
+                              {state.lines[state.selectedLine].angle}°
+                            </span>
+                          </div>
+                        )}
+                      {/* Line actions */}
+                      <div className="flex gap-2 flex-wrap">
+                        <Tooltip description={tLines("deleteLine")}>
+                          <IconButton
+                            border={true}
+                            onClick={() => handleAction("deleteLine")}
+                            disabled={state.selectedLine < 0}
+                          >
+                            <DeleteIcon ariaLabel={tLines("deleteLine")} />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip description={tLines("rotateToHorizontal")}>
+                          <IconButton
+                            border={true}
+                            onClick={() =>
+                              handleAction("rotateLineToHorizontal")
+                            }
+                            disabled={state.selectedLine < 0}
+                          >
+                            <RotateToHorizontalIcon
+                              ariaLabel={tLines("rotateToHorizontal")}
+                            />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip
+                          description={tLines("rotateAndCenterPrevious")}
+                        >
+                          <IconButton
+                            border={true}
+                            onClick={() =>
+                              handleAction("rotateAndCenterPrevious")
+                            }
+                            disabled={state.lines.length === 0}
+                          >
+                            <KeyboardArrowLeftIcon
+                              ariaLabel={tLines("rotateAndCenterPrevious")}
+                            />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip description={tLines("rotateAndCenterNext")}>
+                          <IconButton
+                            border={true}
+                            onClick={() => handleAction("rotateAndCenterNext")}
+                            disabled={state.lines.length === 0}
+                          >
+                            <KeyboardArrowRightIcon
+                              ariaLabel={tLines("rotateAndCenterNext")}
+                            />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip description={tLines("flipAlong")}>
+                          <IconButton
+                            border={true}
+                            onClick={() => handleAction("flipAlongLine")}
+                            disabled={state.selectedLine < 0}
+                          >
+                            <FlipHorizontalIcon
+                              ariaLabel={tLines("flipAlong")}
+                            />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip description={tLines("translate")}>
+                          <IconButton
+                            border={true}
+                            onClick={() => handleAction("translateAlongLine")}
+                            disabled={state.selectedLine < 0}
+                          >
+                            <ShiftIcon ariaLabel={tLines("translate")} />
+                          </IconButton>
+                        </Tooltip>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </section>
 
             {/* Mini Map for navigation */}
             <section className="bg-white dark:bg-gray-800 rounded-lg shadow">
               <button
                 onClick={() => setPreviewExpanded(!previewExpanded)}
-                className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 dark:hover:bg-gray-750 rounded-t-lg transition-colors"
+                className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 dark:hover:bg-gray-700 rounded-t-lg transition-colors"
               >
                 <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                   {t("preview")}
@@ -1914,7 +2179,15 @@ export default function ControlPanelPage() {
 
               {/* Scale Panel */}
               {activePanel === "scale" && (
-                <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg flex flex-col items-start">
+                <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                  <div className="flex justify-end mb-2">
+                    <Button
+                      onClick={() => handleAction("resetScale")}
+                      className="text-xs px-2 py-1"
+                    >
+                      {tScale("reset")}
+                    </Button>
+                  </div>
                   <StepperInput
                     inputClassName="w-20"
                     handleChange={(e) =>
@@ -1922,7 +2195,7 @@ export default function ControlPanelPage() {
                     }
                     label={tScale("scale")}
                     value={state.patternScale}
-                    onStep={(delta) => handleAction("adjustScale", delta * 0.1)}
+                    onStep={(delta) => handleAction("adjustScale", delta)}
                     step={0.1}
                   />
                 </div>

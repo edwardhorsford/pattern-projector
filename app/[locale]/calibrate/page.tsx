@@ -84,6 +84,7 @@ import { toggleFullScreen } from "@/_lib/full-screen";
 import { usePdfThumbnail } from "@/_hooks/use-pdf-thumbnail";
 import { Marker } from "@/_lib/marker";
 import MarkerCanvas from "@/_components/canvases/marker-canvas";
+import linesReducer, { Line } from "@/_reducers/linesReducer";
 
 const defaultStitchSettings = {
   lineCount: 1,
@@ -161,6 +162,8 @@ export default function Page() {
     stitchSettingsReducer,
     defaultStitchSettings,
   );
+  const [lines, dispatchLines] = useReducer(linesReducer, []);
+  const [selectedLine, setSelectedLine] = useState<number>(-1);
   const { layers, dispatchLayersAction } = useLayers(file?.name ?? "default");
   const setLayers = useCallback(
     (l: Layers) => dispatchLayersAction({ type: "set-layers", layers: l }),
@@ -188,6 +191,7 @@ export default function Page() {
 
   const t = useTranslations("Header");
   const g = useTranslations("General");
+  const tPdf = useTranslations("PdfViewer");
 
   const IDLE_TIMEOUT = 8000;
 
@@ -517,7 +521,7 @@ export default function Page() {
   useEffect(() => {
     const projectingWithInvalidContext =
       !isCalibrating && !calibrationValidated;
-    
+
     if (projectingWithInvalidContext) {
       // Delay showing alert to avoid flashing on brief validation failures
       const timeout = setTimeout(() => {
@@ -732,6 +736,10 @@ export default function Page() {
               setMarkingMode={setMarkingMode}
               clearingMode={clearingMode}
               setClearingMode={setClearingMode}
+              lines={lines}
+              dispatchLines={dispatchLines}
+              selectedLine={selectedLine}
+              setSelectedLine={setSelectedLine}
             />
             <MeasureCanvas
               className={visible(!isCalibrating)}
@@ -751,6 +759,10 @@ export default function Page() {
               menusHidden={menusHidden}
               menuStates={menuStates}
               isDarkTheme={isDarkTheme(displaySettings.theme)}
+              lines={lines}
+              dispatchLines={dispatchLines}
+              selectedLine={selectedLine}
+              setSelectedLine={setSelectedLine}
             >
               <Draggable
                 className={`absolute ${menusHidden && "!cursor-none"} `}
@@ -975,6 +987,22 @@ export default function Page() {
             lineThicknessStatus === LoadStatusEnum.LOADING ? (
               <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
                 <LoadingSpinner height={80} width={80} />
+              </div>
+            ) : null}
+            {!isCalibrating &&
+            file === null &&
+            fileLoadStatus !== LoadStatusEnum.LOADING ? (
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+                <p className="text-2xl text-purple-600 dark:text-purple-400 bg-gray-500/40 px-8 py-6 rounded-lg whitespace-nowrap">
+                  {tPdf("noData")}
+                </p>
+              </div>
+            ) : null}
+            {!isCalibrating && fileLoadStatus === LoadStatusEnum.FAILED ? (
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+                <p className="text-2xl text-red-600 dark:text-red-400 bg-gray-500/40 px-8 py-6 rounded-lg whitespace-nowrap">
+                  {tPdf("error")}
+                </p>
               </div>
             ) : null}
           </Transformable>

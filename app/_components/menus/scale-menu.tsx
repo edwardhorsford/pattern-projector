@@ -3,6 +3,7 @@ import { Dispatch } from "react";
 import removeNonDigits from "@/_lib/remove-non-digits";
 import { useTranslations } from "next-intl";
 import { PatternScaleAction } from "@/_reducers/patternScaleReducer";
+import { Button } from "@/_components/buttons/button";
 
 export default function ScaleMenu({
   patternScale,
@@ -21,6 +22,16 @@ export default function ScaleMenu({
 
   return (
     <menu className={menuStyles}>
+      <div className="flex justify-end w-full">
+        <Button
+          onClick={() =>
+            dispatchPatternScaleAction({ type: "set", scale: "1.00" })
+          }
+          className="text-xs px-2 py-1"
+        >
+          {t("reset")}
+        </Button>
+      </div>
       <StepperInput
         inputClassName="w-20"
         handleChange={(e) =>
