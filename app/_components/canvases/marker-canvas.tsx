@@ -21,7 +21,7 @@ interface MarkerCanvasProps {
 function transformPoint(
   x: number,
   y: number,
-  transform: Matrix
+  transform: Matrix,
 ): { x: number; y: number } {
   // Apply the 3x3 transformation matrix
   const m = transform.to1DArray();
@@ -43,15 +43,15 @@ export default function MarkerCanvas({
   className,
 }: MarkerCanvasProps) {
   const localTransform = useTransformContext();
-  
+
   // Calculate marker size in screen pixels
   // Use calibration transform to get the scale factor (points to pixels)
   const ptDensity = getPtDensity(unitOfMeasure);
   const markerSizePts = MARKER_SIZE_INCHES * ptDensity;
-  
+
   // Combined transform for positioning markers
   const combinedTransform = calibrationTransform.mmul(localTransform);
-  
+
   // Get scale from combined transform to size markers appropriately
   const m = combinedTransform.to1DArray();
   const scaleX = Math.sqrt(m[0] * m[0] + m[3] * m[3]);
@@ -70,9 +70,9 @@ export default function MarkerCanvas({
         const screenPos = transformPoint(
           marker.position.x,
           marker.position.y,
-          combinedTransform
+          combinedTransform,
         );
-        
+
         return (
           <div
             key={marker.id}
@@ -86,11 +86,7 @@ export default function MarkerCanvas({
               filter: themeFilter(theme),
             }}
           >
-            <svg
-              viewBox="0 0 100 100"
-              width="100%"
-              height="100%"
-            >
+            <svg viewBox="0 0 100 100" width="100%" height="100%">
               {/* White background circle with border */}
               <circle
                 cx="50"

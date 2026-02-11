@@ -218,12 +218,12 @@ function DropdownMenu({
       const menuRect = menuRef.current.getBoundingClientRect();
       const triggerRect = ref.current.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
-      
+
       // Check if left-aligned menu would overflow right edge
       const leftAlignedRight = triggerRect.left + menuRect.width;
       // Check if right-aligned menu would overflow left edge
       const rightAlignedLeft = triggerRect.right - menuRect.width;
-      
+
       if (leftAlignedRight > viewportWidth && rightAlignedLeft >= 0) {
         // Would overflow right, align to right instead
         setAlignRight(true);
@@ -496,7 +496,7 @@ function Preview({
       const clickRadius = 144; // 2 inches in PDF points (half of 4 inch marker)
       let closestMarker: Marker | null = null;
       let closestDistance = Infinity;
-      
+
       for (const marker of markers) {
         const dx = marker.position.x - coords.x;
         const dy = marker.position.y - coords.y;
@@ -506,7 +506,7 @@ function Preview({
           closestMarker = marker;
         }
       }
-      
+
       if (closestMarker) {
         onRemoveMarker(closestMarker.id);
       }
@@ -833,25 +833,25 @@ function Preview({
         {markers.map((marker) => {
           // Convert marker position from PDF coordinates to preview coordinates
           // Need to apply the same transform as the preview image
-          
+
           // Get position relative to PDF center
           const relX = marker.position.x - layoutWidth / 2;
           const relY = marker.position.y - layoutHeight / 2;
-          
+
           // Apply the transform matrix to get rotated/flipped position
           const transformedX = transformA * relX + transformB * relY;
           const transformedY = transformC * relX + transformD * relY;
-          
+
           // Convert to preview coordinates (relative to center of effective layout)
           const centerX = scaledBufferX + (effectiveLayoutWidth * scale) / 2;
           const centerY = scaledBufferY + (effectiveLayoutHeight * scale) / 2;
-          
+
           const markerX = centerX + transformedX * scale;
           const markerY = centerY + transformedY * scale;
-          
+
           // Marker size in preview pixels - use a larger minimum size so they're visible
           const markerSize = Math.max(MARKER_SIZE_INCHES * 72 * scale, 24); // At least 24px
-          
+
           return (
             <div
               key={marker.id}
@@ -865,11 +865,7 @@ function Preview({
                 filter: themeFilter(theme),
               }}
             >
-              <svg
-                viewBox="0 0 100 100"
-                width="100%"
-                height="100%"
-              >
+              <svg viewBox="0 0 100 100" width="100%" height="100%">
                 {/* White background circle with border */}
                 <circle
                   cx="50"
@@ -1152,18 +1148,29 @@ export default function ControlPanelPage() {
   useEffect(() => {
     const handleUndo = (e: KeyboardEvent) => {
       // Check for Cmd+Z (Mac) or Ctrl+Z (Windows/Linux)
-      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
         // Only undo markers when projecting (not calibrating), not in special modes
-        if (!state.isCalibrating && !state.zoomedOut && !state.magnifying && state.markers.length > 0) {
+        if (
+          !state.isCalibrating &&
+          !state.zoomedOut &&
+          !state.magnifying &&
+          state.markers.length > 0
+        ) {
           e.preventDefault();
           sendAction("undoMarker");
         }
       }
     };
 
-    document.addEventListener('keydown', handleUndo);
-    return () => document.removeEventListener('keydown', handleUndo);
-  }, [state.isCalibrating, state.zoomedOut, state.magnifying, state.markers, sendAction]);
+    document.addEventListener("keydown", handleUndo);
+    return () => document.removeEventListener("keydown", handleUndo);
+  }, [
+    state.isCalibrating,
+    state.zoomedOut,
+    state.magnifying,
+    state.markers,
+    sendAction,
+  ]);
 
   // Handle file selection in control panel - send to main window
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -1573,11 +1580,17 @@ export default function ControlPanelPage() {
                         }}
                         disabled={state.magnifying || state.zoomedOut}
                         className={`w-full flex items-center gap-3 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-left disabled:opacity-50 ${
-                          state.markingMode ? "bg-purple-100 dark:bg-purple-900" : ""
+                          state.markingMode
+                            ? "bg-purple-100 dark:bg-purple-900"
+                            : ""
                         }`}
                       >
                         <AddBoxIcon ariaLabel="" />
-                        <span>{state.markingMode ? t("placeMarkerActive") : t("placeMarker")}</span>
+                        <span>
+                          {state.markingMode
+                            ? t("placeMarkerActive")
+                            : t("placeMarker")}
+                        </span>
                       </button>
                       <button
                         onClick={() => {
@@ -1586,11 +1599,17 @@ export default function ControlPanelPage() {
                         }}
                         disabled={state.markers.length === 0}
                         className={`w-full flex items-center gap-3 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-left disabled:opacity-50 ${
-                          state.clearingMode ? "bg-purple-100 dark:bg-purple-900" : ""
+                          state.clearingMode
+                            ? "bg-purple-100 dark:bg-purple-900"
+                            : ""
                         }`}
                       >
                         <CloseIcon ariaLabel="" />
-                        <span>{state.clearingMode ? t("clearMarkerActive") : t("clearMarker")}</span>
+                        <span>
+                          {state.clearingMode
+                            ? t("clearMarkerActive")
+                            : t("clearMarker")}
+                        </span>
                       </button>
                       <div className="border-t dark:border-gray-700 my-1" />
                       <button

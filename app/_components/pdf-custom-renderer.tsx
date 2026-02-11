@@ -39,8 +39,14 @@ function addToCache(key: string, data: ImageData) {
 }
 
 export default function CustomRenderer() {
-  const { erosions, layers, magnifying, onPageRenderStart, onPageRenderSuccess, patternScale } =
-    useRenderContext();
+  const {
+    erosions,
+    layers,
+    magnifying,
+    onPageRenderStart,
+    onPageRenderSuccess,
+    patternScale,
+  } = useRenderContext();
   const pageContext = usePageContext();
 
   invariant(pageContext, "Unable to find Page context.");
@@ -67,17 +73,17 @@ export default function CustomRenderer() {
   const _className = pageContext._className;
   const page = pageContext.page;
   const pdf = docContext.pdf;
-  
+
   const canvasElement = useRef<HTMLCanvasElement>(null);
   const backCanvas = useRef<HTMLCanvasElement | null>(null);
   const offscreen = useRef<OffscreenCanvas | null>(null);
-  
+
   // Track rendering state
   const renderTaskRef = useRef<ReturnType<PDFPageProxy["render"]> | null>(null);
-  
+
   // Track last rendered params to only signal loading when they change
   const lastRenderedParams = useRef<string>("");
-  
+
   const userUnit = (page as PDFPageProxy).userUnit || 1;
 
   invariant(page, "Unable to find page.");
@@ -125,7 +131,12 @@ export default function CustomRenderer() {
     }
 
     // Check cache first (Safari only, since non-Safari uses CSS filters)
-    const cacheKey = getCacheKey(pageNumber, renderErosions, renderWidth, renderHeight);
+    const cacheKey = getCacheKey(
+      pageNumber,
+      renderErosions,
+      renderWidth,
+      renderHeight,
+    );
     const cachedData = isSafari ? renderCache.get(cacheKey) : null;
 
     if (cachedData && isSafari) {
@@ -274,8 +285,12 @@ export default function CustomRenderer() {
   }, [drawPageOnCanvas]);
 
   const canvasStyle = {
-    width: Math.floor(viewport.width * PDF_TO_CSS_UNITS * userUnit * patternScale) + "px",
-    height: Math.floor(viewport.height * PDF_TO_CSS_UNITS * userUnit * patternScale) + "px",
+    width:
+      Math.floor(viewport.width * PDF_TO_CSS_UNITS * userUnit * patternScale) +
+      "px",
+    height:
+      Math.floor(viewport.height * PDF_TO_CSS_UNITS * userUnit * patternScale) +
+      "px",
   };
 
   return (

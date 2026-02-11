@@ -415,7 +415,7 @@ export function ControlPanelBridge({
   useEffect(() => {
     const handleUndo = (e: KeyboardEvent) => {
       // Check for Cmd+Z (Mac) or Ctrl+Z (Windows/Linux)
-      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
         // Only undo markers when projecting (not calibrating), not in special modes
         if (!isCalibrating && !zoomedOut && !magnifying && markers.length > 0) {
           e.preventDefault();
@@ -427,8 +427,8 @@ export function ControlPanelBridge({
       }
     };
 
-    document.addEventListener('keydown', handleUndo);
-    return () => document.removeEventListener('keydown', handleUndo);
+    document.addEventListener("keydown", handleUndo);
+    return () => document.removeEventListener("keydown", handleUndo);
   }, [isCalibrating, zoomedOut, magnifying, markers, setMarkers]);
 
   // Build current state object
@@ -961,7 +961,7 @@ export function ControlPanelBridge({
   // Track if state has changed since last sync
   const stateVersionRef = useRef(0);
   const lastSyncedVersionRef = useRef(0);
-  
+
   // Increment version whenever buildState changes (indicates state changed)
   useEffect(() => {
     stateVersionRef.current += 1;
@@ -972,7 +972,10 @@ export function ControlPanelBridge({
   useEffect(() => {
     const interval = setInterval(() => {
       // Sync if: explicitly requested OR state has changed since last sync
-      if (syncRequestedRef.current || stateVersionRef.current !== lastSyncedVersionRef.current) {
+      if (
+        syncRequestedRef.current ||
+        stateVersionRef.current !== lastSyncedVersionRef.current
+      ) {
         syncRequestedRef.current = false;
         lastSyncedVersionRef.current = stateVersionRef.current;
         sendStateSync(buildStateRef.current());
