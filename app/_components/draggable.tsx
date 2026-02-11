@@ -133,11 +133,11 @@ export default function Draggable({
   function handleOnStart(e: React.PointerEvent): void {
     const p = { x: e.clientX, y: e.clientY };
     const pt = transformPoint(p, perspective);
-    
+
     // Convert screen position to PDF coordinates for marker operations
     const inverseLocal = inverse(transform);
     const pdfPoint = transformPoint(pt, inverseLocal);
-    
+
     // If in clearing mode, check if click is near a marker and remove it
     if (clearingMode) {
       // Find the closest marker within a reasonable distance
@@ -145,7 +145,7 @@ export default function Draggable({
       const clickRadius = 144; // 2 inches in PDF points (half of 4 inch marker)
       let closestMarker: Marker | null = null;
       let closestDistance = Infinity;
-      
+
       for (const marker of markers) {
         const dx = marker.position.x - pdfPoint.x;
         const dy = marker.position.y - pdfPoint.y;
@@ -155,15 +155,15 @@ export default function Draggable({
           closestMarker = marker;
         }
       }
-      
+
       if (closestMarker) {
-        setMarkers(markers.filter(m => m.id !== closestMarker!.id));
+        setMarkers(markers.filter((m) => m.id !== closestMarker!.id));
       }
       // Always disable clearing mode after a click (one-time action)
       setClearingMode(false);
       return;
     }
-    
+
     // If in marking mode, place a marker and return
     if (markingMode) {
       const newMarker = createMarker(pdfPoint);
@@ -172,7 +172,7 @@ export default function Draggable({
       setMarkingMode(false);
       return;
     }
-    
+
     if (magnifying) {
       if (restoreTransforms === null) {
         setRestoreTransforms({

@@ -62,7 +62,9 @@ export function SettingsDropdown({
           <select
             id="menu-position-select"
             value={menuStates.menuPosition}
-            onChange={(e) => handlePositionChange(e.target.value as MenuPosition)}
+            onChange={(e) =>
+              handlePositionChange(e.target.value as MenuPosition)
+            }
             className="px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
           >
             <option value="top">{t("top")}</option>
@@ -75,7 +77,7 @@ export function SettingsDropdown({
               window.open(
                 `/${locale}/control`,
                 "controlPanel",
-                "width=400,height=600,menubar=no,toolbar=no,location=no,status=no"
+                "width=400,height=600,menubar=no,toolbar=no,location=no,status=no",
               );
               setIsOpen(false);
             }}

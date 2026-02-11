@@ -48,7 +48,7 @@ export function themeFilter(theme: Theme): string {
     case Theme.Dark:
       return "invert(1)";
     case Theme.Green:
-      return "invert(1) sepia(1) saturate(10000%) hue-rotate(65deg) brightness(1.5)";
+      return "invert(1) sepia(100%) saturate(300%) hue-rotate(80deg)";
     case Theme.Light:
       return "none";
   }
@@ -59,7 +59,8 @@ export function strokeColor(theme: Theme) {
     case Theme.Dark:
       return "#fff";
     case Theme.Green:
-      return "#32CD32";
+      // Bright green to match inverted PDF appearance
+      return "#75FFCD";
     case Theme.Light:
       return "#000";
   }

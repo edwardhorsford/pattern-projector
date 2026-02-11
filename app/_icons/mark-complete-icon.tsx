@@ -1,8 +1,4 @@
-export default function MarkCompleteIcon({
-  ariaLabel,
-}: {
-  ariaLabel: string;
-}) {
+export default function MarkCompleteIcon({ ariaLabel }: { ariaLabel: string }) {
   return (
     <svg
       aria-label={ariaLabel}
