@@ -513,10 +513,20 @@ export default function Page() {
   }, []);
 
   // Show a calibration warning when the calibration context is different than what was calibrated in
+  // Debounce to prevent brief flashes when validation temporarily fails
   useEffect(() => {
     const projectingWithInvalidContext =
       !isCalibrating && !calibrationValidated;
-    setShowCalibrationAlert(projectingWithInvalidContext);
+    
+    if (projectingWithInvalidContext) {
+      // Delay showing alert to avoid flashing on brief validation failures
+      const timeout = setTimeout(() => {
+        setShowCalibrationAlert(true);
+      }, 300);
+      return () => clearTimeout(timeout);
+    } else {
+      setShowCalibrationAlert(false);
+    }
   }, [isCalibrating, calibrationValidated]);
 
   // Hide menus after a timeout as long ad they aren't calibrating, zoomed out, haven't loaded a file yet or are in the process of loading a file

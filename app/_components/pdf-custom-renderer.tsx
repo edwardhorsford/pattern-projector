@@ -142,8 +142,14 @@ export default function CustomRenderer() {
     if (cachedData && isSafari) {
       // Use cached data - instant display
       lastRenderedParams.current = cacheKey;
-      visibleCanvas.width = renderWidth;
-      visibleCanvas.height = renderHeight;
+      // Only update canvas dimensions if they changed to avoid layout shift
+      if (
+        visibleCanvas.width !== renderWidth ||
+        visibleCanvas.height !== renderHeight
+      ) {
+        visibleCanvas.width = renderWidth;
+        visibleCanvas.height = renderHeight;
+      }
       const ctx = visibleCanvas.getContext("2d", { alpha: false });
       if (ctx) {
         ctx.putImageData(cachedData, 0, 0);
@@ -233,8 +239,14 @@ export default function CustomRenderer() {
 
             // Yield again before final canvas update
             setTimeout(() => {
-              visibleCanvas.width = renderWidth;
-              visibleCanvas.height = renderHeight;
+              // Only update canvas dimensions if they changed to avoid layout shift
+              if (
+                visibleCanvas.width !== renderWidth ||
+                visibleCanvas.height !== renderHeight
+              ) {
+                visibleCanvas.width = renderWidth;
+                visibleCanvas.height = renderHeight;
+              }
               const dest = visibleCanvas.getContext("2d", { alpha: false });
               if (dest) {
                 dest.putImageData(result, 0, 0);
@@ -244,8 +256,14 @@ export default function CustomRenderer() {
           }, 0);
         } else {
           // Non-Safari: draw from offscreen to visible canvas with CSS filter
-          visibleCanvas.width = renderWidth;
-          visibleCanvas.height = renderHeight;
+          // Only update canvas dimensions if they changed to avoid layout shift
+          if (
+            visibleCanvas.width !== renderWidth ||
+            visibleCanvas.height !== renderHeight
+          ) {
+            visibleCanvas.width = renderWidth;
+            visibleCanvas.height = renderHeight;
+          }
           const dest = visibleCanvas.getContext("2d");
           if (!dest) {
             return;

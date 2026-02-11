@@ -2,17 +2,17 @@ export default function Filters() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg">
       {/* Erosion filters - make lines thicker by expanding dark pixels */}
-      <filter id="erode0">
+      <filter id="erode-0">
         {/* No erosion, just pass through */}
         <feOffset in="SourceGraphic" dx="0" dy="0" />
       </filter>
-      <filter id="erode1">
+      <filter id="erode-1">
         <feMorphology operator="erode" radius="1" />
       </filter>
-      <filter id="erode2">
+      <filter id="erode-2">
         <feMorphology operator="erode" radius="2" />
       </filter>
-      <filter id="erode3">
+      <filter id="erode-3">
         <feMorphology operator="erode" radius="3" />
       </filter>
 
