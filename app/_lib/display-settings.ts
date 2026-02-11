@@ -59,7 +59,8 @@ export function strokeColor(theme: Theme) {
     case Theme.Dark:
       return "#fff";
     case Theme.Green:
-      return "#32CD32";
+      // Bright green to match inverted PDF appearance
+      return "#75FFCD";
     case Theme.Light:
       return "#000";
   }
