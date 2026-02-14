@@ -218,33 +218,10 @@ export default function Page() {
     x: 0,
     y: 0,
   });
-  const zoomDebugEnabledRef = useRef(false);
-  const [zoomDebugEnabled, setZoomDebugEnabled] = useState(false);
-  const [zoomDebug, setZoomDebug] = useState<ZoomDebugState>({
-    keyDownCount: 0,
-    keyUpCount: 0,
-    shortcutCount: 0,
-    wheelCount: 0,
-    wheelAppliedCount: 0,
-    wheelCtrlEventCount: 0,
-    wheelControlRefCount: 0,
-    wheelBlockedNoControlCount: 0,
-    wheelBlockedCalibratingCount: 0,
-    gestureStartCount: 0,
-    gestureChangeCount: 0,
-    gestureEndCount: 0,
-    lastKey: "",
-    lastWheelDeltaY: 0,
-    lastWheelSteps: 0,
-    lastDirection: 0,
-  });
 
   const updateZoomDebug = useCallback(
     (updater: (previous: ZoomDebugState) => ZoomDebugState) => {
-      if (!zoomDebugEnabledRef.current) {
-        return;
-      }
-      setZoomDebug(updater);
+      void updater;
     },
     [],
   );
@@ -761,13 +738,6 @@ export default function Page() {
   useEffect(() => {
     calibrationCallback();
   }, [points, width, height, unitOfMeasure, calibrationCallback]);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const debugEnabled = params.get("zoomDebug") === "1";
-    zoomDebugEnabledRef.current = debugEnabled;
-    setZoomDebugEnabled(debugEnabled);
-  }, []);
 
   useEffect(() => {
     window.addEventListener("keydown", handleProjectZoomShortcut);
@@ -1410,20 +1380,6 @@ export default function Page() {
                 <p className="text-2xl text-red-600 dark:text-red-400 bg-gray-500/40 px-8 py-6 rounded-lg whitespace-nowrap">
                   {tPdf("error")}
                 </p>
-              </div>
-            ) : null}
-            {zoomDebugEnabled && !isCalibrating ? (
-              <div className="absolute right-2 top-2 z-[200] text-xs font-mono bg-black/80 text-white rounded px-3 py-2 pointer-events-none whitespace-pre">
-                {`zoomDebug=1
-scale=${patternScale}
-controlRef=${controlKeyDownRef.current ? "down" : "up"}
-keyDown=${zoomDebug.keyDownCount} keyUp=${zoomDebug.keyUpCount} lastKey=${zoomDebug.lastKey}
-shortcut=${zoomDebug.shortcutCount}
-wheel=${zoomDebug.wheelCount} applied=${zoomDebug.wheelAppliedCount}
-wheel.ctrlKey=${zoomDebug.wheelCtrlEventCount} wheel.controlRef=${zoomDebug.wheelControlRefCount}
-wheel.blockNoCtrl=${zoomDebug.wheelBlockedNoControlCount} wheel.blockCal=${zoomDebug.wheelBlockedCalibratingCount}
-last.deltaY=${zoomDebug.lastWheelDeltaY.toFixed(2)} steps=${zoomDebug.lastWheelSteps} dir=${zoomDebug.lastDirection}
-gesture.start=${zoomDebug.gestureStartCount} change=${zoomDebug.gestureChangeCount} end=${zoomDebug.gestureEndCount}`}
               </div>
             ) : null}
           </Transformable>
