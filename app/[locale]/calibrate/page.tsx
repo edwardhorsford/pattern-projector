@@ -84,7 +84,7 @@ import { toggleFullScreen } from "@/_lib/full-screen";
 import { usePdfThumbnail } from "@/_hooks/use-pdf-thumbnail";
 import { Marker } from "@/_lib/marker";
 import MarkerCanvas from "@/_components/canvases/marker-canvas";
-import linesReducer, { Line } from "@/_reducers/linesReducer";
+import linesReducer from "@/_reducers/linesReducer";
 
 const defaultStitchSettings = {
   lineCount: 1,
@@ -227,7 +227,7 @@ export default function Page() {
   }
 
   // Create a default calibration grid that fits within the viewport with a bit of a border
-  function getDefaultPoints() {
+  const getDefaultPoints = useCallback(() => {
     const { innerWidth, innerHeight } = window;
     // Use the currently selected calibration dimensions to define the target aspect ratio.
     const targetWidth = width > 0 ? width : 1;
@@ -259,7 +259,7 @@ export default function Page() {
       { x: maxX, y: maxY },
       { x: minX, y: maxY },
     ];
-  }
+  }, [width, height]);
 
   // Merge new settings (i.e. width x height, theme, overlays) with settings from localStorage
   function updateLocalSettings(newSettings: {}) {
@@ -298,7 +298,7 @@ export default function Page() {
         dispatch({ type: "set", points: getDefaultPoints() }); // Fixes #363: on Chrome sometimes the points are set as zeros in localStorage
       }
     }
-  }, [points, width, height, unitOfMeasure]);
+  }, [points, width, height, unitOfMeasure, getDefaultPoints]);
 
   // Prevent the user from zooming
   const noZoomRefCallback = useCallback((element: HTMLElement | null) => {
@@ -478,7 +478,31 @@ export default function Page() {
     if (localPoints !== null) {
       dispatch({ type: "set", points: JSON.parse(localPoints) });
     } else {
-      dispatch({ type: "set", points: getDefaultPoints() });
+      const { innerWidth, innerHeight } = window;
+      const defaultAspectRatio =
+        Number(defaultWidthDimensionValue) / Number(defaultHeightDimensionValue);
+      const maxGridWidth = innerWidth * 0.7;
+      const maxGridHeight = innerHeight * 0.7;
+
+      let gridWidth = maxGridWidth;
+      let gridHeight = gridWidth / defaultAspectRatio;
+      if (gridHeight > maxGridHeight) {
+        gridHeight = maxGridHeight;
+        gridWidth = gridHeight * defaultAspectRatio;
+      }
+
+      const minX = (innerWidth - gridWidth) * 0.5;
+      const minY = (innerHeight - gridHeight) * 0.5;
+
+      dispatch({
+        type: "set",
+        points: [
+          { x: minX, y: minY },
+          { x: minX + gridWidth, y: minY },
+          { x: minX + gridWidth, y: minY + gridHeight },
+          { x: minX, y: minY + gridHeight },
+        ],
+      });
     }
     const localSettingString = localStorage.getItem("canvasSettings");
     if (localSettingString !== null) {
@@ -513,7 +537,7 @@ export default function Page() {
     if (savedMenuPosition === "top" || savedMenuPosition === "bottom") {
       setMenuStates((prev) => ({ ...prev, menuPosition: savedMenuPosition }));
     }
-  }, []);
+  }, [defaultHeightDimensionValue, defaultWidthDimensionValue]);
 
   // Set button color style based on URL: blue for the beta site and gray for old site
   useEffect(() => {
