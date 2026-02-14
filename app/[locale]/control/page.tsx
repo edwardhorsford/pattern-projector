@@ -1550,7 +1550,6 @@ export default function ControlPanelPage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-lg font-bold">{t("title")}</h1>
-              data-control-preview-map="true"
               <div className="flex items-center gap-2">
                 <div
                   className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"}`}

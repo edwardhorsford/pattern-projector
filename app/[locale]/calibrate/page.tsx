@@ -426,8 +426,14 @@ export default function Page() {
   const handleProjectPinchZoomCapture = useCallback(
     (event: ReactWheelEvent<HTMLElement>) => {
       const anchor = {
-        x: event.clientX > 0 ? event.clientX : getCalibrationCenterScreenAnchor().x,
-        y: event.clientY > 0 ? event.clientY : getCalibrationCenterScreenAnchor().y,
+        x:
+          event.clientX > 0
+            ? event.clientX
+            : getCalibrationCenterScreenAnchor().x,
+        y:
+          event.clientY > 0
+            ? event.clientY
+            : getCalibrationCenterScreenAnchor().y,
       };
 
       handleProjectPinchZoomDelta(
