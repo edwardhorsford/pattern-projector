@@ -1398,8 +1398,8 @@ export default function ControlPanelPage() {
                   name="unit_of_measure"
                   value={state.unitOfMeasure ?? Unit.IN}
                   options={[
-                    { value: Unit.IN, label: "in" },
                     { value: Unit.CM, label: "cm" },
+                    { value: Unit.IN, label: "in" },
                   ]}
                 />
                 <Tooltip description={tHeader("delete")}>

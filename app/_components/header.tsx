@@ -513,8 +513,8 @@ export default function Header({
                 name="unit_of_measure"
                 value={unitOfMeasure}
                 options={[
-                  { value: Unit.IN, label: "in" },
                   { value: Unit.CM, label: "cm" },
+                  { value: Unit.IN, label: "in" },
                 ]}
               />
             </div>
