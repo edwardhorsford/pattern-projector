@@ -19,6 +19,7 @@ import {
 } from "@/_lib/menu-states";
 import { Dispatch, SetStateAction, ChangeEvent, RefObject } from "react";
 import { PatternScaleAction } from "@/_reducers/patternScaleReducer";
+import { applyPatternScaleDelta } from "@/_reducers/patternScaleReducer";
 import { Layers } from "@/_lib/layers";
 import Matrix from "ml-matrix";
 import {
@@ -251,7 +252,7 @@ export function ControlPanelBridge({
         return;
       }
       const currentScale = patternScaleRef.current;
-      const nextScale = Math.max(0.25, Math.min(4, nextScaleRaw));
+      const nextScale = Math.max(0.25, Math.min(10, nextScaleRaw));
       if (Math.abs(nextScale - currentScale) < 0.0001) {
         return;
       }
@@ -303,6 +304,21 @@ export function ControlPanelBridge({
     [dispatchPatternScaleAction, transformer],
   );
 
+  const getCalibrationCenterScreenAnchor = useCallback(() => {
+    const calibrationCenter = getCalibrationCenterPoint(
+      width,
+      height,
+      unitOfMeasure,
+    );
+    return transformPoint(calibrationCenter, calibrationTransform);
+  }, [
+    getCalibrationCenterPoint,
+    width,
+    height,
+    unitOfMeasure,
+    calibrationTransform,
+  ]);
+
   // Helper function to get offset from direction
   function getOffset(direction: Direction, px: number): Point {
     switch (direction) {
@@ -335,9 +351,7 @@ export function ControlPanelBridge({
     // Use the ACTUAL current localTransform for position calculation (not effectiveTransform)
     // This ensures the viewport shows the real current view position, even during zoom out
     try {
-      const inverseLocal = inverse(
-        localTransform.mmul(scale(Number(patternScale) || 1)),
-      );
+      const inverseLocal = inverse(localTransform);
       const pdfCorners = screenCorners.map((p) => {
         // First apply perspective (to get to calibrated space)
         const calibrated = transformPoint(p, perspective);
@@ -395,7 +409,6 @@ export function ControlPanelBridge({
     layoutHeight,
     perspective,
     localTransform,
-    patternScale,
     effectiveTransform,
   ]);
 
@@ -416,9 +429,7 @@ export function ControlPanelBridge({
     // Transform corners to PDF space using inverse of localTransform
     // This properly handles rotation and flipping
     try {
-      const inverseLocal = inverse(
-        localTransform.mmul(scale(Number(patternScale) || 1)),
-      );
+      const inverseLocal = inverse(localTransform);
 
       // Transform the 4 corners of the calibration rectangle
       const corners = [
@@ -441,7 +452,7 @@ export function ControlPanelBridge({
     } catch {
       return null;
     }
-  }, [width, height, unitOfMeasure, localTransform, patternScale]);
+  }, [width, height, unitOfMeasure, localTransform]);
 
   // Calculate paper sheet bounds in PDF coordinates for mini map
   // Paper sheet is centered in the calibration area, sized for A4 (CM) or Letter (IN)
@@ -472,9 +483,7 @@ export function ControlPanelBridge({
     // Transform corners to PDF space using inverse of localTransform
     // This properly handles rotation and flipping
     try {
-      const inverseLocal = inverse(
-        localTransform.mmul(scale(Number(patternScale) || 1)),
-      );
+      const inverseLocal = inverse(localTransform);
 
       // Transform the 4 corners of the paper rectangle
       const corners = [
@@ -506,7 +515,7 @@ export function ControlPanelBridge({
     } catch {
       return null;
     }
-  }, [width, height, unitOfMeasure, localTransform, patternScale]);
+  }, [width, height, unitOfMeasure, localTransform]);
 
   const calculateCalibrationCenterPoint = useCallback(() => {
     try {
@@ -575,7 +584,10 @@ export function ControlPanelBridge({
 
       if (detail.type === "delta") {
         const currentScale = Number(patternScale) || 1;
-        applyPatternScale(currentScale + detail.delta, detail.anchor);
+        applyPatternScale(
+          applyPatternScaleDelta(currentScale, detail.delta),
+          detail.anchor,
+        );
       } else {
         applyPatternScale(detail.scale, detail.anchor);
       }
@@ -752,29 +764,20 @@ export function ControlPanelBridge({
             break;
           case "adjustScale": {
             const delta = params as number;
-            const screenCenterAnchor = {
-              x: window.innerWidth * 0.5,
-              y: window.innerHeight * 0.5,
-            };
+            const screenCenterAnchor = getCalibrationCenterScreenAnchor();
             applyPatternScale(
-              (Number(patternScale) || 1) + delta,
+              applyPatternScaleDelta(Number(patternScale) || 1, delta),
               screenCenterAnchor,
             );
             break;
           }
           case "resetScale": {
-            const screenCenterAnchor = {
-              x: window.innerWidth * 0.5,
-              y: window.innerHeight * 0.5,
-            };
+            const screenCenterAnchor = getCalibrationCenterScreenAnchor();
             applyPatternScale(1, screenCenterAnchor);
             break;
           }
           case "setScale": {
-            const screenCenterAnchor = {
-              x: window.innerWidth * 0.5,
-              y: window.innerHeight * 0.5,
-            };
+            const screenCenterAnchor = getCalibrationCenterScreenAnchor();
             applyPatternScale(Number(params), screenCenterAnchor);
             break;
           }

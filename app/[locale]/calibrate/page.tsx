@@ -21,6 +21,7 @@ import {
   checkIsConcave,
   getCalibrationCenterPoint,
   getPerspectiveTransformFromPoints,
+  transformPoint,
 } from "@/_lib/geometry";
 import isValidFile from "@/_lib/is-valid-file";
 import removeNonDigits from "@/_lib/remove-non-digits";
@@ -322,6 +323,15 @@ export default function Page() {
     });
   }, []);
 
+  const getCalibrationCenterScreenAnchor = useCallback(() => {
+    const calibrationCenter = getCalibrationCenterPoint(
+      width,
+      height,
+      unitOfMeasure,
+    );
+    return transformPoint(calibrationCenter, calibrationTransform);
+  }, [width, height, unitOfMeasure, calibrationTransform]);
+
   // Intercept browser keyboard zoom while projecting and map it to pattern scale
   const handleProjectZoomShortcut = useCallback(
     (event: KeyboardEvent) => {
@@ -347,10 +357,7 @@ export default function Page() {
         return;
       }
 
-      const anchor = {
-        x: window.innerWidth * 0.5,
-        y: window.innerHeight * 0.5,
-      };
+      const anchor = getCalibrationCenterScreenAnchor();
 
       if (isZoomIn) {
         window.dispatchEvent(
@@ -372,7 +379,7 @@ export default function Page() {
         );
       }
     },
-    [isCalibrating],
+    [isCalibrating, getCalibrationCenterScreenAnchor],
   );
 
   const handleProjectPinchZoomDelta = useCallback(
@@ -419,14 +426,8 @@ export default function Page() {
   const handleProjectPinchZoomCapture = useCallback(
     (event: ReactWheelEvent<HTMLElement>) => {
       const anchor = {
-        x:
-          event.clientX > 0
-            ? event.clientX
-            : lastPointerScreenRef.current.x || window.innerWidth * 0.5,
-        y:
-          event.clientY > 0
-            ? event.clientY
-            : lastPointerScreenRef.current.y || window.innerHeight * 0.5,
+        x: event.clientX > 0 ? event.clientX : getCalibrationCenterScreenAnchor().x,
+        y: event.clientY > 0 ? event.clientY : getCalibrationCenterScreenAnchor().y,
       };
 
       handleProjectPinchZoomDelta(
@@ -436,7 +437,7 @@ export default function Page() {
         () => event.preventDefault(),
       );
     },
-    [handleProjectPinchZoomDelta],
+    [handleProjectPinchZoomDelta, getCalibrationCenterScreenAnchor],
   );
 
   const handleProjectGestureStart = useCallback(
@@ -488,11 +489,11 @@ export default function Page() {
         x:
           (gestureEvent.clientX ?? 0) > 0
             ? (gestureEvent.clientX as number)
-            : lastPointerScreenRef.current.x || window.innerWidth * 0.5,
+            : getCalibrationCenterScreenAnchor().x,
         y:
           (gestureEvent.clientY ?? 0) > 0
             ? (gestureEvent.clientY as number)
-            : lastPointerScreenRef.current.y || window.innerHeight * 0.5,
+            : getCalibrationCenterScreenAnchor().y,
       };
 
       window.dispatchEvent(
@@ -505,7 +506,7 @@ export default function Page() {
         }),
       );
     },
-    [isCalibrating],
+    [isCalibrating, getCalibrationCenterScreenAnchor],
   );
 
   const handleProjectGestureEnd = useCallback(() => {
