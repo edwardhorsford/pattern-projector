@@ -8,10 +8,12 @@ import { Button } from "@/_components/buttons/button";
 export default function ScaleMenu({
   patternScale,
   dispatchPatternScaleAction,
+  onStepScale,
   isMenuAtBottom = false,
 }: {
   patternScale: string;
   dispatchPatternScaleAction: Dispatch<PatternScaleAction>;
+  onStepScale?: (delta: number) => void;
   isMenuAtBottom?: boolean;
 }) {
   const t = useTranslations("ScaleMenu");
@@ -42,9 +44,13 @@ export default function ScaleMenu({
         }
         label={t("scale")}
         value={patternScale}
-        onStep={(delta) =>
-          dispatchPatternScaleAction({ type: "delta", delta: delta })
-        }
+        onStep={(delta) => {
+          if (onStepScale) {
+            onStepScale(delta);
+            return;
+          }
+          dispatchPatternScaleAction({ type: "delta", delta: delta });
+        }}
         step={0.1}
       ></StepperInput>
     </menu>

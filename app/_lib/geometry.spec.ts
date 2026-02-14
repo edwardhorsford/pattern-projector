@@ -55,9 +55,16 @@ test("coverts 3x3 matrix to 4x4 matrix", () => {
     0, -204.72045347183263, -1629.6900958816486, 0, 1,
   ];
 
-  const matrix = toMatrix3d(src, dst);
+  const matrix = getPerspectiveTransform(src, dst);
+  const cssMatrix = toMatrix3d(matrix);
 
-  for (let i = 0; i < matrix.length; i++) {
-    expect(matrix[i]).toBeCloseTo(openCVMatrix[i]);
+  const cssValues = cssMatrix
+    .replace("matrix3d(", "")
+    .replace(")", "")
+    .split(",")
+    .map(Number);
+
+  for (let i = 0; i < cssValues.length; i++) {
+    expect(cssValues[i]).toBeCloseTo(openCVMatrix[i]);
   }
 });

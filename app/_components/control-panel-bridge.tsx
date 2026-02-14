@@ -19,6 +19,7 @@ import {
 } from "@/_lib/menu-states";
 import { Dispatch, SetStateAction, ChangeEvent, RefObject } from "react";
 import { PatternScaleAction } from "@/_reducers/patternScaleReducer";
+import { applyPatternScaleDelta } from "@/_reducers/patternScaleReducer";
 import { Layers } from "@/_lib/layers";
 import Matrix from "ml-matrix";
 import {
@@ -37,6 +38,7 @@ import {
   getBounds,
   RestoreTransforms,
   translate,
+  scale,
   scaleAboutPoint,
 } from "@/_lib/geometry";
 import { inverse } from "ml-matrix";
@@ -51,6 +53,10 @@ import {
   transformLine,
 } from "@/_reducers/linesReducer";
 import { subtract } from "@/_lib/point";
+
+type ProjectScaleDetail =
+  | { type: "delta"; delta: number; anchor: Point }
+  | { type: "set"; scale: number; anchor: Point };
 
 interface ControlPanelBridgeProps {
   // State to sync
@@ -206,6 +212,31 @@ export function ControlPanelBridge({
   const transformer = useTransformerContext();
   const localTransform = useTransformContext();
   const syncRequestedRef = useRef(false);
+  const localTransformRef = useRef(localTransform);
+  const perspectiveRef = useRef(perspective);
+  const patternScaleRef = useRef(Number(patternScale) || 1);
+  const zoomedOutRef = useRef(zoomedOut);
+  const magnifyingRef = useRef(magnifying);
+
+  useEffect(() => {
+    localTransformRef.current = localTransform;
+  }, [localTransform]);
+
+  useEffect(() => {
+    perspectiveRef.current = perspective;
+  }, [perspective]);
+
+  useEffect(() => {
+    patternScaleRef.current = Number(patternScale) || 1;
+  }, [patternScale]);
+
+  useEffect(() => {
+    zoomedOutRef.current = zoomedOut;
+  }, [zoomedOut]);
+
+  useEffect(() => {
+    magnifyingRef.current = magnifying;
+  }, [magnifying]);
 
   // When zoomed out or magnifying, use the saved transform for preview display
   // This preserves the rotation/flip state in the preview even though the actual
@@ -214,6 +245,79 @@ export function ControlPanelBridge({
     (zoomedOut || magnifying) && restoreTransforms
       ? restoreTransforms.localTransform
       : localTransform;
+
+  const applyPatternScale = useCallback(
+    (nextScaleRaw: number, anchorScreenPoint: Point) => {
+      if (!Number.isFinite(nextScaleRaw)) {
+        return;
+      }
+      const currentScale = patternScaleRef.current;
+      const nextScale = Math.max(0.25, Math.min(10, nextScaleRaw));
+      if (Math.abs(nextScale - currentScale) < 0.0001) {
+        return;
+      }
+
+      if (!zoomedOutRef.current && !magnifyingRef.current) {
+        try {
+          const scaleRatio = nextScale / currentScale;
+          const anchorInCalibratedSpace = transformPoint(
+            anchorScreenPoint,
+            perspectiveRef.current,
+          );
+          const anchorInPatternSpace = transformPoint(
+            anchorInCalibratedSpace,
+            inverse(localTransformRef.current),
+          );
+          const scaledAnchorInPatternSpace = {
+            x: anchorInPatternSpace.x * scaleRatio,
+            y: anchorInPatternSpace.y * scaleRatio,
+          };
+          const anchorAfterScaleInCalibratedSpace = transformPoint(
+            scaledAnchorInPatternSpace,
+            localTransformRef.current,
+          );
+          const translateDelta = {
+            x: anchorInCalibratedSpace.x - anchorAfterScaleInCalibratedSpace.x,
+            y: anchorInCalibratedSpace.y - anchorAfterScaleInCalibratedSpace.y,
+          };
+
+          transformer.translate({
+            x: translateDelta.x,
+            y: translateDelta.y,
+          });
+
+          localTransformRef.current = translate(translateDelta).mmul(
+            localTransformRef.current,
+          );
+        } catch {
+          // No-op fallback; scale still applies below.
+        }
+      }
+
+      patternScaleRef.current = nextScale;
+
+      dispatchPatternScaleAction({
+        type: "set",
+        scale: nextScale.toFixed(2),
+      });
+    },
+    [dispatchPatternScaleAction, transformer],
+  );
+
+  const getCalibrationCenterScreenAnchor = useCallback(() => {
+    const calibrationCenter = getCalibrationCenterPoint(
+      width,
+      height,
+      unitOfMeasure,
+    );
+    return transformPoint(calibrationCenter, calibrationTransform);
+  }, [
+    getCalibrationCenterPoint,
+    width,
+    height,
+    unitOfMeasure,
+    calibrationTransform,
+  ]);
 
   // Helper function to get offset from direction
   function getOffset(direction: Direction, px: number): Point {
@@ -413,15 +517,36 @@ export function ControlPanelBridge({
     }
   }, [width, height, unitOfMeasure, localTransform]);
 
+  const calculateCalibrationCenterPoint = useCallback(() => {
+    try {
+      const calibratedCenter = getCalibrationCenterPoint(
+        width,
+        height,
+        unitOfMeasure,
+      );
+      const inverseLocal = inverse(
+        localTransform.mmul(scale(Number(patternScale) || 1)),
+      );
+      return transformPoint(calibratedCenter, inverseLocal);
+    } catch {
+      return null;
+    }
+  }, [
+    getCalibrationCenterPoint,
+    width,
+    height,
+    unitOfMeasure,
+    localTransform,
+    patternScale,
+  ]);
+
   // Keyboard shortcut X for "mark area complete" - marks the center of the current viewport
   useKeyDown(() => {
     // Only work when projecting (not calibrating), not zoomed out, and not magnifying
     if (!isCalibrating && !zoomedOut && !magnifying) {
-      const viewBounds = calculateViewportBounds();
-      if (viewBounds) {
-        const centerX = viewBounds.x + viewBounds.width / 2;
-        const centerY = viewBounds.y + viewBounds.height / 2;
-        const newMarker = createMarker({ x: centerX, y: centerY });
+      const center = calculateCalibrationCenterPoint();
+      if (center) {
+        const newMarker = createMarker(center);
         setMarkers([...markers, newMarker]);
       }
     }
@@ -446,6 +571,39 @@ export function ControlPanelBridge({
     document.addEventListener("keydown", handleUndo);
     return () => document.removeEventListener("keydown", handleUndo);
   }, [isCalibrating, zoomedOut, magnifying, markers, setMarkers]);
+
+  useEffect(() => {
+    const handleProjectScaleEvent = (event: Event) => {
+      if (isCalibrating) {
+        return;
+      }
+      const detail = (event as CustomEvent<ProjectScaleDetail>).detail;
+      if (!detail) {
+        return;
+      }
+
+      if (detail.type === "delta") {
+        const currentScale = Number(patternScale) || 1;
+        applyPatternScale(
+          applyPatternScaleDelta(currentScale, detail.delta),
+          detail.anchor,
+        );
+      } else {
+        applyPatternScale(detail.scale, detail.anchor);
+      }
+    };
+
+    window.addEventListener(
+      "project-scale",
+      handleProjectScaleEvent as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        "project-scale",
+        handleProjectScaleEvent as EventListener,
+      );
+    };
+  }, [applyPatternScale, isCalibrating, patternScale]);
 
   // Build current state object
   const buildState = useCallback(
@@ -604,27 +762,25 @@ export function ControlPanelBridge({
           case "setLineThickness":
             setLineThickness(params as number);
             break;
-          case "adjustScale":
+          case "adjustScale": {
             const delta = params as number;
-            const currentScale = Number(patternScale);
-            const newScale = Math.max(0.5, Math.min(2, currentScale + delta));
-            dispatchPatternScaleAction({
-              type: "set",
-              scale: newScale.toFixed(2),
-            });
+            const screenCenterAnchor = getCalibrationCenterScreenAnchor();
+            applyPatternScale(
+              applyPatternScaleDelta(Number(patternScale) || 1, delta),
+              screenCenterAnchor,
+            );
             break;
-          case "resetScale":
-            dispatchPatternScaleAction({
-              type: "set",
-              scale: "1.00",
-            });
+          }
+          case "resetScale": {
+            const screenCenterAnchor = getCalibrationCenterScreenAnchor();
+            applyPatternScale(1, screenCenterAnchor);
             break;
-          case "setScale":
-            dispatchPatternScaleAction({
-              type: "set",
-              scale: params as string,
-            });
+          }
+          case "setScale": {
+            const screenCenterAnchor = getCalibrationCenterScreenAnchor();
+            applyPatternScale(Number(params), screenCenterAnchor);
             break;
+          }
           case "toggleMenu":
             const menuType = params as string;
             if (menuType === "stitch") {
@@ -888,11 +1044,9 @@ export function ControlPanelBridge({
             break;
           case "markViewCenter": {
             // Place a marker at the center of the current viewport
-            const viewBounds = calculateViewportBounds();
-            if (viewBounds) {
-              const centerX = viewBounds.x + viewBounds.width / 2;
-              const centerY = viewBounds.y + viewBounds.height / 2;
-              const newMarker = createMarker({ x: centerX, y: centerY });
+            const center = calculateCalibrationCenterPoint();
+            if (center) {
+              const newMarker = createMarker(center);
               setMarkers([...markers, newMarker]);
             }
             break;

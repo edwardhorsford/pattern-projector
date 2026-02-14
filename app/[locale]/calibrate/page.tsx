@@ -3,6 +3,7 @@
 import { Matrix, inverse } from "ml-matrix";
 import React, {
   ChangeEvent,
+  WheelEvent as ReactWheelEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -20,6 +21,7 @@ import {
   checkIsConcave,
   getCalibrationCenterPoint,
   getPerspectiveTransformFromPoints,
+  transformPoint,
 } from "@/_lib/geometry";
 import isValidFile from "@/_lib/is-valid-file";
 import removeNonDigits from "@/_lib/remove-non-digits";
@@ -84,7 +86,7 @@ import { toggleFullScreen } from "@/_lib/full-screen";
 import { usePdfThumbnail } from "@/_hooks/use-pdf-thumbnail";
 import { Marker } from "@/_lib/marker";
 import MarkerCanvas from "@/_components/canvases/marker-canvas";
-import linesReducer, { Line } from "@/_reducers/linesReducer";
+import linesReducer from "@/_reducers/linesReducer";
 
 const defaultStitchSettings = {
   lineCount: 1,
@@ -93,10 +95,14 @@ const defaultStitchSettings = {
   lineDirection: LineDirection.Column,
 } as StitchSettings;
 
+type ProjectScaleDetail =
+  | { type: "delta"; delta: number; anchor: { x: number; y: number } }
+  | { type: "set"; scale: number; anchor: { x: number; y: number } };
+
 export default function Page() {
   // Default dimensions should be available on most cutting mats and large enough to get an accurate calibration
-  const defaultWidthDimensionValue = "24";
-  const defaultHeightDimensionValue = "16";
+  const defaultWidthDimensionValue = "60";
+  const defaultHeightDimensionValue = "40";
   const maxDimensionValue = 1000; // Prevents crashing from excessive grid lines #410
 
   const maxPoints = 4; // One point per vertex in rectangle
@@ -126,7 +132,7 @@ export default function Page() {
   const [restoreTransforms, setRestoreTransforms] =
     useState<RestoreTransforms | null>(null);
   const [pageCount, setPageCount] = useState<number>(0);
-  const [unitOfMeasure, setUnitOfMeasure] = useState<Unit>(Unit.IN);
+  const [unitOfMeasure, setUnitOfMeasure] = useState<Unit>(Unit.CM);
   const [layoutWidth, setLayoutWidth] = useState<number>(0);
   const [layoutHeight, setLayoutHeight] = useState<number>(0);
   const [lineThickness, setLineThickness] = useState<number>(0);
@@ -184,10 +190,17 @@ export default function Page() {
       pageCount,
       stitchSettings,
       lineThickness,
-      showPreviewImage,
+      showPreviewImage && !isCalibrating,
     );
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const gestureScaleRef = useRef(1);
+  const controlKeyDownRef = useRef(false);
+  const metaKeyDownRef = useRef(false);
+  const lastPointerScreenRef = useRef({
+    x: 0,
+    y: 0,
+  });
 
   const t = useTranslations("Header");
   const g = useTranslations("General");
@@ -227,19 +240,39 @@ export default function Page() {
   }
 
   // Create a default calibration grid that fits within the viewport with a bit of a border
-  function getDefaultPoints() {
+  const getDefaultPoints = useCallback(() => {
     const { innerWidth, innerHeight } = window;
-    const minX = innerWidth * 0.2;
-    const minY = innerHeight * 0.2;
-    const maxX = innerWidth * 0.8;
-    const maxY = innerHeight * 0.8;
+    // Use the currently selected calibration dimensions to define the target aspect ratio.
+    const targetWidth = width > 0 ? width : 1;
+    const targetHeight = height > 0 ? height : 1;
+    const targetAspectRatio = targetWidth / targetHeight;
+
+    // Fit the default grid inside 70% of the viewport so there is always a visible margin.
+    const maxGridWidth = innerWidth * 0.7;
+    const maxGridHeight = innerHeight * 0.7;
+
+    // Start by fitting width-first, then clamp by height if needed to preserve aspect ratio.
+    let gridWidth = maxGridWidth;
+    let gridHeight = gridWidth / targetAspectRatio;
+
+    if (gridHeight > maxGridHeight) {
+      gridHeight = maxGridHeight;
+      gridWidth = gridHeight * targetAspectRatio;
+    }
+
+    // Center the default rectangle in the viewport.
+    const minX = (innerWidth - gridWidth) * 0.5;
+    const minY = (innerHeight - gridHeight) * 0.5;
+    const maxX = minX + gridWidth;
+    const maxY = minY + gridHeight;
+
     return [
       { x: minX, y: minY },
       { x: maxX, y: minY },
       { x: maxX, y: maxY },
       { x: minX, y: maxY },
     ];
-  }
+  }, [width, height]);
 
   // Merge new settings (i.e. width x height, theme, overlays) with settings from localStorage
   function updateLocalSettings(newSettings: {}) {
@@ -278,7 +311,7 @@ export default function Page() {
         dispatch({ type: "set", points: getDefaultPoints() }); // Fixes #363: on Chrome sometimes the points are set as zeros in localStorage
       }
     }
-  }, [points, width, height, unitOfMeasure]);
+  }, [points, width, height, unitOfMeasure, getDefaultPoints]);
 
   // Prevent the user from zooming
   const noZoomRefCallback = useCallback((element: HTMLElement | null) => {
@@ -288,6 +321,202 @@ export default function Page() {
     element.addEventListener("wheel", (e) => e.ctrlKey && e.preventDefault(), {
       passive: false,
     });
+  }, []);
+
+  const getCalibrationCenterScreenAnchor = useCallback(() => {
+    const calibrationCenter = getCalibrationCenterPoint(
+      width,
+      height,
+      unitOfMeasure,
+    );
+    return transformPoint(calibrationCenter, calibrationTransform);
+  }, [width, height, unitOfMeasure, calibrationTransform]);
+
+  // Intercept browser keyboard zoom while projecting and map it to pattern scale
+  const handleProjectZoomShortcut = useCallback(
+    (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) {
+        return;
+      }
+
+      const isZoomIn =
+        event.key === "+" || event.key === "=" || event.code === "NumpadAdd";
+      const isZoomOut =
+        event.key === "-" ||
+        event.key === "_" ||
+        event.code === "NumpadSubtract";
+      const isReset = event.key === "0" || event.code === "Numpad0";
+
+      if (!isZoomIn && !isZoomOut && !isReset) {
+        return;
+      }
+
+      event.preventDefault();
+
+      if (isCalibrating) {
+        return;
+      }
+
+      const anchor = getCalibrationCenterScreenAnchor();
+
+      if (isZoomIn) {
+        window.dispatchEvent(
+          new CustomEvent<ProjectScaleDetail>("project-scale", {
+            detail: { type: "delta", delta: 0.1, anchor },
+          }),
+        );
+      } else if (isZoomOut) {
+        window.dispatchEvent(
+          new CustomEvent<ProjectScaleDetail>("project-scale", {
+            detail: { type: "delta", delta: -0.1, anchor },
+          }),
+        );
+      } else {
+        window.dispatchEvent(
+          new CustomEvent<ProjectScaleDetail>("project-scale", {
+            detail: { type: "set", scale: 1, anchor },
+          }),
+        );
+      }
+    },
+    [isCalibrating, getCalibrationCenterScreenAnchor],
+  );
+
+  const handleProjectPinchZoomDelta = useCallback(
+    (
+      deltaY: number,
+      modifierKeyPressed: boolean,
+      anchor: { x: number; y: number },
+      preventDefault: () => void,
+    ) => {
+      const modifierPressed =
+        modifierKeyPressed ||
+        controlKeyDownRef.current ||
+        metaKeyDownRef.current;
+
+      if (isCalibrating || !modifierPressed) {
+        if (modifierPressed) {
+          preventDefault();
+        }
+        return;
+      }
+
+      preventDefault();
+
+      const direction = Math.sign(deltaY);
+      if (direction === 0) {
+        return;
+      }
+
+      const steps = Math.max(1, Math.round(Math.abs(deltaY) / 80));
+
+      window.dispatchEvent(
+        new CustomEvent<ProjectScaleDetail>("project-scale", {
+          detail: {
+            type: "delta",
+            delta: -direction * 0.1 * steps,
+            anchor,
+          },
+        }),
+      );
+    },
+    [isCalibrating],
+  );
+
+  const handleProjectPinchZoomCapture = useCallback(
+    (event: ReactWheelEvent<HTMLElement>) => {
+      const anchor = {
+        x:
+          event.clientX > 0
+            ? event.clientX
+            : getCalibrationCenterScreenAnchor().x,
+        y:
+          event.clientY > 0
+            ? event.clientY
+            : getCalibrationCenterScreenAnchor().y,
+      };
+
+      handleProjectPinchZoomDelta(
+        event.deltaY,
+        event.ctrlKey || event.metaKey,
+        anchor,
+        () => event.preventDefault(),
+      );
+    },
+    [handleProjectPinchZoomDelta, getCalibrationCenterScreenAnchor],
+  );
+
+  const handleProjectGestureStart = useCallback(
+    (event: Event) => {
+      event.preventDefault();
+
+      if (isCalibrating) {
+        return;
+      }
+
+      const scale = (event as Event & { scale?: number }).scale;
+      gestureScaleRef.current = scale ?? 1;
+    },
+    [isCalibrating],
+  );
+
+  const handleProjectGestureChange = useCallback(
+    (event: Event) => {
+      event.preventDefault();
+
+      if (isCalibrating) {
+        return;
+      }
+
+      const scale = (event as Event & { scale?: number }).scale;
+      if (scale === undefined) {
+        return;
+      }
+
+      const diff = scale - gestureScaleRef.current;
+      const threshold = 0.06;
+      if (Math.abs(diff) < threshold) {
+        return;
+      }
+
+      const steps = Math.trunc(Math.abs(diff) / threshold);
+      gestureScaleRef.current = scale;
+
+      if (steps === 0) {
+        return;
+      }
+
+      const gestureEvent = event as Event & {
+        clientX?: number;
+        clientY?: number;
+      };
+
+      const anchor = {
+        x:
+          (gestureEvent.clientX ?? 0) > 0
+            ? (gestureEvent.clientX as number)
+            : getCalibrationCenterScreenAnchor().x,
+        y:
+          (gestureEvent.clientY ?? 0) > 0
+            ? (gestureEvent.clientY as number)
+            : getCalibrationCenterScreenAnchor().y,
+      };
+
+      window.dispatchEvent(
+        new CustomEvent<ProjectScaleDetail>("project-scale", {
+          detail: {
+            type: "delta",
+            delta: (diff > 0 ? 0.1 : -0.1) * steps,
+            anchor,
+          },
+        }),
+      );
+    },
+    [isCalibrating, getCalibrationCenterScreenAnchor],
+  );
+
+  const handleProjectGestureEnd = useCallback(() => {
+    gestureScaleRef.current = 1;
   }, []);
 
   // If possible, stop the device from going to sleep
@@ -377,6 +606,7 @@ export default function Page() {
   }
 
   function handlePointerDown(e: React.PointerEvent) {
+    lastPointerScreenRef.current = { x: e.clientX, y: e.clientY };
     resetIdle();
 
     // Subtle reminder to enter full screen when calibrating
@@ -409,6 +639,7 @@ export default function Page() {
   }
 
   function handlePointerMove(e: React.PointerEvent) {
+    lastPointerScreenRef.current = { x: e.clientX, y: e.clientY };
     // Chromebook triggers move after menu hides #268
     if (e.movementX === 0 && e.movementY === 0) {
       return;
@@ -452,13 +683,100 @@ export default function Page() {
     calibrationCallback();
   }, [points, width, height, unitOfMeasure, calibrationCallback]);
 
+  useEffect(() => {
+    window.addEventListener("keydown", handleProjectZoomShortcut);
+    return () => {
+      window.removeEventListener("keydown", handleProjectZoomShortcut);
+    };
+  }, [handleProjectZoomShortcut]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Control") {
+        controlKeyDownRef.current = true;
+      }
+      if (event.key === "Meta") {
+        metaKeyDownRef.current = true;
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === "Control") {
+        controlKeyDownRef.current = false;
+      }
+      if (event.key === "Meta") {
+        metaKeyDownRef.current = false;
+      }
+    };
+
+    const handleWindowBlur = () => {
+      controlKeyDownRef.current = false;
+      metaKeyDownRef.current = false;
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleWindowBlur);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleWindowBlur);
+    };
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("gesturestart", handleProjectGestureStart, {
+      passive: false,
+    });
+    window.addEventListener("gesturechange", handleProjectGestureChange, {
+      passive: false,
+    });
+    window.addEventListener("gestureend", handleProjectGestureEnd);
+
+    return () => {
+      window.removeEventListener("gesturestart", handleProjectGestureStart);
+      window.removeEventListener("gesturechange", handleProjectGestureChange);
+      window.removeEventListener("gestureend", handleProjectGestureEnd);
+    };
+  }, [
+    handleProjectGestureChange,
+    handleProjectGestureEnd,
+    handleProjectGestureStart,
+  ]);
+
   // Load data from localStorage
   useEffect(() => {
     const localPoints = localStorage.getItem("points");
     if (localPoints !== null) {
       dispatch({ type: "set", points: JSON.parse(localPoints) });
     } else {
-      dispatch({ type: "set", points: getDefaultPoints() });
+      const { innerWidth, innerHeight } = window;
+      const defaultAspectRatio =
+        Number(defaultWidthDimensionValue) /
+        Number(defaultHeightDimensionValue);
+      const maxGridWidth = innerWidth * 0.7;
+      const maxGridHeight = innerHeight * 0.7;
+
+      let gridWidth = maxGridWidth;
+      let gridHeight = gridWidth / defaultAspectRatio;
+      if (gridHeight > maxGridHeight) {
+        gridHeight = maxGridHeight;
+        gridWidth = gridHeight * defaultAspectRatio;
+      }
+
+      const minX = (innerWidth - gridWidth) * 0.5;
+      const minY = (innerHeight - gridHeight) * 0.5;
+
+      dispatch({
+        type: "set",
+        points: [
+          { x: minX, y: minY },
+          { x: minX + gridWidth, y: minY },
+          { x: minX + gridWidth, y: minY + gridHeight },
+          { x: minX, y: minY + gridHeight },
+        ],
+      });
     }
     const localSettingString = localStorage.getItem("canvasSettings");
     if (localSettingString !== null) {
@@ -493,7 +811,7 @@ export default function Page() {
     if (savedMenuPosition === "top" || savedMenuPosition === "bottom") {
       setMenuStates((prev) => ({ ...prev, menuPosition: savedMenuPosition }));
     }
-  }, []);
+  }, [defaultHeightDimensionValue, defaultWidthDimensionValue]);
 
   // Set button color style based on URL: blue for the beta site and gray for old site
   useEffect(() => {
@@ -576,6 +894,7 @@ export default function Page() {
     <main
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
+      onWheelCapture={handleProjectPinchZoomCapture}
       onKeyDown={resetIdle}
       ref={noZoomRefCallback}
       className={`${menusHidden && "cursor-none"} ${isDarkTheme(displaySettings.theme) && "dark bg-black"} w-screen h-screen absolute overflow-hidden touch-none`}
@@ -741,121 +1060,124 @@ export default function Page() {
               selectedLine={selectedLine}
               setSelectedLine={setSelectedLine}
             />
-            <MeasureCanvas
-              className={visible(!isCalibrating)}
-              perspective={perspective}
-              calibrationTransform={calibrationTransform}
-              unitOfMeasure={unitOfMeasure}
-              measuring={measuring}
-              setMeasuring={setMeasuring}
-              file={file}
-              gridCenter={getCalibrationCenterPoint(
-                width,
-                height,
-                unitOfMeasure,
-              )}
-              zoomedOut={zoomedOut}
-              magnifying={magnifying}
-              menusHidden={menusHidden}
-              menuStates={menuStates}
-              isDarkTheme={isDarkTheme(displaySettings.theme)}
-              lines={lines}
-              dispatchLines={dispatchLines}
-              selectedLine={selectedLine}
-              setSelectedLine={setSelectedLine}
-            >
-              <Draggable
-                className={`absolute ${menusHidden && "!cursor-none"} `}
+            {!isCalibrating && (
+              <MeasureCanvas
+                className={visible(!isCalibrating)}
                 perspective={perspective}
-                isCalibrating={isCalibrating}
-                unitOfMeasure={unitOfMeasure}
                 calibrationTransform={calibrationTransform}
-                setCalibrationTransform={setCalibrationTransform}
-                setPerspective={setPerspective}
-                magnifying={magnifying}
-                setMagnifying={setMagnifying}
-                setRestoreTransforms={setRestoreTransforms}
-                restoreTransforms={restoreTransforms}
-                zoomedOut={zoomedOut}
-                setZoomedOut={setZoomedOut}
-                layoutWidth={layoutWidth}
-                layoutHeight={layoutHeight}
-                calibrationCenter={getCalibrationCenterPoint(
+                unitOfMeasure={unitOfMeasure}
+                measuring={measuring}
+                setMeasuring={setMeasuring}
+                file={file}
+                gridCenter={getCalibrationCenterPoint(
                   width,
                   height,
                   unitOfMeasure,
                 )}
-                menuStates={menuStates}
-                file={file}
-                markingMode={markingMode}
-                setMarkingMode={setMarkingMode}
-                clearingMode={clearingMode}
-                setClearingMode={setClearingMode}
-                markers={markers}
-                setMarkers={setMarkers}
-              >
-                {file === null || file.type === "application/pdf" ? (
-                  <PdfViewer
-                    file={file}
-                    setPageCount={setPageCount}
-                    pageCount={pageCount}
-                    setLayers={setLayers}
-                    layers={layers}
-                    setLayoutWidth={setLayoutWidth}
-                    setLayoutHeight={setLayoutHeight}
-                    lineThickness={lineThickness}
-                    stitchSettings={stitchSettings}
-                    filter={themeFilter(displaySettings.theme)}
-                    dispatchStitchSettings={dispatchStitchSettings}
-                    setLineThicknessStatus={setLineThicknessStatus}
-                    setFileLoadStatus={setFileLoadStatus}
-                    magnifying={magnifying}
-                    gridCenter={getCalibrationCenterPoint(
-                      width,
-                      height,
-                      unitOfMeasure,
-                    )}
-                    patternScale={patternScaleFactor}
-                    setMenuStates={setMenuStates}
-                  />
-                ) : (
-                  <SvgViewer
-                    dataUrl={dataUrl ?? ""}
-                    setFileLoadStatus={setFileLoadStatus}
-                    setLayoutWidth={setLayoutWidth}
-                    setLayoutHeight={setLayoutHeight}
-                    setPageCount={setPageCount}
-                    layers={layers}
-                    setLayers={setLayers}
-                    svgStyle={svgStyle}
-                    patternScale={patternScaleFactor}
-                    setMenuStates={setMenuStates}
-                    patternScaleFactor={patternScaleFactor}
-                  />
-                )}
-              </Draggable>
-              <OverlayCanvas
-                className={`absolute top-0 pointer-events-none`}
-                points={points}
-                width={width}
-                height={height}
-                unitOfMeasure={unitOfMeasure}
-                displaySettings={displaySettings}
-                calibrationTransform={calibrationTransform}
                 zoomedOut={zoomedOut}
                 magnifying={magnifying}
-                restoreTransforms={restoreTransforms}
-                patternScale={String(patternScaleFactor)}
-              />
-              {!isCalibrating && (
+                menusHidden={menusHidden}
+                menuStates={menuStates}
+                isDarkTheme={isDarkTheme(displaySettings.theme)}
+                lines={lines}
+                dispatchLines={dispatchLines}
+                selectedLine={selectedLine}
+                setSelectedLine={setSelectedLine}
+                patternScale={patternScaleFactor}
+              >
+                <Draggable
+                  className={`absolute ${menusHidden && "!cursor-none"} `}
+                  perspective={perspective}
+                  isCalibrating={isCalibrating}
+                  unitOfMeasure={unitOfMeasure}
+                  calibrationTransform={calibrationTransform}
+                  setCalibrationTransform={setCalibrationTransform}
+                  setPerspective={setPerspective}
+                  magnifying={magnifying}
+                  setMagnifying={setMagnifying}
+                  setRestoreTransforms={setRestoreTransforms}
+                  restoreTransforms={restoreTransforms}
+                  zoomedOut={zoomedOut}
+                  setZoomedOut={setZoomedOut}
+                  layoutWidth={layoutWidth}
+                  layoutHeight={layoutHeight}
+                  calibrationCenter={getCalibrationCenterPoint(
+                    width,
+                    height,
+                    unitOfMeasure,
+                  )}
+                  patternScale={patternScaleFactor}
+                  menuStates={menuStates}
+                  file={file}
+                  markingMode={markingMode}
+                  setMarkingMode={setMarkingMode}
+                  clearingMode={clearingMode}
+                  setClearingMode={setClearingMode}
+                  markers={markers}
+                  setMarkers={setMarkers}
+                >
+                  {file === null || file.type === "application/pdf" ? (
+                    <PdfViewer
+                      file={file}
+                      setPageCount={setPageCount}
+                      pageCount={pageCount}
+                      setLayers={setLayers}
+                      layers={layers}
+                      setLayoutWidth={setLayoutWidth}
+                      setLayoutHeight={setLayoutHeight}
+                      lineThickness={lineThickness}
+                      stitchSettings={stitchSettings}
+                      filter={themeFilter(displaySettings.theme)}
+                      dispatchStitchSettings={dispatchStitchSettings}
+                      setLineThicknessStatus={setLineThicknessStatus}
+                      setFileLoadStatus={setFileLoadStatus}
+                      magnifying={magnifying}
+                      gridCenter={getCalibrationCenterPoint(
+                        width,
+                        height,
+                        unitOfMeasure,
+                      )}
+                      patternScale={patternScaleFactor}
+                      setMenuStates={setMenuStates}
+                    />
+                  ) : (
+                    <SvgViewer
+                      dataUrl={dataUrl ?? ""}
+                      setFileLoadStatus={setFileLoadStatus}
+                      setLayoutWidth={setLayoutWidth}
+                      setLayoutHeight={setLayoutHeight}
+                      setPageCount={setPageCount}
+                      layers={layers}
+                      setLayers={setLayers}
+                      svgStyle={svgStyle}
+                      patternScale={patternScaleFactor}
+                      setMenuStates={setMenuStates}
+                      patternScaleFactor={patternScaleFactor}
+                    />
+                  )}
+                </Draggable>
+                <OverlayCanvas
+                  className={`absolute top-0 pointer-events-none`}
+                  points={points}
+                  width={width}
+                  height={height}
+                  unitOfMeasure={unitOfMeasure}
+                  displaySettings={displaySettings}
+                  calibrationTransform={calibrationTransform}
+                  zoomedOut={zoomedOut}
+                  magnifying={magnifying}
+                  restoreTransforms={restoreTransforms}
+                  patternScale={String(patternScaleFactor)}
+                />
                 <MarkerCanvas
                   markers={markers}
                   calibrationTransform={calibrationTransform}
+                  patternScale={patternScaleFactor}
                   unitOfMeasure={unitOfMeasure}
                   theme={displaySettings.theme}
                 />
-              )}
-            </MeasureCanvas>
+              </MeasureCanvas>
+            )}
 
             <menu
               className={`absolute w-screen ${visible(!menusHidden)} ${
@@ -956,6 +1278,17 @@ export default function Page() {
                   dispatchStitchSettings={dispatchStitchSettings}
                   patternScale={patternScale}
                   dispatchPatternScaleAction={dispatchPatternScaleAction}
+                  onStepScale={(delta) => {
+                    window.dispatchEvent(
+                      new CustomEvent<ProjectScaleDetail>("project-scale", {
+                        detail: {
+                          type: "delta",
+                          delta,
+                          anchor: getCalibrationCenterScreenAnchor(),
+                        },
+                      }),
+                    );
+                  }}
                 />
               )}
             </menu>

@@ -49,6 +49,7 @@ export default function Draggable({
   layoutWidth,
   layoutHeight,
   calibrationCenter,
+  patternScale,
   menuStates,
   file,
   markingMode,
@@ -75,6 +76,7 @@ export default function Draggable({
   layoutWidth: number;
   layoutHeight: number;
   calibrationCenter: Point;
+  patternScale: number;
   menuStates: MenuStates;
   file: File | null;
   markingMode: boolean;
@@ -135,7 +137,7 @@ export default function Draggable({
     const pt = transformPoint(p, perspective);
 
     // Convert screen position to PDF coordinates for marker operations
-    const inverseLocal = inverse(transform);
+    const inverseLocal = inverse(transform.mmul(scale(patternScale)));
     const pdfPoint = transformPoint(pt, inverseLocal);
 
     // If in clearing mode, check if click is near a marker and remove it
@@ -308,6 +310,7 @@ export default function Draggable({
         style={{
           transform: `${toMatrix3d(calibrationTransform.mmul(transform))}`,
           transformOrigin: "0 0",
+          pointerEvents: "none",
         }}
       >
         {children}

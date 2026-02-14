@@ -30,6 +30,7 @@ export default function SideMenu({
   dispatchStitchSettings,
   patternScale,
   dispatchPatternScaleAction,
+  onStepScale,
 }: {
   menuStates: MenuStates;
   setMenuStates: Dispatch<SetStateAction<MenuStates>>;
@@ -41,6 +42,7 @@ export default function SideMenu({
   stitchSettings: StitchSettings;
   patternScale: string;
   dispatchPatternScaleAction: Dispatch<PatternScaleAction>;
+  onStepScale?: (delta: number) => void;
 }) {
   const sc = useTranslations("ScaleMenu");
   const h = useTranslations("Header");
@@ -146,6 +148,7 @@ export default function SideMenu({
         <ScaleMenu
           patternScale={patternScale}
           dispatchPatternScaleAction={dispatchPatternScaleAction}
+          onStepScale={onStepScale}
           isMenuAtBottom={isMenuAtBottom}
         />
       )}
