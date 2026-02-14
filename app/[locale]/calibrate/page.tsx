@@ -95,8 +95,8 @@ const defaultStitchSettings = {
 
 export default function Page() {
   // Default dimensions should be available on most cutting mats and large enough to get an accurate calibration
-  const defaultWidthDimensionValue = "24";
-  const defaultHeightDimensionValue = "16";
+  const defaultWidthDimensionValue = "60";
+  const defaultHeightDimensionValue = "40";
   const maxDimensionValue = 1000; // Prevents crashing from excessive grid lines #410
 
   const maxPoints = 4; // One point per vertex in rectangle
@@ -126,7 +126,7 @@ export default function Page() {
   const [restoreTransforms, setRestoreTransforms] =
     useState<RestoreTransforms | null>(null);
   const [pageCount, setPageCount] = useState<number>(0);
-  const [unitOfMeasure, setUnitOfMeasure] = useState<Unit>(Unit.IN);
+  const [unitOfMeasure, setUnitOfMeasure] = useState<Unit>(Unit.CM);
   const [layoutWidth, setLayoutWidth] = useState<number>(0);
   const [layoutHeight, setLayoutHeight] = useState<number>(0);
   const [lineThickness, setLineThickness] = useState<number>(0);
@@ -229,10 +229,30 @@ export default function Page() {
   // Create a default calibration grid that fits within the viewport with a bit of a border
   function getDefaultPoints() {
     const { innerWidth, innerHeight } = window;
-    const minX = innerWidth * 0.2;
-    const minY = innerHeight * 0.2;
-    const maxX = innerWidth * 0.8;
-    const maxY = innerHeight * 0.8;
+    // Use the currently selected calibration dimensions to define the target aspect ratio.
+    const targetWidth = width > 0 ? width : 1;
+    const targetHeight = height > 0 ? height : 1;
+    const targetAspectRatio = targetWidth / targetHeight;
+
+    // Fit the default grid inside 70% of the viewport so there is always a visible margin.
+    const maxGridWidth = innerWidth * 0.7;
+    const maxGridHeight = innerHeight * 0.7;
+
+    // Start by fitting width-first, then clamp by height if needed to preserve aspect ratio.
+    let gridWidth = maxGridWidth;
+    let gridHeight = gridWidth / targetAspectRatio;
+
+    if (gridHeight > maxGridHeight) {
+      gridHeight = maxGridHeight;
+      gridWidth = gridHeight * targetAspectRatio;
+    }
+
+    // Center the default rectangle in the viewport.
+    const minX = (innerWidth - gridWidth) * 0.5;
+    const minY = (innerHeight - gridHeight) * 0.5;
+    const maxX = minX + gridWidth;
+    const maxY = minY + gridHeight;
+
     return [
       { x: minX, y: minY },
       { x: maxX, y: minY },
