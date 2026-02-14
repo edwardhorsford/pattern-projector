@@ -6,7 +6,7 @@ import { useTransformContext } from "@/_hooks/use-transform-context";
 import Matrix from "ml-matrix";
 import { getPtDensity, Unit } from "@/_lib/unit";
 import { Theme, themeFilter } from "@/_lib/display-settings";
-import { scale } from "@/_lib/geometry";
+import { scale, transformPoint } from "@/_lib/geometry";
 
 interface MarkerCanvasProps {
   markers: Marker[];
@@ -15,21 +15,6 @@ interface MarkerCanvasProps {
   unitOfMeasure: Unit;
   theme?: Theme;
   className?: string;
-}
-
-/**
- * Helper to transform a point from PDF space to screen space
- */
-function transformPoint(
-  x: number,
-  y: number,
-  transform: Matrix,
-): { x: number; y: number } {
-  // Apply the 3x3 transformation matrix
-  const m = transform.to1DArray();
-  const newX = m[0] * x + m[1] * y + m[2];
-  const newY = m[3] * x + m[4] * y + m[5];
-  return { x: newX, y: newY };
 }
 
 /**
@@ -57,11 +42,6 @@ export default function MarkerCanvas({
     localTransform.mmul(scale(patternScale)),
   );
 
-  // Get scale from combined transform to size markers appropriately
-  const m = combinedTransform.to1DArray();
-  const scaleX = Math.sqrt(m[0] * m[0] + m[3] * m[3]);
-  const markerSizePx = markerSizePts * scaleX;
-
   if (markers.length === 0) {
     return null;
   }
@@ -72,11 +52,26 @@ export default function MarkerCanvas({
     >
       {markers.map((marker) => {
         // Transform marker position from PDF space to screen space
-        const screenPos = transformPoint(
-          marker.position.x,
-          marker.position.y,
+        const screenPos = transformPoint(marker.position, combinedTransform);
+
+        const xEdge = transformPoint(
+          {
+            x: marker.position.x + markerSizePts,
+            y: marker.position.y,
+          },
           combinedTransform,
         );
+        const yEdge = transformPoint(
+          {
+            x: marker.position.x,
+            y: marker.position.y + markerSizePts,
+          },
+          combinedTransform,
+        );
+        const markerSizePx =
+          (Math.hypot(xEdge.x - screenPos.x, xEdge.y - screenPos.y) +
+            Math.hypot(yEdge.x - screenPos.x, yEdge.y - screenPos.y)) /
+          2;
 
         return (
           <div

@@ -301,7 +301,10 @@ export default function MeasureCanvas({
           const matLine = transformLine(patternLine, transform);
           const scaledMatLine = transformLine(patternLine, patternToCalibrated);
           if (axisConstrained && dragOffset.current) {
-            matLine.points[1] = constrained(matLine.points[1], matLine.points[0]);
+            matLine.points[1] = constrained(
+              matLine.points[1],
+              matLine.points[0],
+            );
             scaledMatLine.points[1] = constrained(
               scaledMatLine.points[1],
               scaledMatLine.points[0],

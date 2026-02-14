@@ -276,12 +276,8 @@ export function ControlPanelBridge({
             localTransformRef.current,
           );
           const translateDelta = {
-            x:
-              anchorInCalibratedSpace.x -
-              anchorAfterScaleInCalibratedSpace.x,
-            y:
-              anchorInCalibratedSpace.y -
-              anchorAfterScaleInCalibratedSpace.y,
+            x: anchorInCalibratedSpace.x - anchorAfterScaleInCalibratedSpace.x,
+            y: anchorInCalibratedSpace.y - anchorAfterScaleInCalibratedSpace.y,
           };
 
           transformer.translate({
@@ -289,8 +285,9 @@ export function ControlPanelBridge({
             y: translateDelta.y,
           });
 
-          localTransformRef.current =
-            translate(translateDelta).mmul(localTransformRef.current);
+          localTransformRef.current = translate(translateDelta).mmul(
+            localTransformRef.current,
+          );
         } catch {
           // No-op fallback; scale still applies below.
         }
@@ -511,15 +508,36 @@ export function ControlPanelBridge({
     }
   }, [width, height, unitOfMeasure, localTransform, patternScale]);
 
+  const calculateCalibrationCenterPoint = useCallback(() => {
+    try {
+      const calibratedCenter = getCalibrationCenterPoint(
+        width,
+        height,
+        unitOfMeasure,
+      );
+      const inverseLocal = inverse(
+        localTransform.mmul(scale(Number(patternScale) || 1)),
+      );
+      return transformPoint(calibratedCenter, inverseLocal);
+    } catch {
+      return null;
+    }
+  }, [
+    getCalibrationCenterPoint,
+    width,
+    height,
+    unitOfMeasure,
+    localTransform,
+    patternScale,
+  ]);
+
   // Keyboard shortcut X for "mark area complete" - marks the center of the current viewport
   useKeyDown(() => {
     // Only work when projecting (not calibrating), not zoomed out, and not magnifying
     if (!isCalibrating && !zoomedOut && !magnifying) {
-      const viewBounds = calculateViewportBounds();
-      if (viewBounds) {
-        const centerX = viewBounds.x + viewBounds.width / 2;
-        const centerY = viewBounds.y + viewBounds.height / 2;
-        const newMarker = createMarker({ x: centerX, y: centerY });
+      const center = calculateCalibrationCenterPoint();
+      if (center) {
+        const newMarker = createMarker(center);
         setMarkers([...markers, newMarker]);
       }
     }
@@ -1023,11 +1041,9 @@ export function ControlPanelBridge({
             break;
           case "markViewCenter": {
             // Place a marker at the center of the current viewport
-            const viewBounds = calculateViewportBounds();
-            if (viewBounds) {
-              const centerX = viewBounds.x + viewBounds.width / 2;
-              const centerY = viewBounds.y + viewBounds.height / 2;
-              const newMarker = createMarker({ x: centerX, y: centerY });
+            const center = calculateCalibrationCenterPoint();
+            if (center) {
+              const newMarker = createMarker(center);
               setMarkers([...markers, newMarker]);
             }
             break;

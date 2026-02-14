@@ -332,7 +332,9 @@ export default function Page() {
       const isZoomIn =
         event.key === "+" || event.key === "=" || event.code === "NumpadAdd";
       const isZoomOut =
-        event.key === "-" || event.key === "_" || event.code === "NumpadSubtract";
+        event.key === "-" ||
+        event.key === "_" ||
+        event.code === "NumpadSubtract";
       const isReset = event.key === "0" || event.code === "Numpad0";
 
       if (!isZoomIn && !isZoomOut && !isReset) {
@@ -744,7 +746,8 @@ export default function Page() {
     } else {
       const { innerWidth, innerHeight } = window;
       const defaultAspectRatio =
-        Number(defaultWidthDimensionValue) / Number(defaultHeightDimensionValue);
+        Number(defaultWidthDimensionValue) /
+        Number(defaultHeightDimensionValue);
       const maxGridWidth = innerWidth * 0.7;
       const maxGridHeight = innerHeight * 0.7;
 
