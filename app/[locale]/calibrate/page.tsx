@@ -1272,6 +1272,17 @@ export default function Page() {
                   dispatchStitchSettings={dispatchStitchSettings}
                   patternScale={patternScale}
                   dispatchPatternScaleAction={dispatchPatternScaleAction}
+                  onStepScale={(delta) => {
+                    window.dispatchEvent(
+                      new CustomEvent<ProjectScaleDetail>("project-scale", {
+                        detail: {
+                          type: "delta",
+                          delta,
+                          anchor: getCalibrationCenterScreenAnchor(),
+                        },
+                      }),
+                    );
+                  }}
                 />
               )}
             </menu>
