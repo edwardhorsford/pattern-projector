@@ -6,10 +6,12 @@ import { useTransformContext } from "@/_hooks/use-transform-context";
 import Matrix from "ml-matrix";
 import { getPtDensity, Unit } from "@/_lib/unit";
 import { Theme, themeFilter } from "@/_lib/display-settings";
+import { scale } from "@/_lib/geometry";
 
 interface MarkerCanvasProps {
   markers: Marker[];
   calibrationTransform: Matrix;
+  patternScale: number;
   unitOfMeasure: Unit;
   theme?: Theme;
   className?: string;
@@ -38,6 +40,7 @@ function transformPoint(
 export default function MarkerCanvas({
   markers,
   calibrationTransform,
+  patternScale,
   unitOfMeasure,
   theme = Theme.Light,
   className,
@@ -50,7 +53,9 @@ export default function MarkerCanvas({
   const markerSizePts = MARKER_SIZE_INCHES * ptDensity;
 
   // Combined transform for positioning markers
-  const combinedTransform = calibrationTransform.mmul(localTransform);
+  const combinedTransform = calibrationTransform.mmul(
+    localTransform.mmul(scale(patternScale)),
+  );
 
   // Get scale from combined transform to size markers appropriately
   const m = combinedTransform.to1DArray();

@@ -37,6 +37,7 @@ import {
   getBounds,
   RestoreTransforms,
   translate,
+  scale,
   scaleAboutPoint,
 } from "@/_lib/geometry";
 import { inverse } from "ml-matrix";
@@ -337,7 +338,9 @@ export function ControlPanelBridge({
     // Use the ACTUAL current localTransform for position calculation (not effectiveTransform)
     // This ensures the viewport shows the real current view position, even during zoom out
     try {
-      const inverseLocal = inverse(localTransform);
+      const inverseLocal = inverse(
+        localTransform.mmul(scale(Number(patternScale) || 1)),
+      );
       const pdfCorners = screenCorners.map((p) => {
         // First apply perspective (to get to calibrated space)
         const calibrated = transformPoint(p, perspective);
@@ -395,6 +398,7 @@ export function ControlPanelBridge({
     layoutHeight,
     perspective,
     localTransform,
+    patternScale,
     effectiveTransform,
   ]);
 
@@ -415,7 +419,9 @@ export function ControlPanelBridge({
     // Transform corners to PDF space using inverse of localTransform
     // This properly handles rotation and flipping
     try {
-      const inverseLocal = inverse(localTransform);
+      const inverseLocal = inverse(
+        localTransform.mmul(scale(Number(patternScale) || 1)),
+      );
 
       // Transform the 4 corners of the calibration rectangle
       const corners = [
@@ -438,7 +444,7 @@ export function ControlPanelBridge({
     } catch {
       return null;
     }
-  }, [width, height, unitOfMeasure, localTransform]);
+  }, [width, height, unitOfMeasure, localTransform, patternScale]);
 
   // Calculate paper sheet bounds in PDF coordinates for mini map
   // Paper sheet is centered in the calibration area, sized for A4 (CM) or Letter (IN)
@@ -469,7 +475,9 @@ export function ControlPanelBridge({
     // Transform corners to PDF space using inverse of localTransform
     // This properly handles rotation and flipping
     try {
-      const inverseLocal = inverse(localTransform);
+      const inverseLocal = inverse(
+        localTransform.mmul(scale(Number(patternScale) || 1)),
+      );
 
       // Transform the 4 corners of the paper rectangle
       const corners = [
@@ -501,7 +509,7 @@ export function ControlPanelBridge({
     } catch {
       return null;
     }
-  }, [width, height, unitOfMeasure, localTransform]);
+  }, [width, height, unitOfMeasure, localTransform, patternScale]);
 
   // Keyboard shortcut X for "mark area complete" - marks the center of the current viewport
   useKeyDown(() => {

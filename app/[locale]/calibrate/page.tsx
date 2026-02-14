@@ -1073,6 +1073,7 @@ export default function Page() {
                 dispatchLines={dispatchLines}
                 selectedLine={selectedLine}
                 setSelectedLine={setSelectedLine}
+                patternScale={patternScaleFactor}
               >
                 <Draggable
                   className={`absolute ${menusHidden && "!cursor-none"} `}
@@ -1095,6 +1096,7 @@ export default function Page() {
                     height,
                     unitOfMeasure,
                   )}
+                  patternScale={patternScaleFactor}
                   menuStates={menuStates}
                   file={file}
                   markingMode={markingMode}
@@ -1160,6 +1162,7 @@ export default function Page() {
                 <MarkerCanvas
                   markers={markers}
                   calibrationTransform={calibrationTransform}
+                  patternScale={patternScaleFactor}
                   unitOfMeasure={unitOfMeasure}
                   theme={displaySettings.theme}
                 />

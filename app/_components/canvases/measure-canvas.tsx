@@ -1,4 +1,10 @@
-import { constrained, dist, distToLine, transformPoint } from "@/_lib/geometry";
+import {
+  constrained,
+  dist,
+  distToLine,
+  scale,
+  transformPoint,
+} from "@/_lib/geometry";
 import { CSS_PIXELS_PER_INCH } from "@/_lib/pixels-per-inch";
 import { Point } from "@/_lib/point";
 import Matrix, { inverse } from "ml-matrix";
@@ -43,6 +49,7 @@ export default function MeasureCanvas({
   dispatchLines,
   selectedLine,
   setSelectedLine,
+  patternScale,
   children,
 }: {
   perspective: Matrix;
@@ -62,10 +69,12 @@ export default function MeasureCanvas({
   dispatchLines: Dispatch<LinesAction>;
   selectedLine: number;
   setSelectedLine: Dispatch<SetStateAction<number>>;
+  patternScale: number;
   children: React.ReactNode;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragOffset = useRef<Point | null>(null);
+  const previousFileKey = useRef<string | null>(null);
 
   const [axisConstrained, setAxisConstrained] = useState<boolean>(false);
 
@@ -81,13 +90,14 @@ export default function MeasureCanvas({
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     const client = { x: e.clientX, y: e.clientY };
-    const patternToClient = calibrationTransform.mmul(transform);
+    const patternToCalibrated = transform.mmul(scale(patternScale));
+    const patternToClient = calibrationTransform.mmul(patternToCalibrated);
 
-    const scale = Math.sqrt(
+    const transformScale = Math.sqrt(
       transform.get(0, 0) ** 2 + transform.get(0, 1) ** 2,
     );
-    const scaledEndCircleRadius = END_CIRCLE_RADIUS / scale;
-    const scaledLineTouchRadius = LINE_TOUCH_RADIUS / scale;
+    const scaledEndCircleRadius = END_CIRCLE_RADIUS / transformScale;
+    const scaledLineTouchRadius = LINE_TOUCH_RADIUS / transformScale;
 
     let lineToSelect = -1;
 
@@ -166,17 +176,21 @@ export default function MeasureCanvas({
     if (selectedLine >= 0 && dragOffset.current) {
       e.stopPropagation();
       const client = { x: e.clientX, y: e.clientY };
+      const patternToCalibrated = transform.mmul(scale(patternScale));
       const clientDestination = {
         x: client.x + dragOffset.current.x,
         y: client.y + dragOffset.current.y,
       };
 
-      const matLine = transformLine(lines[selectedLine], transform);
+      const matLine = transformLine(lines[selectedLine], patternToCalibrated);
       let matFinal = transformPoint(clientDestination, perspective);
       if (axisConstrained) {
         matFinal = constrained(matFinal, matLine.points[0]);
       }
-      const patternDestination = transformPoint(matFinal, inverse(transform));
+      const patternDestination = transformPoint(
+        matFinal,
+        inverse(patternToCalibrated),
+      );
 
       dispatchLines({
         type: "update-point",
@@ -202,9 +216,10 @@ export default function MeasureCanvas({
     dragOffset.current = null;
 
     e.stopPropagation();
+    const patternToCalibrated = transform.mmul(scale(patternScale));
     const patternLine = lines[selectedLine];
     const patternAnchor = patternLine.points[0];
-    const matAnchor = transformPoint(patternAnchor, transform);
+    const matAnchor = transformPoint(patternAnchor, patternToCalibrated);
     const destMat = transformPoint(client, perspective);
     let matFinal = destMat;
     if (axisConstrained) {
@@ -214,7 +229,7 @@ export default function MeasureCanvas({
     if (dist(matFinal, matAnchor) < CSS_PIXELS_PER_INCH / 16) {
       matFinal = { x: matAnchor.x + CSS_PIXELS_PER_INCH, y: matAnchor.y };
     }
-    const patternFinal = transformPoint(matFinal, inverse(transform));
+    const patternFinal = transformPoint(matFinal, inverse(patternToCalibrated));
     if (!zoomedOut) {
       setMeasuring(false);
     }
@@ -271,7 +286,8 @@ export default function MeasureCanvas({
         ctx.lineWidth = 4;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        const patternToClient = calibrationTransform.mmul(transform);
+        const patternToCalibrated = transform.mmul(scale(patternScale));
+        const patternToClient = calibrationTransform.mmul(patternToCalibrated);
         for (let i = 0; i < lines.length; i++) {
           if (i !== selectedLine) {
             drawLine(ctx, transformLine(lines[i], patternToClient).points);
@@ -283,14 +299,16 @@ export default function MeasureCanvas({
 
           const patternLine = lines[selectedLine];
           const matLine = transformLine(patternLine, transform);
+          const scaledMatLine = transformLine(patternLine, patternToCalibrated);
           if (axisConstrained && dragOffset.current) {
-            matLine.points[1] = constrained(
-              matLine.points[1],
-              matLine.points[0],
+            matLine.points[1] = constrained(matLine.points[1], matLine.points[0]);
+            scaledMatLine.points[1] = constrained(
+              scaledMatLine.points[1],
+              scaledMatLine.points[0],
             );
           }
           const clientLine = transformLine(
-            matLine,
+            scaledMatLine,
             calibrationTransform,
           ).points;
           drawArrow(ctx, clientLine);
@@ -325,11 +343,25 @@ export default function MeasureCanvas({
     selectedLine,
     measuring,
     isDarkTheme,
+    patternScale,
   ]);
 
   useEffect(() => {
-    dispatchLines({ type: "reset" });
-    setSelectedLine(-1);
+    const currentFileKey = file
+      ? `${file.name}:${file.size}:${file.lastModified}`
+      : null;
+
+    if (previousFileKey.current === null) {
+      previousFileKey.current = currentFileKey;
+      return;
+    }
+
+    if (previousFileKey.current !== currentFileKey) {
+      dispatchLines({ type: "reset" });
+      setSelectedLine(-1);
+    }
+
+    previousFileKey.current = currentFileKey;
   }, [file, dispatchLines, setSelectedLine]);
 
   useEffect(() => {
