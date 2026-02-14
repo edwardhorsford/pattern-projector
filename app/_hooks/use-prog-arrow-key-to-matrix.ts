@@ -12,18 +12,20 @@ export default function useProgArrowKeyToMatrix(
   function moveWithArrowKey(key: string, px: number) {
     let newOffset: Point = { x: 0, y: 0 };
     const dist = px * scale;
+    // Negate offsets: pressing "right" should move viewport right,
+    // which means moving the pattern left (negative x)
     switch (key) {
       case "ArrowUp":
-        newOffset = { y: -dist, x: 0 };
-        break;
-      case "ArrowDown":
         newOffset = { y: dist, x: 0 };
         break;
+      case "ArrowDown":
+        newOffset = { y: -dist, x: 0 };
+        break;
       case "ArrowLeft":
-        newOffset = { y: 0, x: -dist };
+        newOffset = { y: 0, x: dist };
         break;
       case "ArrowRight":
-        newOffset = { y: 0, x: dist };
+        newOffset = { y: 0, x: -dist };
         break;
       default:
         break;

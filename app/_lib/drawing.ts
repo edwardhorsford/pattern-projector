@@ -171,20 +171,37 @@ export function drawOverlays(cs: CanvasState) {
 }
 
 function drawMessage(cs: CanvasState, message: string) {
-  const { ctx, width, perspective } = cs;
+  const { ctx, width, height, perspective } = cs;
   ctx.save();
-  ctx.fillStyle = "#9333ea";
-  ctx.font = "48px sans-serif";
+
+  const fontSize = 64;
+  ctx.font = `${fontSize}px sans-serif`;
   const text = message;
   const textWidth = ctx.measureText(text).width;
+  const textHeight = fontSize;
+  const padding = 16;
+
+  // Position message at the center of the calibration area
   const center = transformPoint(
     {
       x: width * 0.5,
-      y: 0,
+      y: height * 0.5,
     },
     perspective,
   );
-  ctx.fillText(text, center.x - textWidth * 0.5, center.y);
+
+  // Draw semi-transparent background
+  ctx.fillStyle = "rgba(128, 128, 128, 0.4)";
+  ctx.fillRect(
+    center.x - textWidth * 0.5 - padding,
+    center.y - textHeight * 0.5 - padding,
+    textWidth + padding * 2,
+    textHeight + padding * 2,
+  );
+
+  // Draw text
+  ctx.fillStyle = "#9333ea";
+  ctx.fillText(text, center.x - textWidth * 0.5, center.y + textHeight * 0.25);
   ctx.restore();
 }
 

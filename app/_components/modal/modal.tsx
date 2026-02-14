@@ -17,12 +17,12 @@ export default function Modal({
       aria-modal="true"
     >
       <div
-        className={`fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity ${pageClass}`}
+        className={`fixed inset-0 bg-gray-500 dark:bg-gray-900 bg-opacity-75 dark:bg-opacity-75 transition-opacity ${pageClass}`}
       />
       <div className="fixed inset-0 z-10 w-screen overflow-y-auto">
         <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
           <div
-            className={`relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg ${windowClass}`}
+            className={`relative transform overflow-hidden rounded-lg bg-white dark:bg-gray-800 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg ${windowClass}`}
           >
             {children}
           </div>

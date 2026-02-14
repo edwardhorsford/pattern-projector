@@ -44,6 +44,13 @@ import { getPtDensity, Unit } from "@/_lib/unit";
 import { Marker, createMarker } from "@/_lib/marker";
 import { useKeyDown } from "@/_hooks/use-key-down";
 import { KeyCode } from "@/_lib/key-code";
+import {
+  Line,
+  LinesAction,
+  createLine,
+  transformLine,
+} from "@/_reducers/linesReducer";
+import { subtract } from "@/_lib/point";
 
 interface ControlPanelBridgeProps {
   // State to sync
@@ -121,6 +128,11 @@ interface ControlPanelBridgeProps {
   setMarkingMode: (value: boolean) => void;
   clearingMode: boolean;
   setClearingMode: (value: boolean) => void;
+  // Lines for measure tool
+  lines: Line[];
+  dispatchLines: Dispatch<LinesAction>;
+  selectedLine: number;
+  setSelectedLine: Dispatch<SetStateAction<number>>;
 }
 
 /**
@@ -186,6 +198,10 @@ export function ControlPanelBridge({
   setMarkingMode,
   clearingMode,
   setClearingMode,
+  lines,
+  dispatchLines,
+  selectedLine,
+  setSelectedLine,
 }: ControlPanelBridgeProps) {
   const transformer = useTransformerContext();
   const localTransform = useTransformContext();
@@ -470,6 +486,9 @@ export function ControlPanelBridge({
       markers,
       markingMode,
       clearingMode,
+      // Lines for measure tool
+      lines,
+      selectedLine,
     }),
     [
       isCalibrating,
@@ -498,6 +517,11 @@ export function ControlPanelBridge({
       calculatePaperBounds,
       layoutWidth,
       layoutHeight,
+      markers,
+      markingMode,
+      clearingMode,
+      lines,
+      selectedLine,
       markers,
       markingMode,
       clearingMode,
@@ -546,6 +570,8 @@ export function ControlPanelBridge({
             transformer.rotate(center, 90);
             break;
           case "recenter":
+            // Reset rotation first, then recenter - matching main window behavior
+            transformer.reset();
             transformer.recenter(center, layoutWidth, layoutHeight);
             break;
           case "toggleTheme":
@@ -585,6 +611,12 @@ export function ControlPanelBridge({
             dispatchPatternScaleAction({
               type: "set",
               scale: newScale.toFixed(2),
+            });
+            break;
+          case "resetScale":
+            dispatchPatternScaleAction({
+              type: "set",
+              scale: "1.00",
             });
             break;
           case "setScale":
@@ -888,6 +920,148 @@ export function ControlPanelBridge({
               setMarkers(newMarkers);
             }
             break;
+          // Line actions for measure tool
+          case "selectLine":
+            setSelectedLine(params as number);
+            setMeasuring(false);
+            break;
+          case "selectPreviousLine":
+            if (lines.length > 0) {
+              const previous =
+                selectedLine <= 0 ? lines.length - 1 : selectedLine - 1;
+              setSelectedLine(previous);
+            }
+            break;
+          case "selectNextLine":
+            if (lines.length > 0) {
+              const next =
+                selectedLine + 1 >= lines.length ? 0 : selectedLine + 1;
+              setSelectedLine(next);
+            }
+            break;
+          case "deleteLine":
+            if (selectedLine >= 0 && selectedLine < lines.length) {
+              dispatchLines({ type: "remove", index: selectedLine });
+              setSelectedLine(-1);
+              setMeasuring(false);
+            }
+            break;
+          case "updateLineDistance": {
+            const { index, distance } = params as {
+              index: number;
+              distance: string;
+            };
+            dispatchLines({
+              type: "update-distance",
+              index,
+              newDistance: distance,
+            });
+            break;
+          }
+          case "updateLineAngle": {
+            const { index, angle } = params as { index: number; angle: string };
+            dispatchLines({
+              type: "update-angle",
+              index,
+              newAngle: angle,
+            });
+            break;
+          }
+          case "rotateLineToHorizontal": {
+            if (selectedLine >= 0 && lines[selectedLine]) {
+              const gridCenter = getCalibrationCenterPoint(
+                width,
+                height,
+                unitOfMeasure,
+              );
+              const grainLine = createLine(
+                gridCenter,
+                { x: gridCenter.x + 1, y: gridCenter.y },
+                unitOfMeasure,
+              );
+              const matLine = transformLine(
+                lines[selectedLine],
+                localTransform,
+              );
+              transformer.align(matLine, grainLine);
+              setMeasuring(false);
+            }
+            break;
+          }
+          case "rotateAndCenterPrevious": {
+            if (lines.length > 0) {
+              const previous =
+                selectedLine <= 0 ? lines.length - 1 : selectedLine - 1;
+              setSelectedLine(previous);
+              const gridCenter = getCalibrationCenterPoint(
+                width,
+                height,
+                unitOfMeasure,
+              );
+              const grainLine = createLine(
+                gridCenter,
+                { x: gridCenter.x + 1, y: gridCenter.y },
+                unitOfMeasure,
+              );
+              const matLine = transformLine(lines[previous], localTransform);
+              transformer.align(matLine, grainLine);
+              setMeasuring(false);
+            }
+            break;
+          }
+          case "rotateAndCenterNext": {
+            if (lines.length > 0) {
+              const next =
+                selectedLine + 1 >= lines.length ? 0 : selectedLine + 1;
+              setSelectedLine(next);
+              const gridCenter = getCalibrationCenterPoint(
+                width,
+                height,
+                unitOfMeasure,
+              );
+              const grainLine = createLine(
+                gridCenter,
+                { x: gridCenter.x + 1, y: gridCenter.y },
+                unitOfMeasure,
+              );
+              const matLine = transformLine(lines[next], localTransform);
+              transformer.align(matLine, grainLine);
+              setMeasuring(false);
+            }
+            break;
+          }
+          case "flipAlongLine": {
+            if (selectedLine >= 0 && lines[selectedLine]) {
+              const matLine = transformLine(
+                lines[selectedLine],
+                localTransform,
+              );
+              transformer.flipAlong(matLine);
+              setMeasuring(false);
+            }
+            break;
+          }
+          case "translateAlongLine": {
+            if (selectedLine >= 0 && lines[selectedLine]) {
+              const matLine = transformLine(
+                lines[selectedLine],
+                localTransform,
+              );
+              transformer.translate(
+                subtract(matLine.points[1], matLine.points[0]),
+              );
+              // Swap the line endpoints after translate
+              const line = lines[selectedLine];
+              dispatchLines({
+                type: "update-both-points",
+                index: selectedLine,
+                newP0: line.points[1],
+                newP1: line.points[0],
+              });
+              setMeasuring(false);
+            }
+            break;
+          }
         }
       }
     },
@@ -946,6 +1120,10 @@ export function ControlPanelBridge({
       clearingMode,
       setClearingMode,
       calculateViewportBounds,
+      lines,
+      dispatchLines,
+      selectedLine,
+      setSelectedLine,
     ],
   );
 
