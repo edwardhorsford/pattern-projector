@@ -250,7 +250,7 @@ export function ControlPanelBridge({
         return;
       }
       const currentScale = patternScaleRef.current;
-      const nextScale = Math.max(0.5, Math.min(2, nextScaleRaw));
+      const nextScale = Math.max(0.25, Math.min(4, nextScaleRaw));
       if (Math.abs(nextScale - currentScale) < 0.0001) {
         return;
       }
