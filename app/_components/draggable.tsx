@@ -308,6 +308,7 @@ export default function Draggable({
         style={{
           transform: `${toMatrix3d(calibrationTransform.mmul(transform))}`,
           transformOrigin: "0 0",
+          pointerEvents: "none",
         }}
       >
         {children}

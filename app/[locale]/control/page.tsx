@@ -1178,6 +1178,48 @@ export default function ControlPanelPage() {
   const [shiftHeld, setShiftHeld] = useState(false);
 
   useEffect(() => {
+    const handleZoomShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) {
+        return;
+      }
+
+      const isZoomIn =
+        event.key === "+" || event.key === "=" || event.code === "NumpadAdd";
+      const isZoomOut =
+        event.key === "-" || event.key === "_" || event.code === "NumpadSubtract";
+      const isReset = event.key === "0" || event.code === "Numpad0";
+
+      if (isZoomIn || isZoomOut || isReset) {
+        event.preventDefault();
+      }
+    };
+
+    const handlePinchZoom = (event: WheelEvent) => {
+      if (event.ctrlKey) {
+        event.preventDefault();
+      }
+    };
+
+    const preventGesture = (event: Event) => {
+      event.preventDefault();
+    };
+
+    window.addEventListener("keydown", handleZoomShortcut);
+    window.addEventListener("wheel", handlePinchZoom, { passive: false });
+    window.addEventListener("gesturestart", preventGesture, { passive: false });
+    window.addEventListener("gesturechange", preventGesture, {
+      passive: false,
+    });
+
+    return () => {
+      window.removeEventListener("keydown", handleZoomShortcut);
+      window.removeEventListener("wheel", handlePinchZoom);
+      window.removeEventListener("gesturestart", preventGesture);
+      window.removeEventListener("gesturechange", preventGesture);
+    };
+  }, []);
+
+  useEffect(() => {
     const keyToDirection = (key: string): Direction | null => {
       switch (key) {
         case "ArrowUp":

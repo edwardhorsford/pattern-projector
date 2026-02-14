@@ -3,6 +3,7 @@
 import { Matrix, inverse } from "ml-matrix";
 import React, {
   ChangeEvent,
+  WheelEvent as ReactWheelEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -92,6 +93,29 @@ const defaultStitchSettings = {
   pageRange: "1-",
   lineDirection: LineDirection.Column,
 } as StitchSettings;
+
+type ZoomDebugState = {
+  keyDownCount: number;
+  keyUpCount: number;
+  shortcutCount: number;
+  wheelCount: number;
+  wheelAppliedCount: number;
+  wheelCtrlEventCount: number;
+  wheelControlRefCount: number;
+  wheelBlockedNoControlCount: number;
+  wheelBlockedCalibratingCount: number;
+  gestureStartCount: number;
+  gestureChangeCount: number;
+  gestureEndCount: number;
+  lastKey: string;
+  lastWheelDeltaY: number;
+  lastWheelSteps: number;
+  lastDirection: number;
+};
+
+type ProjectScaleDetail =
+  | { type: "delta"; delta: number; anchor: { x: number; y: number } }
+  | { type: "set"; scale: number; anchor: { x: number; y: number } };
 
 export default function Page() {
   // Default dimensions should be available on most cutting mats and large enough to get an accurate calibration
@@ -188,6 +212,42 @@ export default function Page() {
     );
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const gestureScaleRef = useRef(1);
+  const controlKeyDownRef = useRef(false);
+  const lastPointerScreenRef = useRef({
+    x: 0,
+    y: 0,
+  });
+  const zoomDebugEnabledRef = useRef(false);
+  const [zoomDebugEnabled, setZoomDebugEnabled] = useState(false);
+  const [zoomDebug, setZoomDebug] = useState<ZoomDebugState>({
+    keyDownCount: 0,
+    keyUpCount: 0,
+    shortcutCount: 0,
+    wheelCount: 0,
+    wheelAppliedCount: 0,
+    wheelCtrlEventCount: 0,
+    wheelControlRefCount: 0,
+    wheelBlockedNoControlCount: 0,
+    wheelBlockedCalibratingCount: 0,
+    gestureStartCount: 0,
+    gestureChangeCount: 0,
+    gestureEndCount: 0,
+    lastKey: "",
+    lastWheelDeltaY: 0,
+    lastWheelSteps: 0,
+    lastDirection: 0,
+  });
+
+  const updateZoomDebug = useCallback(
+    (updater: (previous: ZoomDebugState) => ZoomDebugState) => {
+      if (!zoomDebugEnabledRef.current) {
+        return;
+      }
+      setZoomDebug(updater);
+    },
+    [],
+  );
 
   const t = useTranslations("Header");
   const g = useTranslations("General");
@@ -310,6 +370,234 @@ export default function Page() {
     });
   }, []);
 
+  // Intercept browser keyboard zoom while projecting and map it to pattern scale
+  const handleProjectZoomShortcut = useCallback(
+    (event: KeyboardEvent) => {
+      updateZoomDebug((previous) => ({
+        ...previous,
+        lastKey: event.key,
+      }));
+
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) {
+        return;
+      }
+
+      const isZoomIn =
+        event.key === "+" || event.key === "=" || event.code === "NumpadAdd";
+      const isZoomOut =
+        event.key === "-" || event.key === "_" || event.code === "NumpadSubtract";
+      const isReset = event.key === "0" || event.code === "Numpad0";
+
+      if (!isZoomIn && !isZoomOut && !isReset) {
+        return;
+      }
+
+      event.preventDefault();
+
+      if (isCalibrating) {
+        return;
+      }
+
+      updateZoomDebug((previous) => ({
+        ...previous,
+        shortcutCount: previous.shortcutCount + 1,
+      }));
+
+      const anchor = {
+        x: window.innerWidth * 0.5,
+        y: window.innerHeight * 0.5,
+      };
+
+      if (isZoomIn) {
+        window.dispatchEvent(
+          new CustomEvent<ProjectScaleDetail>("project-scale", {
+            detail: { type: "delta", delta: 0.1, anchor },
+          }),
+        );
+      } else if (isZoomOut) {
+        window.dispatchEvent(
+          new CustomEvent<ProjectScaleDetail>("project-scale", {
+            detail: { type: "delta", delta: -0.1, anchor },
+          }),
+        );
+      } else {
+        window.dispatchEvent(
+          new CustomEvent<ProjectScaleDetail>("project-scale", {
+            detail: { type: "set", scale: 1, anchor },
+          }),
+        );
+      }
+    },
+    [isCalibrating, updateZoomDebug],
+  );
+
+  const handleProjectPinchZoomDelta = useCallback(
+    (
+      deltaY: number,
+      ctrlKeyPressed: boolean,
+      anchor: { x: number; y: number },
+      preventDefault: () => void,
+    ) => {
+      const controlPressed = ctrlKeyPressed || controlKeyDownRef.current;
+      updateZoomDebug((previous) => ({
+        ...previous,
+        wheelCount: previous.wheelCount + 1,
+        wheelCtrlEventCount: previous.wheelCtrlEventCount + (ctrlKeyPressed ? 1 : 0),
+        wheelControlRefCount:
+          previous.wheelControlRefCount + (controlKeyDownRef.current ? 1 : 0),
+        lastWheelDeltaY: deltaY,
+      }));
+
+      if (isCalibrating || !controlPressed) {
+        if (controlPressed) {
+          preventDefault();
+        }
+        updateZoomDebug((previous) => ({
+          ...previous,
+          wheelBlockedCalibratingCount:
+            previous.wheelBlockedCalibratingCount + (isCalibrating ? 1 : 0),
+          wheelBlockedNoControlCount:
+            previous.wheelBlockedNoControlCount + (!controlPressed ? 1 : 0),
+        }));
+        return;
+      }
+
+      preventDefault();
+
+      const direction = Math.sign(deltaY);
+      if (direction === 0) {
+        return;
+      }
+
+      const steps = Math.max(1, Math.round(Math.abs(deltaY) / 80));
+      updateZoomDebug((previous) => ({
+        ...previous,
+        wheelAppliedCount: previous.wheelAppliedCount + 1,
+        lastWheelSteps: steps,
+        lastDirection: direction,
+      }));
+
+      window.dispatchEvent(
+        new CustomEvent<ProjectScaleDetail>("project-scale", {
+          detail: {
+            type: "delta",
+            delta: -direction * 0.1 * steps,
+            anchor,
+          },
+        }),
+      );
+    },
+    [isCalibrating, updateZoomDebug],
+  );
+
+  const handleProjectPinchZoomCapture = useCallback(
+    (event: ReactWheelEvent<HTMLElement>) => {
+      const anchor = {
+        x:
+          event.clientX > 0
+            ? event.clientX
+            : lastPointerScreenRef.current.x || window.innerWidth * 0.5,
+        y:
+          event.clientY > 0
+            ? event.clientY
+            : lastPointerScreenRef.current.y || window.innerHeight * 0.5,
+      };
+
+      handleProjectPinchZoomDelta(
+        event.deltaY,
+        event.ctrlKey,
+        anchor,
+        () => event.preventDefault(),
+      );
+    },
+    [handleProjectPinchZoomDelta],
+  );
+
+  const handleProjectGestureStart = useCallback(
+    (event: Event) => {
+      event.preventDefault();
+
+      if (isCalibrating) {
+        return;
+      }
+
+      const scale = (event as Event & { scale?: number }).scale;
+      gestureScaleRef.current = scale ?? 1;
+      updateZoomDebug((previous) => ({
+        ...previous,
+        gestureStartCount: previous.gestureStartCount + 1,
+      }));
+    },
+    [isCalibrating, updateZoomDebug],
+  );
+
+  const handleProjectGestureChange = useCallback(
+    (event: Event) => {
+      event.preventDefault();
+
+      if (isCalibrating) {
+        return;
+      }
+
+      const scale = (event as Event & { scale?: number }).scale;
+      if (scale === undefined) {
+        return;
+      }
+
+      const diff = scale - gestureScaleRef.current;
+      const threshold = 0.06;
+      if (Math.abs(diff) < threshold) {
+        return;
+      }
+
+      const steps = Math.trunc(Math.abs(diff) / threshold);
+      gestureScaleRef.current = scale;
+      updateZoomDebug((previous) => ({
+        ...previous,
+        gestureChangeCount: previous.gestureChangeCount + 1,
+      }));
+
+      if (steps === 0) {
+        return;
+      }
+
+      const gestureEvent = event as Event & {
+        clientX?: number;
+        clientY?: number;
+      };
+
+      const anchor = {
+        x:
+          (gestureEvent.clientX ?? 0) > 0
+            ? (gestureEvent.clientX as number)
+            : lastPointerScreenRef.current.x || window.innerWidth * 0.5,
+        y:
+          (gestureEvent.clientY ?? 0) > 0
+            ? (gestureEvent.clientY as number)
+            : lastPointerScreenRef.current.y || window.innerHeight * 0.5,
+      };
+
+      window.dispatchEvent(
+        new CustomEvent<ProjectScaleDetail>("project-scale", {
+          detail: {
+            type: "delta",
+            delta: (diff > 0 ? 0.1 : -0.1) * steps,
+            anchor,
+          },
+        }),
+      );
+    },
+    [isCalibrating, updateZoomDebug],
+  );
+
+  const handleProjectGestureEnd = useCallback(() => {
+    gestureScaleRef.current = 1;
+    updateZoomDebug((previous) => ({
+      ...previous,
+      gestureEndCount: previous.gestureEndCount + 1,
+    }));
+  }, [updateZoomDebug]);
+
   // If possible, stop the device from going to sleep
   const requestWakeLock = useCallback(async () => {
     if ("wakeLock" in navigator) {
@@ -397,6 +685,7 @@ export default function Page() {
   }
 
   function handlePointerDown(e: React.PointerEvent) {
+    lastPointerScreenRef.current = { x: e.clientX, y: e.clientY };
     resetIdle();
 
     // Subtle reminder to enter full screen when calibrating
@@ -429,6 +718,7 @@ export default function Page() {
   }
 
   function handlePointerMove(e: React.PointerEvent) {
+    lastPointerScreenRef.current = { x: e.clientX, y: e.clientY };
     // Chromebook triggers move after menu hides #268
     if (e.movementX === 0 && e.movementY === 0) {
       return;
@@ -471,6 +761,78 @@ export default function Page() {
   useEffect(() => {
     calibrationCallback();
   }, [points, width, height, unitOfMeasure, calibrationCallback]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const debugEnabled = params.get("zoomDebug") === "1";
+    zoomDebugEnabledRef.current = debugEnabled;
+    setZoomDebugEnabled(debugEnabled);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleProjectZoomShortcut);
+    return () => {
+      window.removeEventListener("keydown", handleProjectZoomShortcut);
+    };
+  }, [handleProjectZoomShortcut]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      updateZoomDebug((previous) => ({
+        ...previous,
+        keyDownCount: previous.keyDownCount + 1,
+        lastKey: event.key,
+      }));
+      if (event.key === "Control") {
+        controlKeyDownRef.current = true;
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      updateZoomDebug((previous) => ({
+        ...previous,
+        keyUpCount: previous.keyUpCount + 1,
+        lastKey: event.key,
+      }));
+      if (event.key === "Control") {
+        controlKeyDownRef.current = false;
+      }
+    };
+
+    const handleWindowBlur = () => {
+      controlKeyDownRef.current = false;
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleWindowBlur);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleWindowBlur);
+    };
+  }, [updateZoomDebug]);
+
+  useEffect(() => {
+    window.addEventListener("gesturestart", handleProjectGestureStart, {
+      passive: false,
+    });
+    window.addEventListener("gesturechange", handleProjectGestureChange, {
+      passive: false,
+    });
+    window.addEventListener("gestureend", handleProjectGestureEnd);
+
+    return () => {
+      window.removeEventListener("gesturestart", handleProjectGestureStart);
+      window.removeEventListener("gesturechange", handleProjectGestureChange);
+      window.removeEventListener("gestureend", handleProjectGestureEnd);
+    };
+  }, [
+    handleProjectGestureChange,
+    handleProjectGestureEnd,
+    handleProjectGestureStart,
+  ]);
 
   // Load data from localStorage
   useEffect(() => {
@@ -620,6 +982,7 @@ export default function Page() {
     <main
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
+      onWheelCapture={handleProjectPinchZoomCapture}
       onKeyDown={resetIdle}
       ref={noZoomRefCallback}
       className={`${menusHidden && "cursor-none"} ${isDarkTheme(displaySettings.theme) && "dark bg-black"} w-screen h-screen absolute overflow-hidden touch-none`}
@@ -1047,6 +1410,20 @@ export default function Page() {
                 <p className="text-2xl text-red-600 dark:text-red-400 bg-gray-500/40 px-8 py-6 rounded-lg whitespace-nowrap">
                   {tPdf("error")}
                 </p>
+              </div>
+            ) : null}
+            {zoomDebugEnabled && !isCalibrating ? (
+              <div className="absolute right-2 top-2 z-[200] text-xs font-mono bg-black/80 text-white rounded px-3 py-2 pointer-events-none whitespace-pre">
+                {`zoomDebug=1
+scale=${patternScale}
+controlRef=${controlKeyDownRef.current ? "down" : "up"}
+keyDown=${zoomDebug.keyDownCount} keyUp=${zoomDebug.keyUpCount} lastKey=${zoomDebug.lastKey}
+shortcut=${zoomDebug.shortcutCount}
+wheel=${zoomDebug.wheelCount} applied=${zoomDebug.wheelAppliedCount}
+wheel.ctrlKey=${zoomDebug.wheelCtrlEventCount} wheel.controlRef=${zoomDebug.wheelControlRefCount}
+wheel.blockNoCtrl=${zoomDebug.wheelBlockedNoControlCount} wheel.blockCal=${zoomDebug.wheelBlockedCalibratingCount}
+last.deltaY=${zoomDebug.lastWheelDeltaY.toFixed(2)} steps=${zoomDebug.lastWheelSteps} dir=${zoomDebug.lastDirection}
+gesture.start=${zoomDebug.gestureStartCount} change=${zoomDebug.gestureChangeCount} end=${zoomDebug.gestureEndCount}`}
               </div>
             ) : null}
           </Transformable>

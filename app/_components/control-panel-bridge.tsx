@@ -52,6 +52,10 @@ import {
 } from "@/_reducers/linesReducer";
 import { subtract } from "@/_lib/point";
 
+type ProjectScaleDetail =
+  | { type: "delta"; delta: number; anchor: Point }
+  | { type: "set"; scale: number; anchor: Point };
+
 interface ControlPanelBridgeProps {
   // State to sync
   isCalibrating: boolean;
@@ -214,6 +218,65 @@ export function ControlPanelBridge({
     (zoomedOut || magnifying) && restoreTransforms
       ? restoreTransforms.localTransform
       : localTransform;
+
+  const applyPatternScale = useCallback(
+    (nextScaleRaw: number, anchorScreenPoint: Point) => {
+      if (!Number.isFinite(nextScaleRaw)) {
+        return;
+      }
+      const currentScale = Number(patternScale) || 1;
+      const nextScale = Math.max(0.5, Math.min(2, nextScaleRaw));
+      if (Math.abs(nextScale - currentScale) < 0.0001) {
+        return;
+      }
+
+      if (!zoomedOut && !magnifying) {
+        try {
+          const scaleRatio = nextScale / currentScale;
+          const anchorInCalibratedSpace = transformPoint(
+            anchorScreenPoint,
+            perspective,
+          );
+          const anchorInPatternSpace = transformPoint(
+            anchorInCalibratedSpace,
+            inverse(localTransform),
+          );
+          const scaledAnchorInPatternSpace = {
+            x: anchorInPatternSpace.x * scaleRatio,
+            y: anchorInPatternSpace.y * scaleRatio,
+          };
+          const anchorAfterScaleInCalibratedSpace = transformPoint(
+            scaledAnchorInPatternSpace,
+            localTransform,
+          );
+          transformer.translate({
+            x:
+              anchorInCalibratedSpace.x -
+              anchorAfterScaleInCalibratedSpace.x,
+            y:
+              anchorInCalibratedSpace.y -
+              anchorAfterScaleInCalibratedSpace.y,
+          });
+        } catch {
+          // No-op fallback; scale still applies below.
+        }
+      }
+
+      dispatchPatternScaleAction({
+        type: "set",
+        scale: nextScale.toFixed(2),
+      });
+    },
+    [
+      dispatchPatternScaleAction,
+      localTransform,
+      magnifying,
+      patternScale,
+      perspective,
+      transformer,
+      zoomedOut,
+    ],
+  );
 
   // Helper function to get offset from direction
   function getOffset(direction: Direction, px: number): Point {
@@ -447,6 +510,36 @@ export function ControlPanelBridge({
     return () => document.removeEventListener("keydown", handleUndo);
   }, [isCalibrating, zoomedOut, magnifying, markers, setMarkers]);
 
+  useEffect(() => {
+    const handleProjectScaleEvent = (event: Event) => {
+      if (isCalibrating) {
+        return;
+      }
+      const detail = (event as CustomEvent<ProjectScaleDetail>).detail;
+      if (!detail) {
+        return;
+      }
+
+      if (detail.type === "delta") {
+        const currentScale = Number(patternScale) || 1;
+        applyPatternScale(currentScale + detail.delta, detail.anchor);
+      } else {
+        applyPatternScale(detail.scale, detail.anchor);
+      }
+    };
+
+    window.addEventListener(
+      "project-scale",
+      handleProjectScaleEvent as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        "project-scale",
+        handleProjectScaleEvent as EventListener,
+      );
+    };
+  }, [applyPatternScale, isCalibrating, patternScale]);
+
   // Build current state object
   const buildState = useCallback(
     () => ({
@@ -606,24 +699,13 @@ export function ControlPanelBridge({
             break;
           case "adjustScale":
             const delta = params as number;
-            const currentScale = Number(patternScale);
-            const newScale = Math.max(0.5, Math.min(2, currentScale + delta));
-            dispatchPatternScaleAction({
-              type: "set",
-              scale: newScale.toFixed(2),
-            });
+            applyPatternScale((Number(patternScale) || 1) + delta, center);
             break;
           case "resetScale":
-            dispatchPatternScaleAction({
-              type: "set",
-              scale: "1.00",
-            });
+            applyPatternScale(1, center);
             break;
           case "setScale":
-            dispatchPatternScaleAction({
-              type: "set",
-              scale: params as string,
-            });
+            applyPatternScale(Number(params), center);
             break;
           case "toggleMenu":
             const menuType = params as string;
