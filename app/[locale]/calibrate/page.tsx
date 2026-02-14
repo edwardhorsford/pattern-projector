@@ -195,6 +195,7 @@ export default function Page() {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const gestureScaleRef = useRef(1);
   const controlKeyDownRef = useRef(false);
+  const metaKeyDownRef = useRef(false);
   const lastPointerScreenRef = useRef({
     x: 0,
     y: 0,
@@ -375,13 +376,17 @@ export default function Page() {
   const handleProjectPinchZoomDelta = useCallback(
     (
       deltaY: number,
-      ctrlKeyPressed: boolean,
+      modifierKeyPressed: boolean,
       anchor: { x: number; y: number },
       preventDefault: () => void,
     ) => {
-      const controlPressed = ctrlKeyPressed || controlKeyDownRef.current;
-      if (isCalibrating || !controlPressed) {
-        if (controlPressed) {
+      const modifierPressed =
+        modifierKeyPressed ||
+        controlKeyDownRef.current ||
+        metaKeyDownRef.current;
+
+      if (isCalibrating || !modifierPressed) {
+        if (modifierPressed) {
           preventDefault();
         }
         return;
@@ -424,7 +429,7 @@ export default function Page() {
 
       handleProjectPinchZoomDelta(
         event.deltaY,
-        event.ctrlKey,
+        event.ctrlKey || event.metaKey,
         anchor,
         () => event.preventDefault(),
       );
@@ -681,16 +686,23 @@ export default function Page() {
       if (event.key === "Control") {
         controlKeyDownRef.current = true;
       }
+      if (event.key === "Meta") {
+        metaKeyDownRef.current = true;
+      }
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
       if (event.key === "Control") {
         controlKeyDownRef.current = false;
       }
+      if (event.key === "Meta") {
+        metaKeyDownRef.current = false;
+      }
     };
 
     const handleWindowBlur = () => {
       controlKeyDownRef.current = false;
+      metaKeyDownRef.current = false;
     };
 
     window.addEventListener("keydown", handleKeyDown);

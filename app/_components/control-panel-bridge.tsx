@@ -210,6 +210,31 @@ export function ControlPanelBridge({
   const transformer = useTransformerContext();
   const localTransform = useTransformContext();
   const syncRequestedRef = useRef(false);
+  const localTransformRef = useRef(localTransform);
+  const perspectiveRef = useRef(perspective);
+  const patternScaleRef = useRef(Number(patternScale) || 1);
+  const zoomedOutRef = useRef(zoomedOut);
+  const magnifyingRef = useRef(magnifying);
+
+  useEffect(() => {
+    localTransformRef.current = localTransform;
+  }, [localTransform]);
+
+  useEffect(() => {
+    perspectiveRef.current = perspective;
+  }, [perspective]);
+
+  useEffect(() => {
+    patternScaleRef.current = Number(patternScale) || 1;
+  }, [patternScale]);
+
+  useEffect(() => {
+    zoomedOutRef.current = zoomedOut;
+  }, [zoomedOut]);
+
+  useEffect(() => {
+    magnifyingRef.current = magnifying;
+  }, [magnifying]);
 
   // When zoomed out or magnifying, use the saved transform for preview display
   // This preserves the rotation/flip state in the preview even though the actual
@@ -224,22 +249,22 @@ export function ControlPanelBridge({
       if (!Number.isFinite(nextScaleRaw)) {
         return;
       }
-      const currentScale = Number(patternScale) || 1;
+      const currentScale = patternScaleRef.current;
       const nextScale = Math.max(0.5, Math.min(2, nextScaleRaw));
       if (Math.abs(nextScale - currentScale) < 0.0001) {
         return;
       }
 
-      if (!zoomedOut && !magnifying) {
+      if (!zoomedOutRef.current && !magnifyingRef.current) {
         try {
           const scaleRatio = nextScale / currentScale;
           const anchorInCalibratedSpace = transformPoint(
             anchorScreenPoint,
-            perspective,
+            perspectiveRef.current,
           );
           const anchorInPatternSpace = transformPoint(
             anchorInCalibratedSpace,
-            inverse(localTransform),
+            inverse(localTransformRef.current),
           );
           const scaledAnchorInPatternSpace = {
             x: anchorInPatternSpace.x * scaleRatio,
@@ -247,35 +272,37 @@ export function ControlPanelBridge({
           };
           const anchorAfterScaleInCalibratedSpace = transformPoint(
             scaledAnchorInPatternSpace,
-            localTransform,
+            localTransformRef.current,
           );
-          transformer.translate({
+          const translateDelta = {
             x:
               anchorInCalibratedSpace.x -
               anchorAfterScaleInCalibratedSpace.x,
             y:
               anchorInCalibratedSpace.y -
               anchorAfterScaleInCalibratedSpace.y,
+          };
+
+          transformer.translate({
+            x: translateDelta.x,
+            y: translateDelta.y,
           });
+
+          localTransformRef.current =
+            translate(translateDelta).mmul(localTransformRef.current);
         } catch {
           // No-op fallback; scale still applies below.
         }
       }
+
+      patternScaleRef.current = nextScale;
 
       dispatchPatternScaleAction({
         type: "set",
         scale: nextScale.toFixed(2),
       });
     },
-    [
-      dispatchPatternScaleAction,
-      localTransform,
-      magnifying,
-      patternScale,
-      perspective,
-      transformer,
-      zoomedOut,
-    ],
+    [dispatchPatternScaleAction, transformer],
   );
 
   // Helper function to get offset from direction
@@ -697,16 +724,34 @@ export function ControlPanelBridge({
           case "setLineThickness":
             setLineThickness(params as number);
             break;
-          case "adjustScale":
+          case "adjustScale": {
             const delta = params as number;
-            applyPatternScale((Number(patternScale) || 1) + delta, center);
+            const screenCenterAnchor = {
+              x: window.innerWidth * 0.5,
+              y: window.innerHeight * 0.5,
+            };
+            applyPatternScale(
+              (Number(patternScale) || 1) + delta,
+              screenCenterAnchor,
+            );
             break;
-          case "resetScale":
-            applyPatternScale(1, center);
+          }
+          case "resetScale": {
+            const screenCenterAnchor = {
+              x: window.innerWidth * 0.5,
+              y: window.innerHeight * 0.5,
+            };
+            applyPatternScale(1, screenCenterAnchor);
             break;
-          case "setScale":
-            applyPatternScale(Number(params), center);
+          }
+          case "setScale": {
+            const screenCenterAnchor = {
+              x: window.innerWidth * 0.5,
+              y: window.innerHeight * 0.5,
+            };
+            applyPatternScale(Number(params), screenCenterAnchor);
             break;
+          }
           case "toggleMenu":
             const menuType = params as string;
             if (menuType === "stitch") {

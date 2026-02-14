@@ -330,6 +330,8 @@ function Preview({
   onPlaceMarker,
   onRemoveMarker,
   onMagnify,
+  onHoverPoint,
+  onZoomAtPoint,
   onTogglePreview,
   onToggleSize,
   t,
@@ -356,6 +358,8 @@ function Preview({
   onPlaceMarker: (x: number, y: number) => void;
   onRemoveMarker: (markerId: string) => void;
   onMagnify: (x: number, y: number) => void;
+  onHoverPoint: (point: { x: number; y: number } | null) => void;
+  onZoomAtPoint: (delta: number, point: { x: number; y: number }) => void;
   onTogglePreview: () => void;
   onToggleSize: () => void;
   t: ReturnType<typeof useTranslations<"ControlPanel">>;
@@ -496,11 +500,27 @@ function Preview({
     return { x: pdfX, y: pdfY };
   };
 
+  const updateHoverPointFromPointerEvent = (
+    e: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    if (!containerRef.current) {
+      return;
+    }
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const hoverCoords = screenToPdfCoords(
+      e.clientX - rect.left,
+      e.clientY - rect.top,
+    );
+    onHoverPoint(hoverCoords);
+  };
+
   // Handle pointer events for click and drag
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
 
     e.preventDefault();
+    updateHoverPointFromPointerEvent(e);
     const rect = containerRef.current.getBoundingClientRect();
     const coords = screenToPdfCoords(
       e.clientX - rect.left,
@@ -556,7 +576,9 @@ function Preview({
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDragging || !containerRef.current || !lastDragCoords.current) return;
+    updateHoverPointFromPointerEvent(e);
+
+    if (!isDragging || !lastDragCoords.current) return;
 
     // Throttle navigation updates to prevent glitchiness
     const now = Date.now();
@@ -593,6 +615,45 @@ function Preview({
     containerRef.current.releasePointerCapture(e.pointerId);
     dragStartCoords.current = null;
     lastDragCoords.current = null;
+  };
+
+  const handlePointerLeave = () => {
+    onHoverPoint(null);
+  };
+
+  const handlePointerEnter = (e: React.PointerEvent<HTMLDivElement>) => {
+    updateHoverPointFromPointerEvent(e);
+  };
+
+  const handleWheelCapture = (event: React.WheelEvent<HTMLDivElement>) => {
+    const modifierPressed =
+      event.ctrlKey ||
+      event.metaKey ||
+      event.getModifierState("Control") ||
+      event.getModifierState("Meta");
+
+    if (!modifierPressed) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const point = screenToPdfCoords(
+      event.clientX - rect.left,
+      event.clientY - rect.top,
+    );
+
+    const direction = Math.sign(event.deltaY);
+    if (direction === 0) {
+      return;
+    }
+
+    const steps = Math.max(1, Math.round(Math.abs(event.deltaY) / 80));
+    const delta = -direction * 0.1 * steps;
+
+    onHoverPoint(point);
+    onZoomAtPoint(delta, point);
   };
 
   // Transform a point from PDF coordinates to mini map display coordinates
@@ -774,9 +835,12 @@ function Preview({
                     : "crosshair",
         }}
         onPointerDown={handlePointerDown}
+        onPointerEnter={handlePointerEnter}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
+        onPointerLeave={handlePointerLeave}
+        onWheelCapture={handleWheelCapture}
       >
         {/* PDF area representation */}
         <div
@@ -1105,6 +1169,17 @@ export default function ControlPanelPage() {
   const [showLinesPanel, setShowLinesPanel] = useState(false);
   const [previewExpanded, setPreviewExpanded] = useState(true);
   const [previewEnlarged, setPreviewEnlarged] = useState(false); // Toggle between compact and large view
+  const controlKeyDownRef = useRef(false);
+  const metaKeyDownRef = useRef(false);
+  const gestureScaleRef = useRef(1);
+  const previewHoverPointRef = useRef<{ x: number; y: number } | null>(null);
+  const previewZoomSessionRef = useRef<{
+    activeUntil: number;
+    lockedPoint: { x: number; y: number } | null;
+  }>({
+    activeUntil: 0,
+    lockedPoint: null,
+  });
 
   // Handle incoming messages from main window
   const handleMessage = useCallback((message: BroadcastMessage) => {
@@ -1191,33 +1266,151 @@ export default function ControlPanelPage() {
 
       if (isZoomIn || isZoomOut || isReset) {
         event.preventDefault();
+
+        if (state.isCalibrating) {
+          return;
+        }
+
+        if (isZoomIn) {
+          sendAction("adjustScale", 0.1);
+        } else if (isZoomOut) {
+          sendAction("adjustScale", -0.1);
+        } else {
+          sendAction("resetScale");
+        }
       }
     };
 
     const handlePinchZoom = (event: WheelEvent) => {
-      if (event.ctrlKey) {
+      const fromPreview = event
+        .composedPath()
+        .some(
+          (node) =>
+            node instanceof Element &&
+            node.getAttribute("data-control-preview-map") === "true",
+        );
+
+      if (fromPreview) {
+        return;
+      }
+
+      const controlPressed =
+        event.ctrlKey || event.getModifierState("Control");
+      const metaPressed = event.metaKey || event.getModifierState("Meta");
+      const modifierPressed =
+        controlPressed ||
+        metaPressed ||
+        controlKeyDownRef.current ||
+        metaKeyDownRef.current;
+
+      if (modifierPressed) {
         event.preventDefault();
+
+        if (state.isCalibrating) {
+          return;
+        }
+
+        const direction = Math.sign(event.deltaY);
+        if (direction === 0) {
+          return;
+        }
+
+        const steps = Math.max(1, Math.round(Math.abs(event.deltaY) / 80));
+        const delta = -direction * 0.1 * steps;
+        sendAction("adjustScale", delta);
       }
     };
 
-    const preventGesture = (event: Event) => {
+    const handleGestureStart = (event: Event) => {
       event.preventDefault();
+
+      const scale = (event as Event & { scale?: number }).scale;
+      gestureScaleRef.current = scale ?? 1;
+    };
+
+    const handleGestureChange = (event: Event) => {
+      event.preventDefault();
+
+      if (state.isCalibrating) {
+        return;
+      }
+
+      const scale = (event as Event & { scale?: number }).scale;
+      if (scale === undefined) {
+        return;
+      }
+
+      const diff = scale - gestureScaleRef.current;
+      const threshold = 0.06;
+      if (Math.abs(diff) < threshold) {
+        return;
+      }
+
+      const steps = Math.trunc(Math.abs(diff) / threshold);
+      gestureScaleRef.current = scale;
+
+      if (steps === 0) {
+        return;
+      }
+
+      const delta = (diff > 0 ? 0.1 : -0.1) * steps;
+      sendAction("adjustScale", delta);
+    };
+
+    const handleGestureEnd = () => {
+      gestureScaleRef.current = 1;
+    };
+
+    const handleModifierKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Control") {
+        controlKeyDownRef.current = true;
+      }
+      if (event.key === "Meta") {
+        metaKeyDownRef.current = true;
+      }
+    };
+
+    const handleModifierKeyUp = (event: KeyboardEvent) => {
+      if (event.key === "Control") {
+        controlKeyDownRef.current = false;
+      }
+      if (event.key === "Meta") {
+        metaKeyDownRef.current = false;
+      }
+    };
+
+    const handleWindowBlur = () => {
+      controlKeyDownRef.current = false;
+      metaKeyDownRef.current = false;
     };
 
     window.addEventListener("keydown", handleZoomShortcut);
-    window.addEventListener("wheel", handlePinchZoom, { passive: false });
-    window.addEventListener("gesturestart", preventGesture, { passive: false });
-    window.addEventListener("gesturechange", preventGesture, {
+    window.addEventListener("wheel", handlePinchZoom, {
+      passive: false,
+      capture: true,
+    });
+    window.addEventListener("gesturestart", handleGestureStart, {
       passive: false,
     });
+    window.addEventListener("gesturechange", handleGestureChange, {
+      passive: false,
+    });
+    window.addEventListener("gestureend", handleGestureEnd, { passive: false });
+    window.addEventListener("keydown", handleModifierKeyDown);
+    window.addEventListener("keyup", handleModifierKeyUp);
+    window.addEventListener("blur", handleWindowBlur);
 
     return () => {
       window.removeEventListener("keydown", handleZoomShortcut);
-      window.removeEventListener("wheel", handlePinchZoom);
-      window.removeEventListener("gesturestart", preventGesture);
-      window.removeEventListener("gesturechange", preventGesture);
+      window.removeEventListener("wheel", handlePinchZoom, true);
+      window.removeEventListener("gesturestart", handleGestureStart);
+      window.removeEventListener("gesturechange", handleGestureChange);
+      window.removeEventListener("gestureend", handleGestureEnd);
+      window.removeEventListener("keydown", handleModifierKeyDown);
+      window.removeEventListener("keyup", handleModifierKeyUp);
+      window.removeEventListener("blur", handleWindowBlur);
     };
-  }, []);
+  }, [sendAction, state.isCalibrating]);
 
   useEffect(() => {
     const keyToDirection = (key: string): Direction | null => {
@@ -1357,6 +1550,7 @@ export default function ControlPanelPage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-lg font-bold">{t("title")}</h1>
+              data-control-preview-map="true"
               <div className="flex items-center gap-2">
                 <div
                   className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"}`}
@@ -2007,6 +2201,39 @@ export default function ControlPanelPage() {
                     onMagnify={(x, y) =>
                       handleAction("magnifyAtPoint", { x, y })
                     }
+                    onHoverPoint={(point) => {
+                      previewHoverPointRef.current = point;
+                      if (point === null) {
+                        previewZoomSessionRef.current = {
+                          activeUntil: 0,
+                          lockedPoint: null,
+                        };
+                      }
+                    }}
+                    onZoomAtPoint={(delta, point) => {
+                      const now = Date.now();
+                      const { activeUntil, lockedPoint } =
+                        previewZoomSessionRef.current;
+
+                      const sessionExpired = now > activeUntil;
+                      const sessionPoint = sessionExpired
+                        ? point
+                        : (lockedPoint ?? point);
+
+                      if (sessionExpired) {
+                        handleAction("navigateToPoint", {
+                          x: sessionPoint.x,
+                          y: sessionPoint.y,
+                        });
+                      }
+
+                      handleAction("adjustScale", delta);
+
+                      previewZoomSessionRef.current = {
+                        activeUntil: now + 320,
+                        lockedPoint: sessionPoint,
+                      };
+                    }}
                     onTogglePreview={() => handleAction("togglePreviewImage")}
                     onToggleSize={() => setPreviewEnlarged((e) => !e)}
                     t={t}
