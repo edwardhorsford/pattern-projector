@@ -94,25 +94,6 @@ const defaultStitchSettings = {
   lineDirection: LineDirection.Column,
 } as StitchSettings;
 
-type ZoomDebugState = {
-  keyDownCount: number;
-  keyUpCount: number;
-  shortcutCount: number;
-  wheelCount: number;
-  wheelAppliedCount: number;
-  wheelCtrlEventCount: number;
-  wheelControlRefCount: number;
-  wheelBlockedNoControlCount: number;
-  wheelBlockedCalibratingCount: number;
-  gestureStartCount: number;
-  gestureChangeCount: number;
-  gestureEndCount: number;
-  lastKey: string;
-  lastWheelDeltaY: number;
-  lastWheelSteps: number;
-  lastDirection: number;
-};
-
 type ProjectScaleDetail =
   | { type: "delta"; delta: number; anchor: { x: number; y: number } }
   | { type: "set"; scale: number; anchor: { x: number; y: number } };
@@ -218,13 +199,6 @@ export default function Page() {
     x: 0,
     y: 0,
   });
-
-  const updateZoomDebug = useCallback(
-    (updater: (previous: ZoomDebugState) => ZoomDebugState) => {
-      void updater;
-    },
-    [],
-  );
 
   const t = useTranslations("Header");
   const g = useTranslations("General");
@@ -350,11 +324,6 @@ export default function Page() {
   // Intercept browser keyboard zoom while projecting and map it to pattern scale
   const handleProjectZoomShortcut = useCallback(
     (event: KeyboardEvent) => {
-      updateZoomDebug((previous) => ({
-        ...previous,
-        lastKey: event.key,
-      }));
-
       if (!(event.metaKey || event.ctrlKey) || event.altKey) {
         return;
       }
@@ -374,11 +343,6 @@ export default function Page() {
       if (isCalibrating) {
         return;
       }
-
-      updateZoomDebug((previous) => ({
-        ...previous,
-        shortcutCount: previous.shortcutCount + 1,
-      }));
 
       const anchor = {
         x: window.innerWidth * 0.5,
@@ -405,7 +369,7 @@ export default function Page() {
         );
       }
     },
-    [isCalibrating, updateZoomDebug],
+    [isCalibrating],
   );
 
   const handleProjectPinchZoomDelta = useCallback(
@@ -416,26 +380,10 @@ export default function Page() {
       preventDefault: () => void,
     ) => {
       const controlPressed = ctrlKeyPressed || controlKeyDownRef.current;
-      updateZoomDebug((previous) => ({
-        ...previous,
-        wheelCount: previous.wheelCount + 1,
-        wheelCtrlEventCount: previous.wheelCtrlEventCount + (ctrlKeyPressed ? 1 : 0),
-        wheelControlRefCount:
-          previous.wheelControlRefCount + (controlKeyDownRef.current ? 1 : 0),
-        lastWheelDeltaY: deltaY,
-      }));
-
       if (isCalibrating || !controlPressed) {
         if (controlPressed) {
           preventDefault();
         }
-        updateZoomDebug((previous) => ({
-          ...previous,
-          wheelBlockedCalibratingCount:
-            previous.wheelBlockedCalibratingCount + (isCalibrating ? 1 : 0),
-          wheelBlockedNoControlCount:
-            previous.wheelBlockedNoControlCount + (!controlPressed ? 1 : 0),
-        }));
         return;
       }
 
@@ -447,12 +395,6 @@ export default function Page() {
       }
 
       const steps = Math.max(1, Math.round(Math.abs(deltaY) / 80));
-      updateZoomDebug((previous) => ({
-        ...previous,
-        wheelAppliedCount: previous.wheelAppliedCount + 1,
-        lastWheelSteps: steps,
-        lastDirection: direction,
-      }));
 
       window.dispatchEvent(
         new CustomEvent<ProjectScaleDetail>("project-scale", {
@@ -464,7 +406,7 @@ export default function Page() {
         }),
       );
     },
-    [isCalibrating, updateZoomDebug],
+    [isCalibrating],
   );
 
   const handleProjectPinchZoomCapture = useCallback(
@@ -500,12 +442,8 @@ export default function Page() {
 
       const scale = (event as Event & { scale?: number }).scale;
       gestureScaleRef.current = scale ?? 1;
-      updateZoomDebug((previous) => ({
-        ...previous,
-        gestureStartCount: previous.gestureStartCount + 1,
-      }));
     },
-    [isCalibrating, updateZoomDebug],
+    [isCalibrating],
   );
 
   const handleProjectGestureChange = useCallback(
@@ -529,10 +467,6 @@ export default function Page() {
 
       const steps = Math.trunc(Math.abs(diff) / threshold);
       gestureScaleRef.current = scale;
-      updateZoomDebug((previous) => ({
-        ...previous,
-        gestureChangeCount: previous.gestureChangeCount + 1,
-      }));
 
       if (steps === 0) {
         return;
@@ -564,16 +498,12 @@ export default function Page() {
         }),
       );
     },
-    [isCalibrating, updateZoomDebug],
+    [isCalibrating],
   );
 
   const handleProjectGestureEnd = useCallback(() => {
     gestureScaleRef.current = 1;
-    updateZoomDebug((previous) => ({
-      ...previous,
-      gestureEndCount: previous.gestureEndCount + 1,
-    }));
-  }, [updateZoomDebug]);
+  }, []);
 
   // If possible, stop the device from going to sleep
   const requestWakeLock = useCallback(async () => {
@@ -748,22 +678,12 @@ export default function Page() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      updateZoomDebug((previous) => ({
-        ...previous,
-        keyDownCount: previous.keyDownCount + 1,
-        lastKey: event.key,
-      }));
       if (event.key === "Control") {
         controlKeyDownRef.current = true;
       }
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
-      updateZoomDebug((previous) => ({
-        ...previous,
-        keyUpCount: previous.keyUpCount + 1,
-        lastKey: event.key,
-      }));
       if (event.key === "Control") {
         controlKeyDownRef.current = false;
       }
@@ -782,7 +702,7 @@ export default function Page() {
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleWindowBlur);
     };
-  }, [updateZoomDebug]);
+  }, []);
 
   useEffect(() => {
     window.addEventListener("gesturestart", handleProjectGestureStart, {
