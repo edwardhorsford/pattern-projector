@@ -98,7 +98,7 @@ export default function LineMenu({
   return (
     selected && (
       <menu
-        className={`absolute justify-center items-center ${sideMenuOpen(menuStates) ? "left-80" : "left-16"} ${isMenuAtBottom ? "bottom-16" : "top-16"} flex gap-2 p-2 ${visible(selectedLine >= 0 && !menusHidden)}`}
+        className={`absolute z-40 justify-center items-center ${sideMenuOpen(menuStates) ? "left-80" : "left-16"} ${isMenuAtBottom ? "bottom-16" : "top-16"} flex gap-2 p-2 ${visible(selectedLine >= 0 && !menusHidden)}`}
       >
         <div className="flex flex-col items-center">
           <span>{lines.length}</span>

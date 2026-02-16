@@ -227,6 +227,9 @@ export default function PdfViewer({
           marginRight: cssEdgeInsets.horizontal,
           marginBottom: cssEdgeInsets.vertical,
           filter: filter,
+          // Keep page blending and stacking scoped to this container.
+          isolation: "isolate",
+          position: "relative",
         }}
       >
         {pages.map((value, index) => {
@@ -259,7 +262,10 @@ export default function PdfViewer({
                     renderMode="custom"
                     customRenderer={CustomRenderer}
                     customTextRenderer={customTextRenderer}
-                    renderTextLayer={true}
+                    // We render our own canvas output; disabling extra react-pdf layers
+                    // avoids additional absolute/z-indexed sublayers.
+                    renderTextLayer={false}
+                    renderAnnotationLayer={false}
                     onLoadSuccess={onPageLoadSuccess}
                   />
                 </RenderContext.Provider>
