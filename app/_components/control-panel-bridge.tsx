@@ -284,15 +284,16 @@ export function ControlPanelBridge({
       return;
     }
 
+    const startedAt = fileRenderStartRef.current;
     const canFinish =
-      fileRenderStartRef.current !== null &&
+      startedAt !== null &&
       (fileLoadStatus === LoadStatusEnum.SUCCESS ||
         fileLoadStatus === LoadStatusEnum.FAILED);
 
     if (canFinish) {
       fileRenderDurationMsRef.current = Math.max(
         0,
-        performance.now() - fileRenderStartRef.current,
+        performance.now() - startedAt,
       );
       fileRenderStartRef.current = null;
     }
@@ -593,6 +594,7 @@ export function ControlPanelBridge({
       return current.distance < best.distance ? current : best;
     }, profiles[0]);
 
+    // Small tolerance to account for viewport/pixel rounding while still flagging manual edits as custom.
     const maxProfileDistancePx = 6;
     if (nearest.distance > maxProfileDistancePx) {
       return "custom" as const;
@@ -707,10 +709,6 @@ export function ControlPanelBridge({
     handleHeightChange,
     dispatchPoints,
     buildNoneCalibrationPoints,
-    buildModerateCalibrationPoints,
-    buildNoneCalibrationPointsForSize,
-    buildModerateCalibrationPointsForSize,
-    buildExtremeCalibrationPointsForSize,
     setCorners,
     setFile,
     setLineThickness,
@@ -1092,7 +1090,6 @@ export function ControlPanelBridge({
       stitchSettings,
       showingMovePad,
       corners,
-      points,
       pdfThumbnail,
       isPreviewLoading,
       showPreviewImage,
@@ -1109,9 +1106,6 @@ export function ControlPanelBridge({
       clearingMode,
       lines,
       selectedLine,
-      markers,
-      markingMode,
-      clearingMode,
     ],
   );
 
@@ -1766,6 +1760,9 @@ export function ControlPanelBridge({
       showPreviewImage,
       setShowPreviewImage,
       localTransform,
+      applyPatternScale,
+      getCalibrationCenterScreenAnchor,
+      calculateCalibrationCenterPoint,
       markers,
       setMarkers,
       markingMode,

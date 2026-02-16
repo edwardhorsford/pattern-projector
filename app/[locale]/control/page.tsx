@@ -434,16 +434,12 @@ function Preview({
     );
   }
 
-  // Get rotation (kept for reference, but bounding box calculation handles all angles)
-  const rotation = viewportBounds?.rotation ?? 0;
-
   // Get the normalized transform matrix from viewport bounds
   // This represents the exact rotation + flip transformation
   const transformA = viewportBounds?.transformA ?? 1;
   const transformB = viewportBounds?.transformB ?? 0;
   const transformC = viewportBounds?.transformC ?? 0;
   const transformD = viewportBounds?.transformD ?? 1;
-  const hasFlip = viewportBounds?.hasFlip ?? false;
 
   // Calculate the bounding box of the transformed PDF
   // Transform the four corners of the original PDF and find the bounds
@@ -1872,7 +1868,11 @@ export default function ControlPanelPage() {
       }
 
       const bytes = await pdfDoc.save();
-      sendFile("test-pattern-multipage.pdf", "application/pdf", bytes.buffer);
+      const pdfBuffer = bytes.buffer.slice(
+        bytes.byteOffset,
+        bytes.byteOffset + bytes.byteLength,
+      ) as ArrayBuffer;
+      sendFile("test-pattern-multipage.pdf", "application/pdf", pdfBuffer);
       appendDebugMessage("Loaded complex test data (A0 3-page PDF)");
     } catch {
       appendDebugMessage("Failed to generate complex test data");
