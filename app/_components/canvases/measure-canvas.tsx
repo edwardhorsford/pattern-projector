@@ -375,7 +375,7 @@ export default function MeasureCanvas({
   }, [zoomedOut, magnifying, setMeasuring, setSelectedLine]);
 
   return (
-    <div className={className}>
+    <div className={`relative z-0 ${className ?? ""}`}>
       <div
         onPointerDownCapture={handlePointerDown}
         onPointerMoveCapture={handlePointerMove}
@@ -387,7 +387,7 @@ export default function MeasureCanvas({
         </div>
         <canvas
           ref={canvasRef}
-          className={`absolute top-0 inset-0 w-full h-full pointer-events-none`}
+          className={`absolute top-0 inset-0 z-20 w-full h-full pointer-events-none`}
         ></canvas>
       </div>
       <LineMenu

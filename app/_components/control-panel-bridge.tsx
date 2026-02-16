@@ -237,9 +237,7 @@ export function ControlPanelBridge({
   const patternScaleRef = useRef(Number(patternScale) || 1);
   const zoomedOutRef = useRef(zoomedOut);
   const magnifyingRef = useRef(magnifying);
-  const calibrationPresetRef = useRef<"none" | "moderate" | "extreme">(
-    "none",
-  );
+  const calibrationPresetRef = useRef<"none" | "moderate" | "extreme">("none");
   const fileRenderStartRef = useRef<number | null>(null);
   const thumbnailRenderStartRef = useRef<number | null>(null);
   const fileRenderDurationMsRef = useRef<number | null>(null);
@@ -1044,7 +1042,9 @@ export function ControlPanelBridge({
             : null,
         fileRenderInProgressMs:
           fileRenderStartRef.current !== null
-            ? Math.round(Math.max(0, performance.now() - fileRenderStartRef.current))
+            ? Math.round(
+                Math.max(0, performance.now() - fileRenderStartRef.current),
+              )
             : null,
         thumbnailRenderDurationMs:
           thumbnailRenderDurationMsRef.current !== null
@@ -1053,7 +1053,10 @@ export function ControlPanelBridge({
         thumbnailRenderInProgressMs:
           thumbnailRenderStartRef.current !== null
             ? Math.round(
-                Math.max(0, performance.now() - thumbnailRenderStartRef.current),
+                Math.max(
+                  0,
+                  performance.now() - thumbnailRenderStartRef.current,
+                ),
               )
             : null,
       },

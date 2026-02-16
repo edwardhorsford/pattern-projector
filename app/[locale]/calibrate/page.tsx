@@ -1090,8 +1090,9 @@ export default function Page() {
               setSelectedLine={setSelectedLine}
             />
             {!isCalibrating && (
+              // Layer order (low -> high): image data (Draggable/PDF), overlays, markers, UI.
               <MeasureCanvas
-                className={visible(!isCalibrating)}
+                className={`relative z-0 ${visible(!isCalibrating)}`}
                 perspective={perspective}
                 calibrationTransform={calibrationTransform}
                 unitOfMeasure={unitOfMeasure}
@@ -1186,7 +1187,7 @@ export default function Page() {
                   )}
                 </Draggable>
                 <OverlayCanvas
-                  className={`absolute top-0 pointer-events-none`}
+                  className={`absolute top-0 z-20 pointer-events-none`}
                   points={points}
                   width={width}
                   height={height}
@@ -1204,12 +1205,14 @@ export default function Page() {
                   patternScale={patternScaleFactor}
                   unitOfMeasure={unitOfMeasure}
                   theme={displaySettings.theme}
+                  className="z-30"
                 />
               </MeasureCanvas>
             )}
 
+            {/* Keep interactive UI above all transformed content and overlay layers. */}
             <menu
-              className={`absolute w-screen ${visible(!menusHidden)} ${
+              className={`absolute z-40 w-screen ${visible(!menusHidden)} ${
                 menuStates.menuPosition === "bottom"
                   ? menuStates.nav
                     ? "bottom-0"
@@ -1322,7 +1325,7 @@ export default function Page() {
               )}
             </menu>
             <IconButton
-              className={`${visible(!menusHidden)} !p-1 m-0 border-2 border-black dark:border-white absolute ${
+              className={`${visible(!menusHidden)} z-40 !p-1 m-0 border-2 border-black dark:border-white absolute ${
                 menuStates.menuPosition === "bottom"
                   ? menuStates.nav
                     ? "-bottom-16"
