@@ -916,21 +916,43 @@ export default function Page() {
             <div className="flex flex-col items-center gap-4 absolute left-1/4 top-1/2 -translate-y-1/2 w-1/2 bg-white dark:bg-black dark:text-white z-[150] p-4 rounded border-2 border-black dark:border-white pointer-events-none">
               <WarningIcon ariaLabel="warning" />
               <p>{t("calibrationAlert")}</p>
-              <Button
-                className="flex items-center justify-center pointer-events-auto"
-                onClick={() => toggleFullScreen(fullScreenHandle)}
-              >
-                <span className="mr-1 -mt-1.5 w-4 h-4">
-                  {fullScreenHandle.active ? (
-                    <FullScreenIcon ariaLabel={t("fullscreen")} />
-                  ) : (
-                    <FullScreenExitIcon ariaLabel={t("fullscreenExit")} />
-                  )}
-                </span>
-                {fullScreenHandle.active
-                  ? t("fullscreenExit")
-                  : t("fullscreen")}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  className="pointer-events-auto"
+                  onClick={() => setIsCalibrating(true)}
+                >
+                  {t("calibrate")}
+                </Button>
+                <Button
+                  className="pointer-events-auto"
+                  onClick={() => {
+                    localStorage.setItem(
+                      "calibrationContext",
+                      JSON.stringify(
+                        getCalibrationContext(fullScreenHandle.active),
+                      ),
+                    );
+                    setCalibrationValidated(true);
+                  }}
+                >
+                  Save window size and calibration
+                </Button>
+                <Button
+                  className="flex items-center justify-center pointer-events-auto"
+                  onClick={() => toggleFullScreen(fullScreenHandle)}
+                >
+                  <span className="mr-1 -mt-1.5 w-4 h-4">
+                    {fullScreenHandle.active ? (
+                      <FullScreenIcon ariaLabel={t("fullscreen")} />
+                    ) : (
+                      <FullScreenExitIcon ariaLabel={t("fullscreenExit")} />
+                    )}
+                  </span>
+                  {fullScreenHandle.active
+                    ? t("fullscreenExit")
+                    : t("fullscreen")}
+                </Button>
+              </div>
               <p>{t("calibrationAlertContinue")}</p>
             </div>
           ) : null}
