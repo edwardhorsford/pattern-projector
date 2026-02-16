@@ -11,8 +11,13 @@ import {
   useTransformerContext,
   useTransformContext,
 } from "@/_hooks/use-transform-context";
-import { DisplaySettings, themes } from "@/_lib/display-settings";
 import {
+  DisplaySettings,
+  getDefaultDisplaySettings,
+  themes,
+} from "@/_lib/display-settings";
+import {
+  getDefaultMenuStates,
   MenuStates,
   SideMenuType,
   toggleSideMenuStates,
@@ -53,6 +58,15 @@ import {
   transformLine,
 } from "@/_reducers/linesReducer";
 import { subtract } from "@/_lib/point";
+import { LoadStatusEnum } from "@/_lib/load-status-enum";
+
+const defaultStitchSettings: StitchSettings = {
+  key: "stitchSettings:default",
+  lineCount: 1,
+  edgeInsets: { horizontal: 0, vertical: 0 },
+  pageRange: "1-",
+  lineDirection: LineDirection.Column,
+};
 
 type ProjectScaleDetail =
   | { type: "delta"; delta: number; anchor: Point }
@@ -109,6 +123,7 @@ interface ControlPanelBridgeProps {
   showingMovePad: boolean;
   setShowingMovePad: (value: boolean) => void;
   // Calibration corners and dispatch for movement
+  points: Point[];
   corners: Set<number>;
   setCorners: (corners: Set<number>) => void;
   dispatchPoints: (action: PointAction) => void;
@@ -127,6 +142,8 @@ interface ControlPanelBridgeProps {
   isPreviewLoading: boolean;
   showPreviewImage: boolean;
   setShowPreviewImage: (value: boolean) => void;
+  fileLoadStatus: LoadStatusEnum;
+  lineThicknessStatus: LoadStatusEnum;
   // Markers for "mark complete" feature
   markers: Marker[];
   setMarkers: (markers: Marker[]) => void;
@@ -185,6 +202,7 @@ export function ControlPanelBridge({
   dispatchStitchSettings,
   showingMovePad,
   setShowingMovePad,
+  points,
   corners,
   setCorners,
   dispatchPoints,
@@ -198,6 +216,8 @@ export function ControlPanelBridge({
   isPreviewLoading,
   showPreviewImage,
   setShowPreviewImage,
+  fileLoadStatus,
+  lineThicknessStatus,
   markers,
   setMarkers,
   markingMode,
@@ -217,6 +237,13 @@ export function ControlPanelBridge({
   const patternScaleRef = useRef(Number(patternScale) || 1);
   const zoomedOutRef = useRef(zoomedOut);
   const magnifyingRef = useRef(magnifying);
+  const calibrationPresetRef = useRef<"none" | "moderate" | "extreme">(
+    "none",
+  );
+  const fileRenderStartRef = useRef<number | null>(null);
+  const thumbnailRenderStartRef = useRef<number | null>(null);
+  const fileRenderDurationMsRef = useRef<number | null>(null);
+  const thumbnailRenderDurationMsRef = useRef<number | null>(null);
 
   useEffect(() => {
     localTransformRef.current = localTransform;
@@ -237,6 +264,58 @@ export function ControlPanelBridge({
   useEffect(() => {
     magnifyingRef.current = magnifying;
   }, [magnifying]);
+
+  useEffect(() => {
+    if (!file) {
+      fileRenderStartRef.current = null;
+      fileRenderDurationMsRef.current = null;
+      thumbnailRenderStartRef.current = null;
+      thumbnailRenderDurationMsRef.current = null;
+      return;
+    }
+
+    fileRenderStartRef.current = performance.now();
+    fileRenderDurationMsRef.current = null;
+  }, [file]);
+
+  useEffect(() => {
+    if (fileLoadStatus === LoadStatusEnum.LOADING) {
+      if (fileRenderStartRef.current === null) {
+        fileRenderStartRef.current = performance.now();
+      }
+      return;
+    }
+
+    const canFinish =
+      fileRenderStartRef.current !== null &&
+      (fileLoadStatus === LoadStatusEnum.SUCCESS ||
+        fileLoadStatus === LoadStatusEnum.FAILED);
+
+    if (canFinish) {
+      fileRenderDurationMsRef.current = Math.max(
+        0,
+        performance.now() - fileRenderStartRef.current,
+      );
+      fileRenderStartRef.current = null;
+    }
+  }, [fileLoadStatus]);
+
+  useEffect(() => {
+    if (isPreviewLoading) {
+      if (thumbnailRenderStartRef.current === null) {
+        thumbnailRenderStartRef.current = performance.now();
+      }
+      return;
+    }
+
+    if (thumbnailRenderStartRef.current !== null) {
+      thumbnailRenderDurationMsRef.current = Math.max(
+        0,
+        performance.now() - thumbnailRenderStartRef.current,
+      );
+      thumbnailRenderStartRef.current = null;
+    }
+  }, [isPreviewLoading]);
 
   // When zoomed out or magnifying, use the saved transform for preview display
   // This preserves the rotation/flip state in the preview even though the actual
@@ -334,6 +413,320 @@ export function ControlPanelBridge({
         return { x: 0, y: 0 };
     }
   }
+
+  const buildCalibrationPoints = useCallback(
+    (targetWidthRaw: number, targetHeightRaw: number): Point[] => {
+      const { innerWidth, innerHeight } = window;
+      const targetWidth = targetWidthRaw > 0 ? targetWidthRaw : 1;
+      const targetHeight = targetHeightRaw > 0 ? targetHeightRaw : 1;
+      const targetAspectRatio = targetWidth / targetHeight;
+
+      const maxGridWidth = innerWidth * 0.7;
+      const maxGridHeight = innerHeight * 0.7;
+
+      let gridWidth = maxGridWidth;
+      let gridHeight = gridWidth / targetAspectRatio;
+
+      if (gridHeight > maxGridHeight) {
+        gridHeight = maxGridHeight;
+        gridWidth = gridHeight * targetAspectRatio;
+      }
+
+      const minX = (innerWidth - gridWidth) * 0.5;
+      const minY = (innerHeight - gridHeight) * 0.5;
+
+      return [
+        { x: minX, y: minY },
+        { x: minX + gridWidth, y: minY },
+        { x: minX + gridWidth, y: minY + gridHeight },
+        { x: minX, y: minY + gridHeight },
+      ];
+    },
+    [],
+  );
+
+  const buildNoneCalibrationPoints = useCallback(
+    (): Point[] => buildCalibrationPoints(width, height),
+    [buildCalibrationPoints, width, height],
+  );
+
+  const buildNoneCalibrationPointsForSize = useCallback(
+    (targetWidth: number, targetHeight: number): Point[] =>
+      buildCalibrationPoints(targetWidth, targetHeight),
+    [buildCalibrationPoints],
+  );
+
+  const buildModerateCalibrationPoints = useCallback((): Point[] => {
+    const none = buildNoneCalibrationPoints();
+
+    if (none.length < 4) {
+      return none;
+    }
+
+    const gridWidth = none[1].x - none[0].x;
+    const gridHeight = none[2].y - none[1].y;
+    const topInset = gridWidth * 0.12;
+    const bottomInset = gridWidth * 0.03;
+    const verticalDrift = gridHeight * 0.02;
+
+    return [
+      { x: none[0].x + topInset, y: none[0].y + verticalDrift },
+      { x: none[1].x - topInset, y: none[1].y - verticalDrift },
+      { x: none[2].x - bottomInset, y: none[2].y },
+      { x: none[3].x + bottomInset, y: none[3].y },
+    ];
+  }, [buildNoneCalibrationPoints]);
+
+  const buildModerateCalibrationPointsForSize = useCallback(
+    (targetWidth: number, targetHeight: number): Point[] => {
+      const none = buildNoneCalibrationPointsForSize(targetWidth, targetHeight);
+
+      if (none.length < 4) {
+        return none;
+      }
+
+      const gridWidth = none[1].x - none[0].x;
+      const gridHeight = none[2].y - none[1].y;
+      const topInset = gridWidth * 0.12;
+      const bottomInset = gridWidth * 0.03;
+      const verticalDrift = gridHeight * 0.02;
+
+      return [
+        { x: none[0].x + topInset, y: none[0].y + verticalDrift },
+        { x: none[1].x - topInset, y: none[1].y - verticalDrift },
+        { x: none[2].x - bottomInset, y: none[2].y },
+        { x: none[3].x + bottomInset, y: none[3].y },
+      ];
+    },
+    [buildNoneCalibrationPointsForSize],
+  );
+
+  const buildExtremeCalibrationPoints = useCallback((): Point[] => {
+    const none = buildNoneCalibrationPoints();
+
+    if (none.length < 4) {
+      return none;
+    }
+
+    const gridWidth = none[1].x - none[0].x;
+    const gridHeight = none[2].y - none[1].y;
+    const topInset = gridWidth * 0.2;
+    const bottomInset = gridWidth * 0.01;
+    const verticalDrift = gridHeight * 0.045;
+
+    return [
+      { x: none[0].x + topInset, y: none[0].y + verticalDrift },
+      { x: none[1].x - topInset, y: none[1].y - verticalDrift },
+      { x: none[2].x - bottomInset, y: none[2].y },
+      { x: none[3].x + bottomInset, y: none[3].y },
+    ];
+  }, [buildNoneCalibrationPoints]);
+
+  const buildExtremeCalibrationPointsForSize = useCallback(
+    (targetWidth: number, targetHeight: number): Point[] => {
+      const none = buildNoneCalibrationPointsForSize(targetWidth, targetHeight);
+
+      if (none.length < 4) {
+        return none;
+      }
+
+      const gridWidth = none[1].x - none[0].x;
+      const gridHeight = none[2].y - none[1].y;
+      const topInset = gridWidth * 0.2;
+      const bottomInset = gridWidth * 0.01;
+      const verticalDrift = gridHeight * 0.045;
+
+      return [
+        { x: none[0].x + topInset, y: none[0].y + verticalDrift },
+        { x: none[1].x - topInset, y: none[1].y - verticalDrift },
+        { x: none[2].x - bottomInset, y: none[2].y },
+        { x: none[3].x + bottomInset, y: none[3].y },
+      ];
+    },
+    [buildNoneCalibrationPointsForSize],
+  );
+
+  const getPointDistance = useCallback((left: Point, right: Point) => {
+    const dx = left.x - right.x;
+    const dy = left.y - right.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }, []);
+
+  const calculateProfileDistance = useCallback(
+    (currentPoints: Point[], profilePoints: Point[]) => {
+      if (currentPoints.length !== 4 || profilePoints.length !== 4) {
+        return Number.POSITIVE_INFINITY;
+      }
+
+      return (
+        currentPoints.reduce((sum, point, index) => {
+          return sum + getPointDistance(point, profilePoints[index]);
+        }, 0) / 4
+      );
+    },
+    [getPointDistance],
+  );
+
+  const getActiveCalibrationProfile = useCallback(() => {
+    if (points.length !== 4) {
+      return "custom" as const;
+    }
+
+    const noneDistance = calculateProfileDistance(
+      points,
+      buildNoneCalibrationPoints(),
+    );
+    const moderateDistance = calculateProfileDistance(
+      points,
+      buildModerateCalibrationPoints(),
+    );
+    const extremeDistance = calculateProfileDistance(
+      points,
+      buildExtremeCalibrationPoints(),
+    );
+
+    const profiles = [
+      { name: "none" as const, distance: noneDistance },
+      { name: "moderate" as const, distance: moderateDistance },
+      { name: "extreme" as const, distance: extremeDistance },
+    ];
+
+    const nearest = profiles.reduce((best, current) => {
+      return current.distance < best.distance ? current : best;
+    }, profiles[0]);
+
+    const maxProfileDistancePx = 6;
+    if (nearest.distance > maxProfileDistancePx) {
+      return "custom" as const;
+    }
+
+    return nearest.name;
+  }, [
+    points,
+    calculateProfileDistance,
+    buildNoneCalibrationPoints,
+    buildModerateCalibrationPoints,
+    buildExtremeCalibrationPoints,
+  ]);
+
+  useEffect(() => {
+    const activeProfile = getActiveCalibrationProfile();
+    if (activeProfile !== "custom") {
+      calibrationPresetRef.current = activeProfile;
+    }
+  }, [getActiveCalibrationProfile]);
+
+  const clearAppData = useCallback(() => {
+    const removableExactKeys = new Set([
+      "points",
+      "canvasSettings",
+      "menuPosition",
+      "calibrationContext",
+      "mailRead",
+      "installed",
+    ]);
+
+    const removablePrefixKeys = [
+      "lineThickness:",
+      "stitchSettings:",
+      "layers:",
+    ];
+
+    for (let index = localStorage.length - 1; index >= 0; index--) {
+      const key = localStorage.key(index);
+      if (key === null) {
+        continue;
+      }
+
+      if (
+        removableExactKeys.has(key) ||
+        removablePrefixKeys.some((prefix) => key.startsWith(prefix))
+      ) {
+        localStorage.removeItem(key);
+      }
+    }
+
+    setIsCalibrating(true);
+    setZoomedOut(false);
+    setMagnifying(false);
+    setMeasuring(false);
+    setRestoreTransforms(null);
+    setCalibrationValidated(false);
+
+    setDisplaySettings(getDefaultDisplaySettings());
+    setMenuStates(getDefaultMenuStates());
+    setUnitOfMeasure(Unit.CM);
+    handleWidthChange({
+      target: { value: "60" },
+    } as ChangeEvent<HTMLInputElement>);
+    handleHeightChange({
+      target: { value: "40" },
+    } as ChangeEvent<HTMLInputElement>);
+
+    dispatchPoints({
+      type: "set",
+      points: buildNoneCalibrationPoints(),
+    });
+    setCorners(new Set([0]));
+
+    setFile(null);
+    setLineThickness(0);
+    setShowPreviewImage(true);
+
+    dispatchPatternScaleAction({
+      type: "set",
+      scale: "1.00",
+    });
+
+    dispatchLayerAction({
+      type: "set-layers",
+      layers: {},
+    });
+
+    dispatchStitchSettings({
+      type: "set",
+      stitchSettings: defaultStitchSettings,
+    });
+
+    setMarkers([]);
+    setMarkingMode(false);
+    setClearingMode(false);
+    dispatchLines({ type: "reset" });
+    setSelectedLine(-1);
+
+    transformer.reset();
+  }, [
+    setIsCalibrating,
+    setZoomedOut,
+    setMagnifying,
+    setMeasuring,
+    setRestoreTransforms,
+    setCalibrationValidated,
+    setDisplaySettings,
+    setMenuStates,
+    setUnitOfMeasure,
+    handleWidthChange,
+    handleHeightChange,
+    dispatchPoints,
+    buildNoneCalibrationPoints,
+    buildModerateCalibrationPoints,
+    buildNoneCalibrationPointsForSize,
+    buildModerateCalibrationPointsForSize,
+    buildExtremeCalibrationPointsForSize,
+    setCorners,
+    setFile,
+    setLineThickness,
+    setShowPreviewImage,
+    dispatchPatternScaleAction,
+    dispatchLayerAction,
+    dispatchStitchSettings,
+    setMarkers,
+    setMarkingMode,
+    setClearingMode,
+    dispatchLines,
+    setSelectedLine,
+    transformer,
+  ]);
 
   // Calculate viewport bounds in PDF coordinates for mini map
   const calculateViewportBounds = useCallback(() => {
@@ -631,10 +1024,39 @@ export function ControlPanelBridge({
       stitchSettings,
       showingMovePad,
       corners: Array.from(corners),
+      calibrationProfile: getActiveCalibrationProfile(),
       // Preview data
       previewImage: pdfThumbnail,
       isPreviewLoading,
+      previewSourceType:
+        file?.type === "application/pdf"
+          ? "pdf"
+          : file?.type === "image/svg+xml"
+            ? "svg"
+            : "none",
       showPreviewImage,
+      fileLoadStatus,
+      lineThicknessStatus,
+      renderMetrics: {
+        fileRenderDurationMs:
+          fileRenderDurationMsRef.current !== null
+            ? Math.round(fileRenderDurationMsRef.current)
+            : null,
+        fileRenderInProgressMs:
+          fileRenderStartRef.current !== null
+            ? Math.round(Math.max(0, performance.now() - fileRenderStartRef.current))
+            : null,
+        thumbnailRenderDurationMs:
+          thumbnailRenderDurationMsRef.current !== null
+            ? Math.round(thumbnailRenderDurationMsRef.current)
+            : null,
+        thumbnailRenderInProgressMs:
+          thumbnailRenderStartRef.current !== null
+            ? Math.round(
+                Math.max(0, performance.now() - thumbnailRenderStartRef.current),
+              )
+            : null,
+      },
       viewportBounds: calculateViewportBounds(),
       calibrationBounds: calculateCalibrationBounds(),
       paperBounds: calculatePaperBounds(),
@@ -667,12 +1089,16 @@ export function ControlPanelBridge({
       stitchSettings,
       showingMovePad,
       corners,
+      points,
       pdfThumbnail,
       isPreviewLoading,
       showPreviewImage,
+      fileLoadStatus,
+      lineThicknessStatus,
       calculateViewportBounds,
       calculateCalibrationBounds,
       calculatePaperBounds,
+      getActiveCalibrationProfile,
       layoutWidth,
       layoutHeight,
       markers,
@@ -814,6 +1240,69 @@ export function ControlPanelBridge({
           case "resetCalibration":
             handleResetCalibration();
             break;
+          case "clearAppData":
+            clearAppData();
+            break;
+          case "applyCalibrationPreset": {
+            const preset =
+              params === "extreme"
+                ? "extreme"
+                : params === "moderate"
+                  ? "moderate"
+                  : ("none" as const);
+            calibrationPresetRef.current = preset;
+            dispatchPoints({
+              type: "set",
+              points:
+                preset === "extreme"
+                  ? buildExtremeCalibrationPoints()
+                  : preset === "moderate"
+                    ? buildModerateCalibrationPoints()
+                    : buildNoneCalibrationPoints(),
+            });
+            setCorners(new Set([0]));
+            break;
+          }
+          case "setCalibrationSizePreset": {
+            const { width: presetWidth, height: presetHeight } = (params as {
+              width: string;
+              height: string;
+            }) ?? {
+              width: "60",
+              height: "40",
+            };
+
+            handleWidthChange({
+              target: { value: presetWidth },
+            } as ChangeEvent<HTMLInputElement>);
+            handleHeightChange({
+              target: { value: presetHeight },
+            } as ChangeEvent<HTMLInputElement>);
+
+            const parsedWidth = Math.max(1, Number(presetWidth) || 1);
+            const parsedHeight = Math.max(1, Number(presetHeight) || 1);
+            dispatchPoints({
+              type: "set",
+              points:
+                calibrationPresetRef.current === "extreme"
+                  ? buildExtremeCalibrationPointsForSize(
+                      parsedWidth,
+                      parsedHeight,
+                    )
+                  : calibrationPresetRef.current === "moderate"
+                    ? buildModerateCalibrationPointsForSize(
+                        parsedWidth,
+                        parsedHeight,
+                      )
+                    : buildNoneCalibrationPointsForSize(
+                        parsedWidth,
+                        parsedHeight,
+                      ),
+            });
+
+            setCorners(new Set([0]));
+            break;
+          }
           case "toggleMovePad":
             setShowingMovePad(!showingMovePad);
             break;
@@ -1248,6 +1737,13 @@ export function ControlPanelBridge({
       handleHeightChange,
       setUnitOfMeasure,
       handleResetCalibration,
+      clearAppData,
+      buildNoneCalibrationPoints,
+      buildModerateCalibrationPoints,
+      buildNoneCalibrationPointsForSize,
+      buildModerateCalibrationPointsForSize,
+      buildExtremeCalibrationPoints,
+      buildExtremeCalibrationPointsForSize,
       fileInputRef,
       getCalibrationCenterPoint,
       setFile,

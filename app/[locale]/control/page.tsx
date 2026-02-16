@@ -71,6 +71,7 @@ import { Marker, MARKER_SIZE_INCHES } from "@/_lib/marker";
 import { Line } from "@/_reducers/linesReducer";
 import RotateToHorizontalIcon from "@/_icons/rotate-to-horizontal";
 import ShiftIcon from "@/_icons/shift-icon";
+import { LoadStatusEnum } from "@/_lib/load-status-enum";
 
 // Default stitch settings for initial state
 const defaultStitchSettings: StitchSettings = {
@@ -109,6 +110,19 @@ interface CalibrationBounds {
 // Uses same structure as CalibrationBounds
 type PaperBounds = CalibrationBounds;
 
+interface HeapMemoryStats {
+  usedJSHeapSize: number;
+  totalJSHeapSize: number;
+  jsHeapSizeLimit: number;
+}
+
+interface RenderMetrics {
+  fileRenderDurationMs: number | null;
+  fileRenderInProgressMs: number | null;
+  thumbnailRenderDurationMs: number | null;
+  thumbnailRenderInProgressMs: number | null;
+}
+
 // State synced from main window
 interface SyncedState {
   isCalibrating: boolean;
@@ -134,10 +148,15 @@ interface SyncedState {
   stitchSettings: StitchSettings;
   showingMovePad: boolean;
   corners: number[];
+  calibrationProfile: "none" | "moderate" | "extreme" | "custom";
   // Preview data
   previewImage: string | null; // Data URL of the PDF thumbnail
   isPreviewLoading: boolean; // Whether the preview is being generated
+  previewSourceType: "pdf" | "svg" | "none";
   showPreviewImage: boolean; // Whether to show the PDF preview
+  fileLoadStatus: number;
+  lineThicknessStatus: number;
+  renderMetrics: RenderMetrics;
   viewportBounds: ViewportBounds | null; // Current viewport in PDF coordinates
   calibrationBounds: CalibrationBounds | null; // Fixed calibration rectangle in PDF coordinates
   paperBounds: PaperBounds | null; // Paper sheet rectangle in PDF coordinates
@@ -176,10 +195,20 @@ const defaultSyncedState: SyncedState = {
   stitchSettings: defaultStitchSettings,
   showingMovePad: false,
   corners: [0],
+  calibrationProfile: "none",
   // Preview defaults
   previewImage: null,
   isPreviewLoading: false,
+  previewSourceType: "none",
   showPreviewImage: true,
+  fileLoadStatus: 0,
+  lineThicknessStatus: 0,
+  renderMetrics: {
+    fileRenderDurationMs: null,
+    fileRenderInProgressMs: null,
+    thumbnailRenderDurationMs: null,
+    thumbnailRenderInProgressMs: null,
+  },
   viewportBounds: null,
   calibrationBounds: null,
   paperBounds: null,
@@ -851,7 +880,8 @@ function Preview({
             width: effectiveLayoutWidth * scale,
             height: effectiveLayoutHeight * scale,
             // Apply filter to container - Safari has issues with filter on transformed children
-            filter: showPreviewImage && previewImage ? themeFilter(theme) : undefined,
+            filter:
+              showPreviewImage && previewImage ? themeFilter(theme) : undefined,
             // Background: for inverted themes, set to white so it inverts to black
             // (filter inverts the background too)
             backgroundColor: isDarkTheme(theme) ? "#fff" : "#fff",
@@ -1015,6 +1045,62 @@ const PIXEL_LIST = [1, 2, 4]; // Multiplied by BASE_PIXEL_SCALE
 const REPEAT_MS = 150; // Slightly slower than browser key repeat to match main window feel
 const REPEAT_PX_COUNT = 4; // 4 * 150ms = 600ms to match main window acceleration timing
 
+function formatBytes(value: number): string {
+  const mb = value / (1024 * 1024);
+  return `${mb.toFixed(1)} MB`;
+}
+
+function formatMs(value: number | null): string {
+  if (value === null) {
+    return "-";
+  }
+
+  return `${Math.max(0, Math.round(value))} ms`;
+}
+
+function loadStatusToLabel(status: number): string {
+  switch (status) {
+    case LoadStatusEnum.LOADING:
+      return "loading";
+    case LoadStatusEnum.FAILED:
+      return "failed";
+    case LoadStatusEnum.SUCCESS:
+      return "success";
+    default:
+      return "default";
+  }
+}
+
+function getLocalStorageUsageBytes(): number {
+  if (typeof window === "undefined") {
+    return 0;
+  }
+
+  const encoder = new TextEncoder();
+  let totalBytes = 0;
+
+  for (let index = 0; index < localStorage.length; index++) {
+    const key = localStorage.key(index);
+    if (key === null) {
+      continue;
+    }
+    const value = localStorage.getItem(key) ?? "";
+    totalBytes += encoder.encode(key).length;
+    totalBytes += encoder.encode(value).length;
+  }
+
+  return totalBytes;
+}
+
+function getApproxObjectBytes(value: unknown): number {
+  const encoder = new TextEncoder();
+  try {
+    return encoder.encode(JSON.stringify(value)).length;
+  } catch {
+    return 0;
+  }
+}
+
 // Movement pad for control panel - can be used for calibration (moving corners) or projecting (panning view)
 function MovementPadControl({
   mode,
@@ -1149,6 +1235,7 @@ function MovementPadControl({
 }
 
 export default function ControlPanelPage() {
+  const isDevMode = process.env.NODE_ENV === "development";
   const t = useTranslations("ControlPanel");
   const tHeader = useTranslations("Header");
   const tStitch = useTranslations("StitchMenu");
@@ -1169,6 +1256,17 @@ export default function ControlPanelPage() {
   const [showLinesPanel, setShowLinesPanel] = useState(false);
   const [previewExpanded, setPreviewExpanded] = useState(true);
   const [previewEnlarged, setPreviewEnlarged] = useState(false); // Toggle between compact and large view
+  const [devCalibrationPreset, setDevCalibrationPreset] = useState<
+    "none" | "moderate" | "extreme" | "custom"
+  >("none");
+  const [devGridPreset, setDevGridPreset] = useState<"60x40" | "30x20">(
+    "60x40",
+  );
+  const [memoryStats, setMemoryStats] = useState<HeapMemoryStats | null>(null);
+  const [memoryAvailable, setMemoryAvailable] = useState(true);
+  const [storageBytes, setStorageBytes] = useState(0);
+  const [stateBytes, setStateBytes] = useState(0);
+  const [debugMessages, setDebugMessages] = useState<string[]>([]);
   const controlKeyDownRef = useRef(false);
   const metaKeyDownRef = useRef(false);
   const gestureScaleRef = useRef(1);
@@ -1180,6 +1278,13 @@ export default function ControlPanelPage() {
     activeUntil: 0,
     lockedPoint: null,
   });
+
+  const appendDebugMessage = useCallback((message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setDebugMessages((prev) =>
+      [`[${timestamp}] ${message}`, ...prev].slice(0, 50),
+    );
+  }, []);
 
   // Handle incoming messages from main window
   const handleMessage = useCallback((message: BroadcastMessage) => {
@@ -1196,6 +1301,37 @@ export default function ControlPanelPage() {
 
   const { sendAction, requestSync, sendFile } =
     useBroadcastChannel(handleMessage);
+
+  useEffect(() => {
+    setDevCalibrationPreset(state.calibrationProfile);
+  }, [state.calibrationProfile]);
+
+  useEffect(() => {
+    if (!isDevMode) {
+      return;
+    }
+
+    const updateMemoryStats = () => {
+      const memory = (performance as Performance & { memory?: HeapMemoryStats })
+        .memory;
+
+      if (memory) {
+        setMemoryStats(memory);
+        setMemoryAvailable(true);
+      } else {
+        setMemoryStats(null);
+        setMemoryAvailable(false);
+      }
+
+      setStorageBytes(getLocalStorageUsageBytes());
+      setStateBytes(getApproxObjectBytes(state));
+    };
+
+    updateMemoryStats();
+    const interval = setInterval(updateMemoryStats, 2000);
+
+    return () => clearInterval(interval);
+  }, [isDevMode, state]);
 
   // Request initial sync on mount and periodically
   useEffect(() => {
@@ -1261,7 +1397,9 @@ export default function ControlPanelPage() {
       const isZoomIn =
         event.key === "+" || event.key === "=" || event.code === "NumpadAdd";
       const isZoomOut =
-        event.key === "-" || event.key === "_" || event.code === "NumpadSubtract";
+        event.key === "-" ||
+        event.key === "_" ||
+        event.code === "NumpadSubtract";
       const isReset = event.key === "0" || event.code === "Numpad0";
 
       if (isZoomIn || isZoomOut || isReset) {
@@ -1294,8 +1432,7 @@ export default function ControlPanelPage() {
         return;
       }
 
-      const controlPressed =
-        event.ctrlKey || event.getModifierState("Control");
+      const controlPressed = event.ctrlKey || event.getModifierState("Control");
       const metaPressed = event.metaKey || event.getModifierState("Meta");
       const modifierPressed =
         controlPressed ||
@@ -1529,6 +1666,218 @@ export default function ControlPanelPage() {
   const handleOpenFile = () => {
     fileInputRef.current?.click();
   };
+
+  const loadSimpleTestData = useCallback(async () => {
+    try {
+      appendDebugMessage("Loading simple test data: test-pattern.svg");
+      const response = await fetch("/test-pattern.svg");
+      if (!response.ok) {
+        appendDebugMessage(
+          `Failed to load test-pattern.svg (${response.status})`,
+        );
+        return;
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      sendFile("test-pattern.svg", "image/svg+xml", arrayBuffer);
+      appendDebugMessage("Loaded simple test data");
+    } catch {
+      appendDebugMessage("Failed to load simple test data");
+    }
+  }, [appendDebugMessage, sendFile]);
+
+  const loadComplexTestData = useCallback(async () => {
+    try {
+      appendDebugMessage("Generating complex test data: A0 multi-page PDF");
+      const { PDFDocument, StandardFonts, rgb } = await import(
+        "@cantoo/pdf-lib"
+      );
+
+      const pdfDoc = await PDFDocument.create();
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+      const pageSize = { width: 2384, height: 3370 };
+
+      const addHeader = (
+        page: {
+          drawText: (text: string, options: Record<string, unknown>) => void;
+        },
+        title: string,
+        subtitle: string,
+      ) => {
+        page.drawText(title, {
+          x: 96,
+          y: pageSize.height - 120,
+          size: 44,
+          font: boldFont,
+          color: rgb(0, 0, 0),
+        });
+
+        page.drawText(subtitle, {
+          x: 96,
+          y: pageSize.height - 170,
+          size: 24,
+          font,
+          color: rgb(0.4, 0.4, 0.4),
+        });
+      };
+
+      const page1 = pdfDoc.addPage([pageSize.width, pageSize.height]);
+      addHeader(
+        page1,
+        "Complex test pattern – A0 page 1",
+        "Grey line darkness, anti-aliasing and curve stability",
+      );
+
+      const lineBlockTop = pageSize.height - 280;
+      for (let row = 0; row < 48; row++) {
+        const y = lineBlockTop - row * 38;
+        const tone = Math.max(0.04, 0.85 - row * 0.016);
+        const thickness = 0.2 + ((row % 8) + 1) * 0.15;
+        page1.drawLine({
+          start: { x: 140, y },
+          end: { x: pageSize.width - 140, y },
+          thickness,
+          color: rgb(tone, tone, tone),
+        });
+
+        if (row % 6 === 0) {
+          page1.drawText(`w=${thickness.toFixed(2)} g=${tone.toFixed(2)}`, {
+            x: 96,
+            y: y - 9,
+            size: 16,
+            font,
+            color: rgb(0.25, 0.25, 0.25),
+          });
+        }
+      }
+
+      for (let curve = 0; curve < 14; curve++) {
+        const y = 640 + curve * 95;
+        const left = 180;
+        const right = pageSize.width - 180;
+        const controlRise = 110 + curve * 8;
+        page1.drawLine({
+          start: { x: left, y },
+          end: { x: right, y: y + controlRise * 0.5 },
+          thickness: 0.45 + (curve % 4) * 0.25,
+          color: rgb(
+            0.1 + curve * 0.045,
+            0.1 + curve * 0.045,
+            0.1 + curve * 0.045,
+          ),
+        });
+        page1.drawEllipse({
+          x: 230 + curve * 130,
+          y: 430,
+          xScale: 24 + curve * 2,
+          yScale: 70,
+          borderWidth: 0.8,
+          borderColor: rgb(0, 0, 0),
+        });
+      }
+
+      const page2 = pdfDoc.addPage([pageSize.width, pageSize.height]);
+      addHeader(
+        page2,
+        "Complex test pattern – A0 page 2",
+        "High-density grid, diagonals and text legibility",
+      );
+
+      for (let x = 150; x <= pageSize.width - 150; x += 16) {
+        page2.drawLine({
+          start: { x, y: 360 },
+          end: { x, y: pageSize.height - 260 },
+          thickness: x % 64 === 0 ? 0.75 : 0.24,
+          color: rgb(0.58, 0.58, 0.58),
+        });
+      }
+
+      for (let y = 360; y <= pageSize.height - 260; y += 16) {
+        page2.drawLine({
+          start: { x: 150, y },
+          end: { x: pageSize.width - 150, y },
+          thickness: y % 64 === 0 ? 0.75 : 0.24,
+          color: rgb(0.58, 0.58, 0.58),
+        });
+      }
+
+      page2.drawRectangle({
+        x: 150,
+        y: 360,
+        width: pageSize.width - 300,
+        height: pageSize.height - 620,
+        borderWidth: 1.4,
+        borderColor: rgb(0, 0, 0),
+      });
+
+      for (let diagonal = 0; diagonal < 24; diagonal++) {
+        const startX = 150 + diagonal * 86;
+        page2.drawLine({
+          start: { x: startX, y: 360 },
+          end: { x: startX + 560, y: pageSize.height - 260 },
+          thickness: 0.2 + (diagonal % 5) * 0.15,
+          color: rgb(0.33, 0.33, 0.33),
+        });
+      }
+
+      const textSamples = [
+        { size: 12, tone: 0.18, label: "12pt" },
+        { size: 16, tone: 0.35, label: "16pt" },
+        { size: 20, tone: 0.55, label: "20pt" },
+        { size: 24, tone: 0, label: "24pt" },
+      ];
+
+      textSamples.forEach((sample, index) => {
+        page2.drawText(
+          `${sample.label}: Grainline • Notches • Cut on fold • Size M`,
+          {
+            x: 200,
+            y: 250 - index * 42,
+            size: sample.size,
+            font,
+            color: rgb(sample.tone, sample.tone, sample.tone),
+          },
+        );
+      });
+
+      const page3 = pdfDoc.addPage([pageSize.width, pageSize.height]);
+      addHeader(
+        page3,
+        "Complex test pattern – A0 page 3",
+        "Mixed line families and stitch-like geometry",
+      );
+
+      for (let stripe = 0; stripe < 36; stripe++) {
+        const y = pageSize.height - 320 - stripe * 72;
+        const tone = 0.08 + (stripe % 12) * 0.06;
+        page3.drawLine({
+          start: { x: 120, y },
+          end: { x: pageSize.width - 120, y: y - ((stripe % 7) - 3) * 8 },
+          thickness: 0.3 + (stripe % 9) * 0.22,
+          color: rgb(tone, tone, tone),
+        });
+      }
+
+      for (let ring = 0; ring < 18; ring++) {
+        page3.drawEllipse({
+          x: 400 + ring * 105,
+          y: 700 + (ring % 3) * 80,
+          xScale: 22 + ring * 4,
+          yScale: 22 + ring * 1.8,
+          borderWidth: 0.4 + (ring % 6) * 0.18,
+          borderColor: rgb(0.12, 0.12, 0.12),
+        });
+      }
+
+      const bytes = await pdfDoc.save();
+      sendFile("test-pattern-multipage.pdf", "application/pdf", bytes.buffer);
+      appendDebugMessage("Loaded complex test data (A0 3-page PDF)");
+    } catch {
+      appendDebugMessage("Failed to generate complex test data");
+    }
+  }, [appendDebugMessage, sendFile]);
 
   const isConnected =
     state.connected && lastSync && Date.now() - lastSync < 5000;
@@ -2217,7 +2566,7 @@ export default function ControlPanelPage() {
                       const sessionExpired = now > activeUntil;
                       const sessionPoint = sessionExpired
                         ? point
-                        : (lockedPoint ?? point);
+                        : lockedPoint ?? point;
 
                       if (sessionExpired) {
                         handleAction("navigateToPoint", {
@@ -2470,6 +2819,199 @@ export default function ControlPanelPage() {
               )}
             </section>
           </div>
+        )}
+
+        {isDevMode && (
+          <section className="mt-4 bg-white dark:bg-gray-800 rounded-lg p-4 shadow">
+            <SectionHeader>Dev tools</SectionHeader>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => {
+                  if (
+                    window.confirm("Clear app data and reset current state?")
+                  ) {
+                    appendDebugMessage("Requested app data reset");
+                    handleAction("clearAppData");
+                  }
+                }}
+                className="text-xs px-3 py-1"
+              >
+                Clear app data
+              </Button>
+
+              <div className="flex flex-wrap items-center gap-2 rounded border dark:border-gray-700 px-2 py-1">
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  Calibration profile
+                </span>
+                <InlineSelect
+                  id="dev-calibration-preset"
+                  name="dev-calibration-preset"
+                  value={devCalibrationPreset}
+                  options={[
+                    { value: "none", label: "none" },
+                    { value: "moderate", label: "moderate" },
+                    { value: "extreme", label: "extreme" },
+                    { value: "custom", label: "custom" },
+                  ]}
+                  handleChange={(e) => {
+                    const preset = e.target.value as
+                      | "none"
+                      | "moderate"
+                      | "extreme"
+                      | "custom";
+                    setDevCalibrationPreset(preset);
+
+                    if (preset === "custom") {
+                      appendDebugMessage(
+                        "Custom calibration detected (manual or unmatched points)",
+                      );
+                      return;
+                    }
+
+                    appendDebugMessage(`Applied ${preset} calibration preset`);
+                    handleAction("applyCalibrationPreset", preset);
+                  }}
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 rounded border dark:border-gray-700 px-2 py-1">
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  Grid size
+                </span>
+                <InlineSelect
+                  id="dev-grid-preset"
+                  name="dev-grid-preset"
+                  value={devGridPreset}
+                  options={[
+                    { value: "60x40", label: "60×40" },
+                    { value: "30x20", label: "30×20" },
+                  ]}
+                  handleChange={(e) => {
+                    const value = e.target.value as "60x40" | "30x20";
+                    setDevGridPreset(value);
+                    const [presetWidth, presetHeight] = value.split("x");
+                    appendDebugMessage(
+                      `Applied calibration size preset ${presetWidth}×${presetHeight}`,
+                    );
+                    handleAction("setCalibrationSizePreset", {
+                      width: presetWidth,
+                      height: presetHeight,
+                    });
+                  }}
+                />
+              </div>
+
+              <Button
+                onClick={() => {
+                  void loadSimpleTestData();
+                }}
+                className="text-xs px-3 py-1"
+              >
+                Load test data: simple
+              </Button>
+
+              <Button
+                onClick={() => {
+                  void loadComplexTestData();
+                }}
+                className="text-xs px-3 py-1"
+              >
+                Load test data: complex PDF
+              </Button>
+
+              <Button
+                onClick={() => setDebugMessages([])}
+                className="text-xs px-3 py-1"
+              >
+                Clear debug log
+              </Button>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-300">
+              <div>Mode: {state.isCalibrating ? "calibrate" : "project"}</div>
+              <div>Connected: {isConnected ? "yes" : "no"}</div>
+              <div>
+                File:{" "}
+                {state.file
+                  ? `${state.file.name} (${state.file.type})`
+                  : "none"}
+              </div>
+              <div>
+                Last sync:{" "}
+                {lastSync
+                  ? `${Math.max(0, Date.now() - lastSync)} ms ago`
+                  : "none"}
+              </div>
+            </div>
+
+            <div className="mt-3 rounded border dark:border-gray-700 p-3 text-xs">
+              <div className="font-semibold mb-1">Memory usage</div>
+              {memoryAvailable && memoryStats ? (
+                <div className="space-y-1 text-gray-600 dark:text-gray-300">
+                  <div>
+                    Used heap: {formatBytes(memoryStats.usedJSHeapSize)}
+                  </div>
+                  <div>
+                    Total heap: {formatBytes(memoryStats.totalJSHeapSize)}
+                  </div>
+                  <div>
+                    Heap limit: {formatBytes(memoryStats.jsHeapSizeLimit)}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1 text-gray-600 dark:text-gray-300">
+                  <div className="text-gray-500 dark:text-gray-400">
+                    Heap API unavailable in this browser
+                  </div>
+                  <div>Approx synced state size: {formatBytes(stateBytes)}</div>
+                  <div>Local storage usage: {formatBytes(storageBytes)}</div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-3 rounded border dark:border-gray-700 p-3 text-xs">
+              <div className="font-semibold mb-1">Render performance</div>
+              <div className="space-y-1 text-gray-600 dark:text-gray-300">
+                <div>
+                  Preview source: {state.previewSourceType.toUpperCase()}
+                </div>
+                <div>
+                  File load status: {loadStatusToLabel(state.fileLoadStatus)}
+                </div>
+                <div>
+                  Line thickness status: {loadStatusToLabel(state.lineThicknessStatus)}
+                </div>
+                <div>
+                  File render (last): {formatMs(state.renderMetrics.fileRenderDurationMs)}
+                </div>
+                <div>
+                  File render (in progress): {formatMs(state.renderMetrics.fileRenderInProgressMs)}
+                </div>
+                <div>
+                  Thumbnail render (last): {formatMs(state.renderMetrics.thumbnailRenderDurationMs)}
+                </div>
+                <div>
+                  Thumbnail render (in progress): {formatMs(state.renderMetrics.thumbnailRenderInProgressMs)}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-3 rounded border dark:border-gray-700 p-3 text-xs">
+              <div className="font-semibold mb-1">Debug messages</div>
+              <div className="max-h-36 overflow-y-auto font-mono text-gray-600 dark:text-gray-300 space-y-1">
+                {debugMessages.length === 0 ? (
+                  <div className="text-gray-500 dark:text-gray-400">
+                    No debug messages yet
+                  </div>
+                ) : (
+                  debugMessages.map((message, index) => (
+                    <div key={`${message}-${index}`}>{message}</div>
+                  ))
+                )}
+              </div>
+            </div>
+          </section>
         )}
       </div>
     </main>

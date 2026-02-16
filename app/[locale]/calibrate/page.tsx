@@ -1058,6 +1058,7 @@ export default function Page() {
                 setShowingMovePad(show);
                 updateLocalSettings({ showingMovePad: show });
               }}
+              points={points}
               corners={corners}
               setCorners={setCorners}
               dispatchPoints={dispatch}
@@ -1067,10 +1068,16 @@ export default function Page() {
               calibrationTransform={calibrationTransform}
               restoreTransforms={restoreTransforms}
               setRestoreTransforms={setRestoreTransforms}
-              pdfThumbnail={pdfThumbnail}
-              isPreviewLoading={isPreviewLoading}
+              pdfThumbnail={
+                file?.type === "application/pdf" ? pdfThumbnail : dataUrl
+              }
+              isPreviewLoading={
+                file?.type === "application/pdf" ? isPreviewLoading : false
+              }
               showPreviewImage={showPreviewImage}
               setShowPreviewImage={setShowPreviewImage}
+              fileLoadStatus={fileLoadStatus}
+              lineThicknessStatus={lineThicknessStatus}
               markers={markers}
               setMarkers={setMarkers}
               markingMode={markingMode}

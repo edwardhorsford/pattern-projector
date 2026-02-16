@@ -5,8 +5,10 @@ import {
   CSSProperties,
   Dispatch,
   SetStateAction,
+  useMemo,
   useEffect,
   useRef,
+  useState,
 } from "react";
 
 export default function SvgViewer({
@@ -35,12 +37,41 @@ export default function SvgViewer({
   patternScaleFactor: number;
 }) {
   const objectRef = useRef<HTMLObjectElement>(null);
+  const [svgDimensions, setSvgDimensions] = useState({ width: 0, height: 0 });
 
-  const imageStyle = `
+  const imageStyle = useMemo(
+    () => `
     transform: ${transformStyle(patternScaleFactor)};
     transform-origin: top left;
     background-color: white;
-  `;
+  `,
+    [patternScaleFactor],
+  );
+
+  function getSvgDimensions(svg: SVGSVGElement): {
+    width: number;
+    height: number;
+  } {
+    const width = svg.width.baseVal.value;
+    const height = svg.height.baseVal.value;
+
+    if (width > 0 && height > 0) {
+      return { width, height };
+    }
+
+    const vb = svg.viewBox.baseVal;
+    if (vb && vb.width > 0 && vb.height > 0) {
+      return { width: vb.width, height: vb.height };
+    }
+
+    const fallbackWidth = svg.getBoundingClientRect().width;
+    const fallbackHeight = svg.getBoundingClientRect().height;
+
+    return {
+      width: fallbackWidth > 0 ? fallbackWidth : 1,
+      height: fallbackHeight > 0 ? fallbackHeight : 1,
+    };
+  }
 
   function transformStyle(patternScaleFactor: number): string {
     if (patternScaleFactor === 1) {
@@ -68,12 +99,25 @@ export default function SvgViewer({
   useEffect(() => {
     const svg = objectRef.current?.contentDocument?.querySelector("svg");
     if (!svg) return;
-    const width = svg.width.baseVal.value;
-    const height = svg.height.baseVal.value;
+    const { width, height } = getSvgDimensions(svg);
     if (width === 0 || height === 0) return;
+    setSvgDimensions({ width, height });
     setLayoutWidth(width * patternScale);
     setLayoutHeight(height * patternScale);
   }, [objectRef, setLayoutWidth, setLayoutHeight, patternScale]);
+
+  useEffect(() => {
+    if (
+      !objectRef.current ||
+      svgDimensions.width <= 0 ||
+      svgDimensions.height <= 0
+    ) {
+      return;
+    }
+
+    objectRef.current.style.width = `${svgDimensions.width * patternScaleFactor}px`;
+    objectRef.current.style.height = `${svgDimensions.height * patternScaleFactor}px`;
+  }, [svgDimensions, patternScaleFactor]);
 
   return (
     <object
@@ -92,8 +136,10 @@ export default function SvgViewer({
           return;
         }
         setFileLoadStatus(LoadStatusEnum.SUCCESS);
-        setLayoutWidth(svg.width.baseVal.value * patternScale);
-        setLayoutHeight(svg.height.baseVal.value * patternScale);
+        const { width, height } = getSvgDimensions(svg);
+        setSvgDimensions({ width, height });
+        setLayoutWidth(width * patternScale);
+        setLayoutHeight(height * patternScale);
         setPageCount(1);
         // get all groups at the root if the svg
         const groupLayers: Layers = {};
