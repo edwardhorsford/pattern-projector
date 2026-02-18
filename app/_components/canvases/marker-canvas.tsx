@@ -5,7 +5,7 @@ import { Marker, MARKER_SIZE_INCHES } from "@/_lib/marker";
 import { useTransformContext } from "@/_hooks/use-transform-context";
 import Matrix from "ml-matrix";
 import { getPtDensity, Unit } from "@/_lib/unit";
-import { Theme, themeFilter } from "@/_lib/display-settings";
+import { Theme, secondaryColor, themeFilter } from "@/_lib/display-settings";
 import { scale, transformPoint } from "@/_lib/geometry";
 
 interface MarkerCanvasProps {
@@ -31,6 +31,7 @@ export default function MarkerCanvas({
   className,
 }: MarkerCanvasProps) {
   const localTransform = useTransformContext();
+  const accentColor = secondaryColor(theme);
 
   // Calculate marker size in screen pixels
   // Use calibration transform to get the scale factor (points to pixels)
@@ -102,14 +103,14 @@ export default function MarkerCanvas({
                 cy="50"
                 r="42"
                 fill="none"
-                stroke="#a855f7"
+                stroke={accentColor}
                 strokeWidth="8"
               />
               {/* Purple checkmark */}
               <path
                 d="M28 50 L44 66 L72 34"
                 fill="none"
-                stroke="#a855f7"
+                stroke={accentColor}
                 strokeWidth="10"
                 strokeLinecap="round"
                 strokeLinejoin="round"

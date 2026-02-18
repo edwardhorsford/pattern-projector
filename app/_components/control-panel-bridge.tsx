@@ -15,6 +15,7 @@ import {
   DisplaySettings,
   getDefaultDisplaySettings,
   themes,
+  Theme,
 } from "@/_lib/display-settings";
 import {
   getDefaultMenuStates,
@@ -1161,6 +1162,12 @@ export function ControlPanelBridge({
             setDisplaySettings({
               ...displaySettings,
               theme,
+            });
+            break;
+          case "setTheme":
+            setDisplaySettings({
+              ...displaySettings,
+              theme: params as Theme,
             });
             break;
           case "toggleOverlay":

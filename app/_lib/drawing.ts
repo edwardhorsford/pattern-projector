@@ -4,7 +4,9 @@ import { Point } from "@/_lib/point";
 import {
   DisplaySettings,
   fillColor,
+  secondaryColor,
   strokeColor,
+  tertiaryColor,
 } from "@/_lib/display-settings";
 import {
   RestoreTransforms,
@@ -144,13 +146,14 @@ export function drawOverlays(cs: CanvasState) {
     drawMessage(cs, t("magnifying"));
   } else {
     if (grid) {
+      ctx.strokeStyle = secondaryColor(theme);
       drawGrid(cs, 8, [1]);
     }
     if (border) {
-      drawBorder(cs, strokeColor(theme), fillColor(theme));
+      drawBorder(cs, secondaryColor(theme), fillColor(theme));
     }
     if (paper) {
-      ctx.strokeStyle = "black";
+      ctx.strokeStyle = secondaryColor(theme);
       drawPaperSheet(cs);
     }
     if (flipLines) {
@@ -200,7 +203,7 @@ function drawMessage(cs: CanvasState, message: string) {
   );
 
   // Draw text
-  ctx.fillStyle = "#9333ea";
+  ctx.fillStyle = secondaryColor(cs.displaySettings.theme);
   ctx.fillText(text, center.x - textWidth * 0.5, center.y + textHeight * 0.25);
   ctx.restore();
 }
@@ -208,7 +211,7 @@ function drawMessage(cs: CanvasState, message: string) {
 function drawViewportOutline(cs: CanvasState) {
   const { ctx, calibrationTransform, restoreTransforms } = cs;
   ctx.save();
-  ctx.strokeStyle = "#9333ea";
+  ctx.strokeStyle = secondaryColor(cs.displaySettings.theme);
   ctx.lineWidth = 2;
   let corners = transformPoints(
     rectCorners(window.innerWidth, window.innerHeight),
@@ -229,7 +232,7 @@ function drawViewportOutline(cs: CanvasState) {
 export function drawCenterLines(cs: CanvasState) {
   const { width, height, ctx, perspective } = cs;
   ctx.save();
-  ctx.strokeStyle = "#FF4500";
+  ctx.strokeStyle = tertiaryColor(cs.displaySettings.theme);
 
   function drawProjectedLine(p1: Point, p2: Point) {
     const line = transformSimpleLine([p1, p2], perspective);
@@ -268,12 +271,12 @@ export function drawPaperSheet(cs: CanvasState) {
   drawPolygon(ctx, cornersP);
   ctx.setLineDash([4, 2]);
   ctx.lineWidth = 4;
-  ctx.strokeStyle = strokeColor(displaySettings.theme);
+  ctx.strokeStyle = secondaryColor(displaySettings.theme);
   ctx.stroke();
 
   const labelWidth = ctx.measureText(text).width;
   ctx.textBaseline = "middle";
-  ctx.fillStyle = strokeColor(displaySettings.theme);
+  ctx.fillStyle = secondaryColor(displaySettings.theme);
   const centerP = transformPoint(
     {
       x: width * 0.5,
@@ -403,7 +406,7 @@ export function drawDimensionLabels(
 function drawFlippedPattern(cs: CanvasState) {
   const { ctx } = cs;
   ctx.save();
-  ctx.fillStyle = "#FF4500";
+  ctx.fillStyle = tertiaryColor(cs.displaySettings.theme);
   // draw a grid of dots
   const dotSize = 2;
   const spacing = 72;

@@ -11,6 +11,7 @@ import { PointAction } from "@/_reducers/pointsReducer";
 import CycleIcon from "@/_icons/cycle-icon";
 import { getCalibrationContextUpdatedWithEvent } from "@/_lib/calibration-context";
 import { FullScreenHandle } from "react-full-screen";
+import { Theme, secondaryColor } from "@/_lib/display-settings";
 
 const PIXEL_LIST = [1, 4, 8, 16];
 const REPEAT_MS = 100;
@@ -21,14 +22,17 @@ export default function MovementPad({
   setCorners,
   dispatch,
   fullScreenHandle,
+  theme,
 }: {
   corners: Set<number>;
   setCorners: (corners: Set<number>) => void;
   dispatch: Dispatch<PointAction>;
   fullScreenHandle: FullScreenHandle;
+  theme: Theme;
 }) {
   const t = useTranslations("MovementPad");
-  const border = "border-2 border-purple-600";
+  const border = "border-2";
+  const borderColor = secondaryColor(theme);
   const [intervalFunc, setIntervalFunc] = React.useState<NodeJS.Timeout | null>(
     null,
   );
@@ -92,7 +96,11 @@ export default function MovementPad({
     <div className="absolute top-[calc(50vh-80px)] right-8 z-50">
       <menu className={`grid grid-cols-3 gap-2`}>
         <IconButton
-          style={{ WebkitUserSelect: "none", userSelect: "none" }}
+          style={{
+            WebkitUserSelect: "none",
+            userSelect: "none",
+            borderColor,
+          }}
           onPointerDown={() => handleStart(Direction.Up)}
           onPointerUp={(e) => handleStop(e)}
           className={`${border} col-start-2`}
@@ -101,7 +109,11 @@ export default function MovementPad({
         </IconButton>
 
         <IconButton
-          style={{ WebkitUserSelect: "none", userSelect: "none" }}
+          style={{
+            WebkitUserSelect: "none",
+            userSelect: "none",
+            borderColor,
+          }}
           onPointerDown={() => handleStart(Direction.Left)}
           onPointerUp={(e) => handleStop(e)}
           className={`${border} col-start-1`}
@@ -110,7 +122,11 @@ export default function MovementPad({
         </IconButton>
 
         <IconButton
-          style={{ WebkitUserSelect: "none", userSelect: "none" }}
+          style={{
+            WebkitUserSelect: "none",
+            userSelect: "none",
+            borderColor,
+          }}
           onClick={handleChangeCorners}
           className={`${border} col-start-2`}
         >
@@ -118,7 +134,11 @@ export default function MovementPad({
         </IconButton>
 
         <IconButton
-          style={{ WebkitUserSelect: "none", userSelect: "none" }}
+          style={{
+            WebkitUserSelect: "none",
+            userSelect: "none",
+            borderColor,
+          }}
           onPointerDown={() => handleStart(Direction.Right)}
           onPointerUp={(e) => handleStop(e)}
           className={`${border} col-start-3`}
@@ -127,7 +147,11 @@ export default function MovementPad({
         </IconButton>
 
         <IconButton
-          style={{ WebkitUserSelect: "none", userSelect: "none" }}
+          style={{
+            WebkitUserSelect: "none",
+            userSelect: "none",
+            borderColor,
+          }}
           onPointerDown={() => handleStart(Direction.Down)}
           onPointerUp={(e) => handleStop(e)}
           className={`${border} col-start-2`}

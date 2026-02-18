@@ -45,7 +45,7 @@ export default function PdfErrorModal({
               Close
             </Button>
             <Button
-              color={ButtonColor.PURPLE}
+              color={ButtonColor.SECONDARY}
               style={ButtonStyle.FILLED}
               href={buildHref()}
             >

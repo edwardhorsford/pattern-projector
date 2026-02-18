@@ -6,7 +6,7 @@ import { MouseEventHandler } from "react";
 export function Button({
   children,
   style = ButtonStyle.OUTLINE,
-  color = ButtonColor.PURPLE,
+  color = ButtonColor.SECONDARY,
   className,
   onClick,
   href,

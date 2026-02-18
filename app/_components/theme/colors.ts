@@ -3,7 +3,7 @@ import { ButtonStyle } from "./styles";
 export enum ButtonColor {
   BLUE = "blue",
   GRAY = "gray",
-  PURPLE = "purple",
+  SECONDARY = "secondary",
 }
 
 export enum IconButtonStateClass {
@@ -13,7 +13,7 @@ export enum IconButtonStateClass {
 }
 
 export function getColorClasses(
-  color: ButtonColor = ButtonColor.PURPLE,
+  color: ButtonColor = ButtonColor.SECONDARY,
   style: ButtonStyle = ButtonStyle.OUTLINE,
 ) {
   switch (color) {
@@ -27,7 +27,7 @@ export function getColorClasses(
         ? "text-black border-gray-700 hover:bg-gray-800 focus:ring-gray-300 dark:border-gray-500 dark:text-gray-500 dark:hover:bg-gray-500 dark:focus:ring-gray-800"
         : "bg-black hover:bg-gray-800 focus:ring-gray-300 dark:bg-gray-600 dark:hover:bg-gray-700 dark:focus:ring-gray-800";
     }
-    case ButtonColor.PURPLE: {
+    case ButtonColor.SECONDARY: {
       return style === ButtonStyle.OUTLINE
         ? "text-purple-700 border-purple-700 hover:bg-purple-800 focus:ring-purple-300 dark:border-purple-500 dark:text-purple-500 dark:hover:bg-purple-500 dark:focus:ring-purple-800"
         : "bg-purple-700 hover:bg-purple-800 focus:ring-purple-300 dark:bg-purple-600 dark:hover:bg-purple-700 dark:focus:ring-purple-800";
