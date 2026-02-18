@@ -1289,7 +1289,7 @@ export default function ControlPanelPage() {
     "none" | "moderate" | "extreme" | "custom"
   >("none");
   const [devThemePreset, setDevThemePreset] = useState<Theme>(Theme.Light);
-  const [devGridPreset, setDevGridPreset] = useState<"60x40" | "30x20">(
+  const [devGridPreset, setDevGridPreset] = useState<"60x40" | "30x20" | "15x10">(
     "60x40",
   );
   const [memoryStats, setMemoryStats] = useState<HeapMemoryStats | null>(null);
@@ -2980,9 +2980,10 @@ export default function ControlPanelPage() {
                   options={[
                     { value: "60x40", label: "60×40" },
                     { value: "30x20", label: "30×20" },
+                    { value: "15x10", label: "15×10" },
                   ]}
                   handleChange={(e) => {
-                    const value = e.target.value as "60x40" | "30x20";
+                    const value = e.target.value as "60x40" | "30x20" | "15x10";
                     setDevGridPreset(value);
                     const [presetWidth, presetHeight] = value.split("x");
                     appendDebugMessage(
