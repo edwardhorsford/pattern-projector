@@ -4,6 +4,9 @@ import { Point } from "@/_lib/point";
 import {
   DisplaySettings,
   fillColor,
+  overlayGridColor,
+  overlayPaperLabelColor,
+  overlayPaperStrokeColor,
   secondaryColor,
   strokeColor,
   tertiaryColor,
@@ -271,12 +274,12 @@ export function drawPaperSheet(cs: CanvasState) {
   drawPolygon(ctx, cornersP);
   ctx.setLineDash([4, 2]);
   ctx.lineWidth = 4;
-  ctx.strokeStyle = secondaryColor(displaySettings.theme);
+  ctx.strokeStyle = overlayPaperStrokeColor(displaySettings.theme);
   ctx.stroke();
 
   const labelWidth = ctx.measureText(text).width;
   ctx.textBaseline = "middle";
-  ctx.fillStyle = secondaryColor(displaySettings.theme);
+  ctx.fillStyle = overlayPaperLabelColor(displaySettings.theme);
   const centerP = transformPoint(
     {
       x: width * 0.5,
@@ -323,8 +326,9 @@ export function drawGrid(
 
   /* Vertical lines */
   for (let i = 1; i < cs.width; i++) {
+    const isMajorLine = i % majorLine === 0 || i === cs.width;
     let lineWidth = cs.minorLineWidth;
-    if (i % majorLine === 0 || i === cs.width) {
+    if (isMajorLine) {
       lineWidth = cs.majorLineWidth;
     }
     const line = transformSimpleLine(
@@ -334,14 +338,16 @@ export function drawGrid(
       ],
       cs.perspective,
     );
+    ctx.strokeStyle = overlayGridColor(cs.displaySettings.theme, isMajorLine);
     ctx.lineWidth = lineWidth;
     drawLine(ctx, line);
   }
 
   /* Horizontal lines */
   for (let i = 1; i < cs.height; i++) {
+    const isMajorLine = i % majorLine === 0 || i === cs.height;
     let lineWidth = cs.minorLineWidth;
-    if (i % majorLine === 0 || i === cs.height) {
+    if (isMajorLine) {
       lineWidth = cs.majorLineWidth;
     }
     const y = cs.height - i;
@@ -352,6 +358,7 @@ export function drawGrid(
       ],
       cs.perspective,
     );
+    ctx.strokeStyle = overlayGridColor(cs.displaySettings.theme, isMajorLine);
     ctx.lineWidth = lineWidth;
     drawLine(ctx, line);
   }
