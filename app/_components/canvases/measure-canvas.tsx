@@ -50,6 +50,7 @@ export default function MeasureCanvas({
   selectedLine,
   setSelectedLine,
   patternScale,
+  accentColor,
   children,
 }: {
   perspective: Matrix;
@@ -70,6 +71,7 @@ export default function MeasureCanvas({
   selectedLine: number;
   setSelectedLine: Dispatch<SetStateAction<number>>;
   patternScale: number;
+  accentColor: string;
   children: React.ReactNode;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -295,7 +297,7 @@ export default function MeasureCanvas({
         }
         if (lines.length > 0 && selectedLine >= 0) {
           // Style selected line differently.
-          ctx.strokeStyle = "#9333ea";
+          ctx.strokeStyle = accentColor;
 
           const patternLine = lines[selectedLine];
           const matLine = transformLine(patternLine, transform);

@@ -29,6 +29,7 @@ import {
   DisplaySettings,
   getDefaultDisplaySettings,
   isDarkTheme,
+  secondaryColor,
   themeFilter,
   Theme,
 } from "@/_lib/display-settings";
@@ -150,7 +151,7 @@ export default function Page() {
   const [fullScreenTooltipVisible, setFullScreenTooltipVisible] =
     useState(true);
   const [buttonColor, setButtonColor] = useState<ButtonColor>(
-    ButtonColor.PURPLE,
+    ButtonColor.SECONDARY,
   );
   const [mailOpen, setMailOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<null | string>(null);
@@ -988,6 +989,7 @@ export default function Page() {
               setCorners={setCorners}
               dispatch={dispatch}
               fullScreenHandle={fullScreenHandle}
+              theme={displaySettings.theme}
             />
           )}
 
@@ -1114,6 +1116,7 @@ export default function Page() {
                 selectedLine={selectedLine}
                 setSelectedLine={setSelectedLine}
                 patternScale={patternScaleFactor}
+                accentColor={secondaryColor(displaySettings.theme)}
               >
                 <Draggable
                   className={`absolute ${menusHidden && "!cursor-none"} `}

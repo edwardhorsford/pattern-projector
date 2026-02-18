@@ -56,7 +56,10 @@ import {
   DisplaySettings,
   getDefaultDisplaySettings,
   isDarkTheme,
+  secondaryColor,
+  themePalette,
   strokeColor,
+  themes,
   themeFilter,
   Theme,
 } from "@/_lib/display-settings";
@@ -397,6 +400,8 @@ function Preview({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [containerWidth, setContainerWidth] = useState(400);
+  const accentColor = secondaryColor(theme);
+  const softAccentColor = `${accentColor}26`;
   const lastNavigateTime = useRef(0);
   const handledMagnifyClick = useRef(false); // Track if we handled a magnify click
   const dragStartCoords = useRef<{ x: number; y: number } | null>(null); // Track drag start for delta calculation
@@ -914,12 +919,13 @@ function Preview({
         {/* Calibration border - shows the original calibration rectangle */}
         {showBorder && calibrationBorder && (
           <div
-            className="absolute border-2 border-purple-500 pointer-events-none"
+            className="absolute border-2 pointer-events-none"
             style={{
               left: calibrationBorder.x,
               top: calibrationBorder.y,
               width: Math.max(calibrationBorder.width, 4),
               height: Math.max(calibrationBorder.height, 4),
+              borderColor: accentColor,
             }}
           />
         )}
@@ -933,7 +939,7 @@ function Preview({
               top: paperSheet.y,
               width: Math.max(paperSheet.width, 4),
               height: Math.max(paperSheet.height, 4),
-              border: "2px dashed #9333ea",
+              border: `2px dashed ${accentColor}`,
             }}
           />
         )}
@@ -990,14 +996,14 @@ function Preview({
                   cy="50"
                   r="42"
                   fill="none"
-                  stroke="#a855f7"
+                  stroke={accentColor}
                   strokeWidth="8"
                 />
                 {/* Purple checkmark */}
                 <path
                   d="M28 50 L44 66 L72 34"
                   fill="none"
-                  stroke="#a855f7"
+                  stroke={accentColor}
                   strokeWidth="10"
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -1010,7 +1016,7 @@ function Preview({
         {/* Viewport indicator */}
         {viewport && (
           <div
-            className="absolute border-2 border-purple-500 pointer-events-none"
+            className="absolute border-2 pointer-events-none"
             style={{
               left: viewport.x,
               top: viewport.y,
@@ -1018,7 +1024,8 @@ function Preview({
               height: Math.max(viewport.height, 4),
               // No transform needed - viewport is already in rotated coordinates
               transformOrigin: "top left",
-              backgroundColor: "rgba(147, 51, 234, 0.15)",
+              borderColor: accentColor,
+              backgroundColor: softAccentColor,
             }}
           />
         )}
@@ -1026,8 +1033,11 @@ function Preview({
         {/* Center crosshair when no viewport */}
         {!viewport && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-4 h-0.5 bg-purple-500" />
-            <div className="absolute w-0.5 h-4 bg-purple-500" />
+            <div className="w-4 h-0.5" style={{ backgroundColor: accentColor }} />
+            <div
+              className="absolute w-0.5 h-4"
+              style={{ backgroundColor: accentColor }}
+            />
           </div>
         )}
       </div>
@@ -1101,16 +1111,19 @@ function getApproxObjectBytes(value: unknown): number {
 function MovementPadControl({
   mode,
   corners,
+  theme,
   handleAction,
   t,
 }: {
   mode: "calibrate" | "project";
   corners: number[];
+  theme: Theme;
   handleAction: (action: string, params?: unknown) => void;
   t: ReturnType<typeof useTranslations<"MovementPad">>;
 }) {
   const [intervalFunc, setIntervalFunc] = useState<NodeJS.Timeout | null>(null);
-  const border = "border-2 border-purple-600";
+  const border = "border-2";
+  const borderColor = secondaryColor(theme);
 
   const handleStart = (direction: Direction) => {
     // First immediate move
@@ -1175,7 +1188,11 @@ function MovementPadControl({
       )}
       <menu className="grid grid-cols-3 gap-2">
         <IconButton
-          style={{ WebkitUserSelect: "none", userSelect: "none" }}
+          style={{
+            WebkitUserSelect: "none",
+            userSelect: "none",
+            borderColor,
+          }}
           onPointerDown={() => handleStart(Direction.Up)}
           onPointerUp={handleStop}
           onPointerLeave={handleStop}
@@ -1185,7 +1202,11 @@ function MovementPadControl({
         </IconButton>
 
         <IconButton
-          style={{ WebkitUserSelect: "none", userSelect: "none" }}
+          style={{
+            WebkitUserSelect: "none",
+            userSelect: "none",
+            borderColor,
+          }}
           onPointerDown={() => handleStart(Direction.Left)}
           onPointerUp={handleStop}
           onPointerLeave={handleStop}
@@ -1195,7 +1216,11 @@ function MovementPadControl({
         </IconButton>
 
         <IconButton
-          style={{ WebkitUserSelect: "none", userSelect: "none" }}
+          style={{
+            WebkitUserSelect: "none",
+            userSelect: "none",
+            borderColor,
+          }}
           onClick={handleCycle}
           className={`${border} col-start-2`}
         >
@@ -1207,7 +1232,11 @@ function MovementPadControl({
         </IconButton>
 
         <IconButton
-          style={{ WebkitUserSelect: "none", userSelect: "none" }}
+          style={{
+            WebkitUserSelect: "none",
+            userSelect: "none",
+            borderColor,
+          }}
           onPointerDown={() => handleStart(Direction.Right)}
           onPointerUp={handleStop}
           onPointerLeave={handleStop}
@@ -1217,7 +1246,11 @@ function MovementPadControl({
         </IconButton>
 
         <IconButton
-          style={{ WebkitUserSelect: "none", userSelect: "none" }}
+          style={{
+            WebkitUserSelect: "none",
+            userSelect: "none",
+            borderColor,
+          }}
           onPointerDown={() => handleStart(Direction.Down)}
           onPointerUp={handleStop}
           onPointerLeave={handleStop}
@@ -1255,6 +1288,7 @@ export default function ControlPanelPage() {
   const [devCalibrationPreset, setDevCalibrationPreset] = useState<
     "none" | "moderate" | "extreme" | "custom"
   >("none");
+  const [devThemePreset, setDevThemePreset] = useState<Theme>(Theme.Light);
   const [devGridPreset, setDevGridPreset] = useState<"60x40" | "30x20">(
     "60x40",
   );
@@ -1301,6 +1335,10 @@ export default function ControlPanelPage() {
   useEffect(() => {
     setDevCalibrationPreset(state.calibrationProfile);
   }, [state.calibrationProfile]);
+
+  useEffect(() => {
+    setDevThemePreset(state.displaySettings.theme);
+  }, [state.displaySettings.theme]);
 
   useEffect(() => {
     if (!isDevMode) {
@@ -1885,6 +1923,9 @@ export default function ControlPanelPage() {
   const isPdf = state.file?.type === "application/pdf";
   const isProjecting = !state.isCalibrating;
   const isDark = isDarkTheme(state.displaySettings.theme);
+  const controlAccentColor = secondaryColor(state.displaySettings.theme);
+  const controlActiveBg = `${controlAccentColor}33`;
+  const selectedThemePalette = themePalette(devThemePreset);
   const overlaysDisabled = state.displaySettings.overlay?.disabled;
 
   const lineThicknessOptions = [0, 1, 2, 3, 4, 5, 6, 7];
@@ -1917,7 +1958,7 @@ export default function ControlPanelPage() {
               }
               className="px-4"
               style={ButtonStyle.FILLED}
-              color={ButtonColor.PURPLE}
+              color={ButtonColor.SECONDARY}
             >
               {state.isCalibrating ? tHeader("project") : tHeader("calibrate")}
             </Button>
@@ -2014,6 +2055,7 @@ export default function ControlPanelPage() {
                   <MovementPadControl
                     mode="calibrate"
                     corners={state.corners}
+                    theme={state.displaySettings.theme}
                     handleAction={handleAction}
                     t={tMove}
                   />
@@ -2287,11 +2329,12 @@ export default function ControlPanelPage() {
                           close();
                         }}
                         disabled={state.magnifying || state.zoomedOut}
-                        className={`w-full flex items-center gap-3 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-left disabled:opacity-50 ${
+                        className="w-full flex items-center gap-3 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-left disabled:opacity-50"
+                        style={
                           state.markingMode
-                            ? "bg-purple-100 dark:bg-purple-900"
-                            : ""
-                        }`}
+                            ? { backgroundColor: controlActiveBg }
+                            : undefined
+                        }
                       >
                         <AddBoxIcon ariaLabel="" />
                         <span>
@@ -2306,11 +2349,12 @@ export default function ControlPanelPage() {
                           close();
                         }}
                         disabled={state.markers.length === 0}
-                        className={`w-full flex items-center gap-3 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-left disabled:opacity-50 ${
+                        className="w-full flex items-center gap-3 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 text-left disabled:opacity-50"
+                        style={
                           state.clearingMode
-                            ? "bg-purple-100 dark:bg-purple-900"
-                            : ""
-                        }`}
+                            ? { backgroundColor: controlActiveBg }
+                            : undefined
+                        }
                       >
                         <CloseIcon ariaLabel="" />
                         <span>
@@ -2341,6 +2385,7 @@ export default function ControlPanelPage() {
                   <MovementPadControl
                     mode="project"
                     corners={state.corners}
+                    theme={state.displaySettings.theme}
                     handleAction={handleAction}
                     t={tMove}
                   />
@@ -2361,7 +2406,8 @@ export default function ControlPanelPage() {
                       </span>
                       <button
                         onClick={() => handleAction("toggleMeasure")}
-                        className="w-8 h-8 flex items-center justify-center text-lg font-medium rounded bg-purple-500 text-white hover:bg-purple-600"
+                        className="w-8 h-8 flex items-center justify-center text-lg font-medium rounded text-white"
+                        style={{ backgroundColor: controlAccentColor }}
                       >
                         +
                       </button>
@@ -2376,9 +2422,14 @@ export default function ControlPanelPage() {
                             onClick={() => handleAction("selectLine", i)}
                             className={`w-8 h-8 flex items-center justify-center text-sm font-medium rounded ${
                               i === state.selectedLine
-                                ? "bg-purple-500 text-white"
+                                ? "text-white"
                                 : "bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500"
                             }`}
+                            style={
+                              i === state.selectedLine
+                                ? { backgroundColor: controlAccentColor }
+                                : undefined
+                            }
                           >
                             {i + 1}
                           </button>
@@ -2388,9 +2439,14 @@ export default function ControlPanelPage() {
                           onClick={() => handleAction("toggleMeasure")}
                           className={`w-8 h-8 flex items-center justify-center text-lg font-medium rounded ${
                             state.measuring
-                              ? "bg-purple-500 text-white"
+                              ? "text-white"
                               : "bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500"
                           }`}
+                          style={
+                            state.measuring
+                              ? { backgroundColor: controlAccentColor }
+                              : undefined
+                          }
                         >
                           +
                         </button>
@@ -2842,6 +2898,44 @@ export default function ControlPanelPage() {
 
               <div className="flex flex-wrap items-center gap-2 rounded border dark:border-gray-700 px-2 py-1">
                 <span className="text-xs text-gray-500 dark:text-gray-400">
+                  Theme preset
+                </span>
+                <InlineSelect
+                  id="dev-theme-preset"
+                  name="dev-theme-preset"
+                  value={devThemePreset}
+                  options={themes().map((themeOption) => ({
+                    value: themeOption,
+                    label: themeOption,
+                  }))}
+                  handleChange={(e) => {
+                    const preset = e.target.value as Theme;
+                    setDevThemePreset(preset);
+                    appendDebugMessage(`Applied theme preset ${preset}`);
+                    handleAction("setTheme", preset);
+                  }}
+                />
+                <div className="flex items-center gap-1">
+                  <span
+                    className="w-3 h-3 rounded-sm border border-gray-500"
+                    title="Primary"
+                    style={{ backgroundColor: selectedThemePalette.primary }}
+                  />
+                  <span
+                    className="w-3 h-3 rounded-sm border border-gray-500"
+                    title="Secondary"
+                    style={{ backgroundColor: selectedThemePalette.secondary }}
+                  />
+                  <span
+                    className="w-3 h-3 rounded-sm border border-gray-500"
+                    title="Tertiary"
+                    style={{ backgroundColor: selectedThemePalette.tertiary }}
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 rounded border dark:border-gray-700 px-2 py-1">
+                <span className="text-xs text-gray-500 dark:text-gray-400">
                   Calibration profile
                 </span>
                 <InlineSelect
@@ -2980,19 +3074,24 @@ export default function ControlPanelPage() {
                   File load status: {loadStatusToLabel(state.fileLoadStatus)}
                 </div>
                 <div>
-                  Line thickness status: {loadStatusToLabel(state.lineThicknessStatus)}
+                  Line thickness status:{" "}
+                  {loadStatusToLabel(state.lineThicknessStatus)}
                 </div>
                 <div>
-                  File render (last): {formatMs(state.renderMetrics.fileRenderDurationMs)}
+                  File render (last):{" "}
+                  {formatMs(state.renderMetrics.fileRenderDurationMs)}
                 </div>
                 <div>
-                  File render (in progress): {formatMs(state.renderMetrics.fileRenderInProgressMs)}
+                  File render (in progress):{" "}
+                  {formatMs(state.renderMetrics.fileRenderInProgressMs)}
                 </div>
                 <div>
-                  Thumbnail render (last): {formatMs(state.renderMetrics.thumbnailRenderDurationMs)}
+                  Thumbnail render (last):{" "}
+                  {formatMs(state.renderMetrics.thumbnailRenderDurationMs)}
                 </div>
                 <div>
-                  Thumbnail render (in progress): {formatMs(state.renderMetrics.thumbnailRenderInProgressMs)}
+                  Thumbnail render (in progress):{" "}
+                  {formatMs(state.renderMetrics.thumbnailRenderInProgressMs)}
                 </div>
               </div>
             </div>
