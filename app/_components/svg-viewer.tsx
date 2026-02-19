@@ -41,11 +41,11 @@ export default function SvgViewer({
 
   const imageStyle = useMemo(
     () => `
-    transform: ${transformStyle(patternScaleFactor)};
-    transform-origin: top left;
+    width: 100%;
+    height: 100%;
     background-color: white;
   `,
-    [patternScaleFactor],
+    [],
   );
 
   function getSvgDimensions(svg: SVGSVGElement): {
@@ -73,12 +73,6 @@ export default function SvgViewer({
     };
   }
 
-  function transformStyle(patternScaleFactor: number): string {
-    if (patternScaleFactor === 1) {
-      return "none";
-    }
-    return `scale(${patternScaleFactor})`;
-  }
   useEffect(() => {
     const svg = objectRef.current?.contentDocument?.querySelector("svg");
     if (!svg) return;
@@ -115,6 +109,10 @@ export default function SvgViewer({
       return;
     }
 
+    // Size the <object> to the scaled dimensions. The SVG inside fills the object
+    // via width/height 100% in its inline style (set via imageStyle), and uses its
+    // viewBox to scale content correctly — avoiding the clipping that occurred when
+    // using CSS transform: scale() on the inner SVG element.
     objectRef.current.style.width = `${svgDimensions.width * patternScaleFactor}px`;
     objectRef.current.style.height = `${svgDimensions.height * patternScaleFactor}px`;
   }, [svgDimensions, patternScaleFactor]);
