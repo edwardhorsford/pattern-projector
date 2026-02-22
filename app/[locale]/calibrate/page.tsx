@@ -802,6 +802,7 @@ export default function Page() {
       setDisplaySettings({
         overlay: localSettings.overlay ?? defaults.overlay,
         theme: localSettings.theme ?? defaults.theme,
+        colourLift: localSettings.colourLift ?? defaults.colourLift,
       });
     }
 
@@ -1376,7 +1377,7 @@ export default function Page() {
           </Transformable>
         </FullScreen>
       </div>
-      <Filters />
+      <Filters colourLift={displaySettings.colourLift} />
     </main>
   );
 }

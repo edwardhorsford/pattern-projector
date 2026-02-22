@@ -2896,6 +2896,31 @@ export default function ControlPanelPage() {
                 Clear app data
               </Button>
 
+              <div className="flex flex-wrap items-center gap-2 rounded border dark:border-gray-700 px-2 py-1 w-full">
+                <label
+                  htmlFor="dev-colour-lift"
+                  className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap"
+                >
+                  Colour lift:{" "}
+                  <span className="font-mono">
+                    {(state.displaySettings.colourLift ?? 0.35).toFixed(2)}
+                  </span>
+                </label>
+                <input
+                  id="dev-colour-lift"
+                  type="range"
+                  min={0}
+                  max={0.7}
+                  step={0.05}
+                  value={state.displaySettings.colourLift ?? 0.35}
+                  onChange={(e) => {
+                    const value = parseFloat(e.target.value);
+                    handleAction("setColourLift", value);
+                  }}
+                  className="flex-1 accent-purple-600"
+                />
+              </div>
+
               <div className="flex flex-wrap items-center gap-2 rounded border dark:border-gray-700 px-2 py-1">
                 <span className="text-xs text-gray-500 dark:text-gray-400">
                   Theme preset

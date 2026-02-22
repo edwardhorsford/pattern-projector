@@ -66,7 +66,8 @@ const THEME_PALETTES: Record<Theme, ThemePalette> = {
     primary: "#75FFCD",
     secondary: "#9333EA",
     tertiary: "#FF4500",
-    filter: "invert(1) sepia(100%) saturate(300%) hue-rotate(80deg)",
+    filter:
+      "url(#lift-blacks) invert(1) sepia(100%) saturate(300%) hue-rotate(80deg)",
     fill: "#000000",
     dark: true,
   },
@@ -74,7 +75,8 @@ const THEME_PALETTES: Record<Theme, ThemePalette> = {
     primary: "#7DEBFF",
     secondary: "#9333EA",
     tertiary: "#FF4500",
-    filter: "invert(1) sepia(100%) saturate(280%) hue-rotate(135deg)",
+    filter:
+      "url(#lift-blacks) invert(1) sepia(100%) saturate(280%) hue-rotate(135deg)",
     fill: "#000000",
     dark: true,
   },
@@ -82,7 +84,8 @@ const THEME_PALETTES: Record<Theme, ThemePalette> = {
     primary: "#FFD17A",
     secondary: "#9333EA",
     tertiary: "#FF4500",
-    filter: "invert(1) sepia(100%) saturate(330%) hue-rotate(350deg)",
+    filter:
+      "url(#lift-blacks) invert(1) sepia(100%) saturate(330%) hue-rotate(350deg)",
     fill: "#000000",
     dark: true,
   },
@@ -90,7 +93,8 @@ const THEME_PALETTES: Record<Theme, ThemePalette> = {
     primary: "#FF8DFF",
     secondary: "#9333EA",
     tertiary: "#FF4500",
-    filter: "invert(1) sepia(100%) saturate(280%) hue-rotate(250deg)",
+    filter:
+      "url(#lift-blacks) invert(1) sepia(100%) saturate(280%) hue-rotate(250deg)",
     fill: "#000000",
     dark: true,
   },
@@ -99,12 +103,19 @@ const THEME_PALETTES: Record<Theme, ThemePalette> = {
 export interface DisplaySettings {
   theme: Theme;
   overlay: OverlaySettings;
+  /** Lifts the black floor before inversion so lines absorb theme colour.
+   * 0 = lines invert to pure white (bright, little colour).
+   * 0.5 = lines invert to mid-grey (vivid colour).
+   * Default 0.35.
+   */
+  colourLift: number;
 }
 
 export function getDefaultDisplaySettings() {
   return {
     theme: Theme.Light,
     overlay: getDefaultOverlaySettings(),
+    colourLift: 0.35,
   };
 }
 

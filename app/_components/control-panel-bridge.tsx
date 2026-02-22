@@ -1192,6 +1192,12 @@ export function ControlPanelBridge({
           case "setLineThickness":
             setLineThickness(params as number);
             break;
+          case "setColourLift":
+            setDisplaySettings({
+              ...displaySettings,
+              colourLift: params as number,
+            });
+            break;
           case "adjustScale": {
             const delta = params as number;
             const screenCenterAnchor = getCalibrationCenterScreenAnchor();
