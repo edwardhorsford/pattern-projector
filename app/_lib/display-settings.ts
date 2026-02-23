@@ -58,6 +58,7 @@ const THEME_PALETTES: Record<Theme, ThemePalette> = {
     primary: "#ffffff",
     secondary: "#9333EA",
     tertiary: "#FF4500",
+    // invert only — no url(#lift-blacks) because Dark theme wants pure white lines.
     filter: "invert(1)",
     fill: "#000000",
     dark: true,
@@ -66,8 +67,13 @@ const THEME_PALETTES: Record<Theme, ThemePalette> = {
     primary: "#75FFCD",
     secondary: "#9333EA",
     tertiary: "#FF4500",
-    filter:
-      "url(#lift-blacks) invert(1) sepia(100%) saturate(300%) hue-rotate(80deg)",
+    // url(#lift-blacks) is intentionally NOT here — it is applied earlier in the
+    // pixel/canvas pipeline (erosionFilter for Chrome, enhanceLineQualityFast LUT
+    // for Safari) so that the container CSS filter stays url()-free. If a url()
+    // reference is used here and Safari can't resolve it briefly (e.g. during a
+    // React re-render), Safari silently drops the entire filter string including
+    // invert(1), which shows the unprocessed black-on-white PDF instead.
+    filter: "invert(1) sepia(100%) saturate(300%) hue-rotate(80deg)",
     fill: "#000000",
     dark: true,
   },
@@ -75,8 +81,7 @@ const THEME_PALETTES: Record<Theme, ThemePalette> = {
     primary: "#7DEBFF",
     secondary: "#9333EA",
     tertiary: "#FF4500",
-    filter:
-      "url(#lift-blacks) invert(1) sepia(100%) saturate(280%) hue-rotate(135deg)",
+    filter: "invert(1) sepia(100%) saturate(280%) hue-rotate(135deg)",
     fill: "#000000",
     dark: true,
   },
@@ -84,17 +89,15 @@ const THEME_PALETTES: Record<Theme, ThemePalette> = {
     primary: "#FFD17A",
     secondary: "#9333EA",
     tertiary: "#FF4500",
-    filter:
-      "url(#lift-blacks) invert(1) sepia(100%) saturate(330%) hue-rotate(350deg)",
+    filter: "invert(1) sepia(100%) saturate(330%) hue-rotate(350deg)",
     fill: "#000000",
     dark: true,
   },
   [Theme.Magenta]: {
-    primary: "#FF8DFF",
+    primary: "#03fc39",
     secondary: "#9333EA",
     tertiary: "#FF4500",
-    filter:
-      "url(#lift-blacks) invert(1) sepia(100%) saturate(280%) hue-rotate(250deg)",
+    filter: "invert(1) sepia(100%) saturate(280%) hue-rotate(250deg)",
     fill: "#000000",
     dark: true,
   },
@@ -149,6 +152,16 @@ export function secondaryColor(theme: Theme) {
 
 export function tertiaryColor(theme: Theme) {
   return themePalette(theme).tertiary;
+}
+
+/** Returns true for colour themes (Green, Cyan, Amber, Magenta) that use lift-blacks. */
+export function isColourTheme(theme: Theme): boolean {
+  return (
+    theme === Theme.Green ||
+    theme === Theme.Cyan ||
+    theme === Theme.Amber ||
+    theme === Theme.Magenta
+  );
 }
 
 function clamp(value: number, min: number, max: number) {

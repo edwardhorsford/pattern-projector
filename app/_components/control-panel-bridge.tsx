@@ -60,6 +60,7 @@ import {
 } from "@/_reducers/linesReducer";
 import { subtract } from "@/_lib/point";
 import { LoadStatusEnum } from "@/_lib/load-status-enum";
+import { clearRenderCache } from "@/_components/pdf-custom-renderer";
 
 const defaultStitchSettings: StitchSettings = {
   key: "stitchSettings:default",
@@ -157,6 +158,8 @@ interface ControlPanelBridgeProps {
   dispatchLines: Dispatch<LinesAction>;
   selectedLine: number;
   setSelectedLine: Dispatch<SetStateAction<number>>;
+  // Forces the PDF renderer to re-render all pages from scratch
+  forcePdfRerender: () => void;
 }
 
 /**
@@ -229,6 +232,7 @@ export function ControlPanelBridge({
   dispatchLines,
   selectedLine,
   setSelectedLine,
+  forcePdfRerender,
 }: ControlPanelBridgeProps) {
   const transformer = useTransformerContext();
   const localTransform = useTransformContext();
@@ -1250,6 +1254,10 @@ export function ControlPanelBridge({
           case "resetCalibration":
             handleResetCalibration();
             break;
+          case "clearImageCache":
+            clearRenderCache();
+            forcePdfRerender();
+            break;
           case "clearAppData":
             clearAppData();
             break;
@@ -1787,6 +1795,7 @@ export function ControlPanelBridge({
       dispatchLines,
       selectedLine,
       setSelectedLine,
+      forcePdfRerender,
     ],
   );
 

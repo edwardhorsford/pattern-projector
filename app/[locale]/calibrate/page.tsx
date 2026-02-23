@@ -29,6 +29,7 @@ import {
   DisplaySettings,
   getDefaultDisplaySettings,
   isDarkTheme,
+  isColourTheme,
   secondaryColor,
   themeFilter,
   Theme,
@@ -171,6 +172,8 @@ export default function Page() {
   );
   const [lines, dispatchLines] = useReducer(linesReducer, []);
   const [selectedLine, setSelectedLine] = useState<number>(-1);
+  // Incremented to force PdfViewer to remount and re-render all pages from scratch
+  const [pdfRenderKey, setPdfRenderKey] = useState(0);
   const { layers, dispatchLayersAction } = useLayers(file?.name ?? "default");
   const setLayers = useCallback(
     (l: Layers) => dispatchLayersAction({ type: "set-layers", layers: l }),
@@ -192,6 +195,7 @@ export default function Page() {
       stitchSettings,
       lineThickness,
       showPreviewImage && !isCalibrating,
+      isColourTheme(displaySettings.theme) ? displaySettings.colourLift : 0,
     );
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -210,13 +214,23 @@ export default function Page() {
   const IDLE_TIMEOUT = 8000;
 
   const svgStyle = {
-    filter: filter(magnifying, lineThickness, displaySettings.theme),
+    filter: filter(
+      magnifying,
+      lineThickness,
+      displaySettings.theme,
+      isColourTheme(displaySettings.theme) ? displaySettings.colourLift : 0,
+    ),
   };
 
   // Set erosions when not magnifying so the user can see text/lines more clearly when magnifying
-  function filter(magnifying: boolean, lineThickness: number, theme: Theme) {
+  function filter(
+    magnifying: boolean,
+    lineThickness: number,
+    theme: Theme,
+    colourLift: number = 0,
+  ) {
     const t = themeFilter(theme);
-    const thicken = erosionFilter(magnifying ? 0 : lineThickness);
+    const thicken = erosionFilter(magnifying ? 0 : lineThickness, colourLift);
     // Add contrast after erosion to clean up grey anti-aliased edges before inverting
     const contrastBoost =
       isDarkTheme(theme) && thicken !== "none" ? "contrast(2)" : "";
@@ -1091,6 +1105,7 @@ export default function Page() {
               dispatchLines={dispatchLines}
               selectedLine={selectedLine}
               setSelectedLine={setSelectedLine}
+              forcePdfRerender={() => setPdfRenderKey((k) => k + 1)}
             />
             {!isCalibrating && (
               // Layer order (low -> high): image data (Draggable/PDF), overlays, markers, UI.
@@ -1152,6 +1167,7 @@ export default function Page() {
                 >
                   {file === null || file.type === "application/pdf" ? (
                     <PdfViewer
+                      key={pdfRenderKey}
                       file={file}
                       setPageCount={setPageCount}
                       pageCount={pageCount}
@@ -1162,6 +1178,11 @@ export default function Page() {
                       lineThickness={lineThickness}
                       stitchSettings={stitchSettings}
                       filter={themeFilter(displaySettings.theme)}
+                      colourLift={
+                        isColourTheme(displaySettings.theme)
+                          ? displaySettings.colourLift
+                          : 0
+                      }
                       dispatchStitchSettings={dispatchStitchSettings}
                       setLineThicknessStatus={setLineThicknessStatus}
                       setFileLoadStatus={setFileLoadStatus}
