@@ -83,10 +83,7 @@ export default function CustomRenderer() {
   const useRecolour = !!recolourHex && !isSafari;
   const cssFilter = isSafari
     ? undefined // Safari: all processing done via pixels (no CSS filter on canvas)
-    : erosionFilter(
-        magnifying ? 0 : erosions,
-        useRecolour,
-      );
+    : erosionFilter(magnifying ? 0 : erosions, useRecolour);
 
   // Safari does erosion and enhancement via pixel manipulation
   const renderErosions = isSafari ? (magnifying ? 0 : erosions) : 0;

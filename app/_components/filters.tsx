@@ -12,11 +12,7 @@ function hexToUnit(hex: string): { r: number; g: number; b: number } {
   };
 }
 
-export default function Filters({
-  recolourHex,
-}: {
-  recolourHex?: string;
-}) {
+export default function Filters({ recolourHex }: { recolourHex?: string }) {
   // Build the recolour feColorMatrix values string.
   // Maps black (0,0,0) → target colour and white (1,1,1) → black (0,0,0).
   // Intermediate greys map to proportionally dimmer shades of the target.

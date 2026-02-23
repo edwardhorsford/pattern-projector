@@ -157,17 +157,13 @@ export function enhanceLineQuality(
 
 // Cached lookup tables for fast enhancement
 let cachedLUT: Uint8Array | null = null;
-let cachedLUTParams: { gamma: number; contrast: number } | null =
-  null;
+let cachedLUTParams: { gamma: number; contrast: number } | null = null;
 
 /**
  * Build a lookup table for gamma + contrast transformation.
  * This precomputes all 256 possible output values.
  */
-function buildEnhancementLUT(
-  gamma: number,
-  contrast: number,
-): Uint8Array {
+function buildEnhancementLUT(gamma: number, contrast: number): Uint8Array {
   // Return cached LUT if params match
   if (
     cachedLUT &&

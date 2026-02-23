@@ -91,7 +91,7 @@ const THEME_PALETTES: Record<Theme, ThemePalette> = {
     dark: true,
   },
   [Theme.Magenta]: {
-    primary: "#86ffa0",
+    primary: "#fc46aa",
     secondary: "#9333EA",
     tertiary: "#FF4500",
     filter: "none",

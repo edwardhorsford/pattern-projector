@@ -1193,6 +1193,11 @@ export default function Page() {
                           ? "none"
                           : themeRecolourFilter(displaySettings.theme)
                       }
+                      canvasBackground={
+                        isColourTheme(displaySettings.theme)
+                          ? "#000000"
+                          : "#ffffff"
+                      }
                       recolourHex={recolourHex}
                       dispatchStitchSettings={dispatchStitchSettings}
                       setLineThicknessStatus={setLineThicknessStatus}
@@ -1410,9 +1415,7 @@ export default function Page() {
           </Transformable>
         </FullScreen>
       </div>
-      <Filters
-        recolourHex={recolourHex}
-      />
+      <Filters recolourHex={recolourHex} />
     </main>
   );
 }
