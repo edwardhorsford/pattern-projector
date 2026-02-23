@@ -9,6 +9,8 @@ export interface RenderContextType {
   onPageRenderStart: () => void;
   onPageRenderSuccess: () => void;
   patternScale: number;
+  /** Colour lift floor value (0-1). Non-zero only for colour themes (Green/Cyan/Amber/Magenta). */
+  colourLift: number;
 }
 
 export const RenderContext = createContext<RenderContextType>({
@@ -18,6 +20,7 @@ export const RenderContext = createContext<RenderContextType>({
   onPageRenderStart: () => {},
   onPageRenderSuccess: () => {},
   patternScale: 1,
+  colourLift: 0,
 });
 
 export default function useRenderContext() {

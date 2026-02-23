@@ -25,8 +25,9 @@ function getCacheKey(
   erosions: number,
   width: number,
   height: number,
+  colourLift: number,
 ): string {
-  return `${pageNumber}-${erosions}-${width}-${height}`;
+  return `${pageNumber}-${erosions}-${width}-${height}-${colourLift}`;
 }
 
 function addToCache(key: string, data: ImageData) {
@@ -38,6 +39,14 @@ function addToCache(key: string, data: ImageData) {
   renderCache.set(key, data);
 }
 
+/**
+ * Clears all cached rendered page image data.
+ * Call this when you want to force pages to re-render from scratch (e.g. for debugging).
+ */
+export function clearRenderCache() {
+  renderCache.clear();
+}
+
 export default function CustomRenderer() {
   const {
     erosions,
@@ -46,6 +55,7 @@ export default function CustomRenderer() {
     onPageRenderStart,
     onPageRenderSuccess,
     patternScale,
+    colourLift,
   } = useRenderContext();
   const pageContext = usePageContext();
 
@@ -60,12 +70,17 @@ export default function CustomRenderer() {
     return ua.indexOf("safari") != -1 && ua.indexOf("chrome") == -1;
   }, []);
 
-  // Safari doesn't support feMorphology (erode) or SVG filter references on canvas CSS
-  // So on Safari: do all image processing via pixels
-  // On other browsers: do everything via CSS filters
+  // Safari doesn't support feMorphology (erode) or SVG filter references on canvas CSS.
+  // So on Safari: all processing (erode, push-darks, colourLift floor) is done via pixels.
+  // On other browsers: the full chain runs as canvas 2D CSS filters.
+  //
+  // colourLift is passed into erosionFilter so it appends url(#lift-blacks) on the
+  // canvas draw call — keeping the container CSS filter url()-free. This avoids a
+  // Safari bug where a url() in the container filter causes the entire filter (including
+  // invert) to be silently dropped if the SVG reference can't be resolved briefly.
   const cssFilter = isSafari
     ? undefined // Safari: all processing done via pixels (no CSS filter on canvas)
-    : erosionFilter(magnifying ? 0 : erosions); // Others: full filter chain via CSS
+    : erosionFilter(magnifying ? 0 : erosions, colourLift); // Others: full filter chain via CSS
 
   // Safari does erosion and enhancement via pixel manipulation
   const renderErosions = isSafari ? (magnifying ? 0 : erosions) : 0;
@@ -136,6 +151,7 @@ export default function CustomRenderer() {
       renderErosions,
       renderWidth,
       renderHeight,
+      isSafari ? colourLift : 0,
     );
     const cachedData = isSafari ? renderCache.get(cacheKey) : null;
 
@@ -159,7 +175,7 @@ export default function CustomRenderer() {
     }
 
     // Only signal loading if params actually changed (not just a re-render)
-    const currentParams = `${pageNumber}-${renderErosions}-${renderWidth}-${renderHeight}`;
+    const currentParams = `${pageNumber}-${renderErosions}-${renderWidth}-${renderHeight}-${colourLift}`;
     if (lastRenderedParams.current !== currentParams) {
       onPageRenderStart();
       lastRenderedParams.current = currentParams;
@@ -231,8 +247,8 @@ export default function CustomRenderer() {
               }
             }
 
-            // Always apply enhancement (gamma + contrast) for Safari using fast LUT
-            enhanceLineQualityFast(result, 2, 1.5);
+            // Always apply enhancement (gamma + contrast + floor) for Safari using fast LUT
+            enhanceLineQualityFast(result, 2, 1.5, colourLift);
 
             // Cache the processed result for quick switching
             addToCache(cacheKey, result);
@@ -294,6 +310,7 @@ export default function CustomRenderer() {
     renderHeight,
     isSafari,
     pageNumber,
+    colourLift,
     onPageRenderStart,
     onPageRenderSuccess,
   ]);

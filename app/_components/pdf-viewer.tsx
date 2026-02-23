@@ -45,6 +45,7 @@ export default function PdfViewer({
   lineThickness,
   stitchSettings,
   filter,
+  colourLift,
   magnifying,
   setFileLoadStatus,
   setLineThicknessStatus,
@@ -63,6 +64,7 @@ export default function PdfViewer({
   lineThickness: number;
   stitchSettings: StitchSettings;
   filter: string;
+  colourLift: number;
   magnifying: boolean;
   setFileLoadStatus: Dispatch<SetStateAction<LoadStatusEnum>>;
   setLineThicknessStatus: Dispatch<SetStateAction<LoadStatusEnum>>;
@@ -254,6 +256,7 @@ export default function PdfViewer({
                     onPageRenderStart,
                     onPageRenderSuccess,
                     patternScale,
+                    colourLift,
                   }}
                 >
                   <Page

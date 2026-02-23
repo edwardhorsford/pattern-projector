@@ -7,7 +7,7 @@ import {
   StitchSettings,
   LineDirection,
 } from "@/_lib/interfaces/stitch-settings";
-import { erodeImageData } from "@/_lib/erode";
+import { erodeImageData, enhanceLineQualityFast } from "@/_lib/erode";
 import { Layers } from "@/_lib/layers";
 
 // Stable empty object for default layers parameter
@@ -33,45 +33,45 @@ const RENDER_SCALE_MULTIPLIER = 3;
 const THUMBNAIL_BASE_EROSION = 1;
 
 /**
- * Apply threshold to make lines more visible.
- * Anything not near-white becomes black - this makes even faint gray lines visible.
+ * Encodes a base ImageData (produced with floor=0) to a JPEG data URL,
+ * applying a colour lift floor per-channel first.
+ * This is cheap — no PDF rendering, just a pixel copy + max operation.
  */
-function applyThreshold(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-) {
-  const imageData = ctx.getImageData(0, 0, width, height);
-  const data = imageData.data;
-
-  // Threshold: anything below this brightness becomes black
-  // 240 is quite aggressive - even light grays will be captured
-  const threshold = 240;
-
-  for (let i = 0; i < data.length; i += 4) {
-    // Get the average brightness of the pixel
-    const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
-
-    if (brightness < threshold) {
-      // Make it black (will become white when inverted)
-      data[i] = 0;
-      data[i + 1] = 0;
-      data[i + 2] = 0;
-    } else {
-      // Make it white (will become black when inverted)
-      data[i] = 255;
-      data[i + 1] = 255;
-      data[i + 2] = 255;
+function encodeWithLift(base: ImageData, lift: number): string {
+  let source = base;
+  if (lift > 0) {
+    const floorByte = Math.round(lift * 255);
+    const copy = new ImageData(
+      new Uint8ClampedArray(base.data),
+      base.width,
+      base.height,
+    );
+    const d = copy.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] < floorByte) d[i] = floorByte; // R
+      if (d[i + 1] < floorByte) d[i + 1] = floorByte; // G
+      if (d[i + 2] < floorByte) d[i + 2] = floorByte; // B
     }
+    source = copy;
   }
-
-  ctx.putImageData(imageData, 0, 0);
+  const canvas = document.createElement("canvas");
+  canvas.width = source.width;
+  canvas.height = source.height;
+  const ctx = canvas.getContext("2d")!;
+  ctx.putImageData(source, 0, 0);
+  return canvas.toDataURL("image/jpeg", 0.85);
 }
 
 /**
  * Hook to generate a low-resolution thumbnail of a PDF file.
  * The thumbnail shows all pages stitched together according to stitch settings.
  * Applies line thickness (erosion) to make faint lines more visible.
+ *
+ * Rendering is split into two steps:
+ * - Expensive: PDF render + erode + enhance (floor=0). Only re-runs when the PDF
+ *   or layout changes. Result cached as base ImageData in a ref.
+ * - Cheap: apply colour lift floor to base, re-encode JPEG. Runs instantly
+ *   when only colourLift changes — no PDF re-render.
  *
  * The thumbnail is cached - toggling 'enabled' doesn't regenerate it.
  * Only regenerates when file or relevant settings change.
@@ -86,12 +86,21 @@ export function usePdfThumbnail(
   stitchSettings: StitchSettings,
   lineThickness: number,
   enabled: boolean = true,
+  colourLift: number = 0,
   layers: Layers = EMPTY_LAYERS,
 ): { thumbnail: string | null; isLoading: boolean } {
-  // Store the cached thumbnail separately from what we return
   const [cachedThumbnail, setCachedThumbnail] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Stores the base (floor=0 enhanced, downscaled) ImageData between renders.
+  // Used by the cheap colourLift effect so slider updates don't re-render the PDF.
+  const baseThumbnailRef = useRef<ImageData | null>(null);
+
+  // Always-fresh ref so the async render can use the current lift without
+  // adding colourLift to the expensive effect's dependency array.
+  const colourLiftRef = useRef(colourLift);
+  colourLiftRef.current = colourLift;
 
   // Create stable key for layers to avoid unnecessary re-renders
   // Layers object reference can change even when contents are the same
@@ -103,9 +112,20 @@ export function usePdfThumbnail(
     [layers],
   );
 
+  // Cheap effect: when only colourLift changes, apply floor to existing base.
+  // Runs instantly — no PDF render, just a pixel copy + max per channel.
+  useEffect(() => {
+    const base = baseThumbnailRef.current;
+    if (!base) return;
+    setCachedThumbnail(encodeWithLift(base, colourLift));
+  }, [colourLift]);
+
+  // Expensive effect: re-renders the full PDF when file/layout/thickness changes.
+  // colourLift is intentionally NOT in the dep array — the ref keeps it fresh.
   useEffect(() => {
     // Only regenerate if file or settings change, not when enabled toggles
     if (!file || pageCount === 0) {
+      baseThumbnailRef.current = null;
       setCachedThumbnail(null);
       setIsLoading(false);
       return;
@@ -256,6 +276,17 @@ export function usePdfThumbnail(
           renderCtx.putImageData(imageData, 0, 0);
         }
 
+        // Apply push-darks + no floor on the high-res canvas before downscaling.
+        // floor=0 here — the lift is applied cheaply in encodeWithLift below.
+        const highResImageData = renderCtx.getImageData(
+          0,
+          0,
+          renderWidth,
+          renderHeight,
+        );
+        enhanceLineQualityFast(highResImageData, 2, 1.5, 0);
+        renderCtx.putImageData(highResImageData, 0, 0);
+
         // Create final thumbnail canvas and scale down
         const canvas = document.createElement("canvas");
         canvas.width = thumbWidth;
@@ -268,11 +299,13 @@ export function usePdfThumbnail(
         ctx.imageSmoothingQuality = "high";
         ctx.drawImage(renderCanvas, 0, 0, thumbWidth, thumbHeight);
 
-        // Apply threshold to make lines crisp (anything not white becomes black)
-        applyThreshold(ctx, thumbWidth, thumbHeight);
+        // Store base (floor=0) for fast colourLift changes
+        const baseImageData = ctx.getImageData(0, 0, thumbWidth, thumbHeight);
+        baseThumbnailRef.current = baseImageData;
 
-        // Convert to data URL
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+        // Encode with current colourLift (use ref for freshness)
+        const dataUrl = encodeWithLift(baseImageData, colourLiftRef.current);
+
         if (!signal.aborted) {
           setCachedThumbnail(dataUrl);
           setIsLoading(false);
@@ -280,6 +313,7 @@ export function usePdfThumbnail(
       } catch (error) {
         if (!signal.aborted) {
           console.error("Error generating PDF thumbnail:", error);
+          baseThumbnailRef.current = null;
           setCachedThumbnail(null);
           setIsLoading(false);
         }
@@ -302,7 +336,8 @@ export function usePdfThumbnail(
     lineThickness,
     layersKey,
   ]);
-  // Note: 'enabled' is NOT in the dependency array - we cache regardless of enabled state
+  // Note: 'enabled' and 'colourLift' are NOT in the expensive dep array.
+  // 'enabled' uses the cache; 'colourLift' is handled by the cheap effect above.
 
   // Return the cached thumbnail only if enabled, and loading state
   return {

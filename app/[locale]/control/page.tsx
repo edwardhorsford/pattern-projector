@@ -75,6 +75,7 @@ import { Line } from "@/_reducers/linesReducer";
 import RotateToHorizontalIcon from "@/_icons/rotate-to-horizontal";
 import ShiftIcon from "@/_icons/shift-icon";
 import { LoadStatusEnum } from "@/_lib/load-status-enum";
+import Filters from "@/_components/filters";
 
 // Default stitch settings for initial state
 const defaultStitchSettings: StitchSettings = {
@@ -1033,7 +1034,10 @@ function Preview({
         {/* Center crosshair when no viewport */}
         {!viewport && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-4 h-0.5" style={{ backgroundColor: accentColor }} />
+            <div
+              className="w-4 h-0.5"
+              style={{ backgroundColor: accentColor }}
+            />
             <div
               className="absolute w-0.5 h-4"
               style={{ backgroundColor: accentColor }}
@@ -1289,9 +1293,9 @@ export default function ControlPanelPage() {
     "none" | "moderate" | "extreme" | "custom"
   >("none");
   const [devThemePreset, setDevThemePreset] = useState<Theme>(Theme.Light);
-  const [devGridPreset, setDevGridPreset] = useState<"60x40" | "30x20" | "15x10">(
-    "60x40",
-  );
+  const [devGridPreset, setDevGridPreset] = useState<
+    "60x40" | "30x20" | "15x10"
+  >("60x40");
   const [memoryStats, setMemoryStats] = useState<HeapMemoryStats | null>(null);
   const [memoryAvailable, setMemoryAvailable] = useState(true);
   const [storageBytes, setStorageBytes] = useState(0);
@@ -2896,6 +2900,16 @@ export default function ControlPanelPage() {
                 Clear app data
               </Button>
 
+              <Button
+                onClick={() => {
+                  appendDebugMessage("Cleared image cache, forcing re-render");
+                  handleAction("clearImageCache");
+                }}
+                className="text-xs px-3 py-1"
+              >
+                Clear image cache
+              </Button>
+
               <div className="flex flex-wrap items-center gap-2 rounded border dark:border-gray-700 px-2 py-1 w-full">
                 <label
                   htmlFor="dev-colour-lift"
@@ -2910,9 +2924,9 @@ export default function ControlPanelPage() {
                   id="dev-colour-lift"
                   type="range"
                   min={0}
-                  max={0.7}
+                  max={0.5}
                   step={0.05}
-                  value={state.displaySettings.colourLift ?? 0.35}
+                  value={state.displaySettings.colourLift ?? 0.25}
                   onChange={(e) => {
                     const value = parseFloat(e.target.value);
                     handleAction("setColourLift", value);
@@ -3139,6 +3153,7 @@ export default function ControlPanelPage() {
           </section>
         )}
       </div>
+      <Filters colourLift={state.displaySettings.colourLift} />
     </main>
   );
 }
