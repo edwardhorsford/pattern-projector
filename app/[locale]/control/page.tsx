@@ -2915,45 +2915,25 @@ export default function ControlPanelPage() {
 
               <div className="flex flex-wrap items-center gap-2 rounded border dark:border-gray-700 px-2 py-1 w-full">
                 <label
-                  htmlFor="dev-colour-lift"
-                  className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap"
-                >
-                  Colour lift:{" "}
-                  <span className="font-mono">
-                    {(state.displaySettings.colourLift ?? 0.35).toFixed(2)}
-                  </span>
-                </label>
-                <input
-                  id="dev-colour-lift"
-                  type="range"
-                  min={0}
-                  max={0.5}
-                  step={0.05}
-                  value={state.displaySettings.colourLift ?? 0.25}
-                  onChange={(e) => {
-                    const value = parseFloat(e.target.value);
-                    handleAction("setColourLift", value);
-                  }}
-                  className="flex-1 accent-purple-600"
-                />
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 rounded border dark:border-gray-700 px-2 py-1 w-full">
-                <label
                   htmlFor="dev-brightness"
-                  className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap"
+                  className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap w-28"
                 >
                   Brightness:{" "}
                   <span className="font-mono">
-                    {(state.displaySettings.brightness ?? 1.0).toFixed(2)}
+                    {(() => {
+                      const val = (state.displaySettings.brightness ?? 1.0) - 1.0
+                      const sign = val >= 0 ? "+" : ""
+                      return `${sign}${Math.round(val * 100)}%`
+                    })()}
                   </span>
                 </label>
                 <input
                   id="dev-brightness"
                   type="range"
-                  min={0.3}
-                  max={1.5}
+                  min={0.65}
+                  max={1.35}
                   step={0.05}
+                  list="brightness-ticks"
                   value={state.displaySettings.brightness ?? 1.0}
                   onChange={(e) => {
                     const value = parseFloat(e.target.value);
@@ -2961,6 +2941,9 @@ export default function ControlPanelPage() {
                   }}
                   className="flex-1 accent-purple-600"
                 />
+                <datalist id="brightness-ticks">
+                  <option value="1.0" />
+                </datalist>
                 <button
                   type="button"
                   onClick={() => handleAction("setBrightness", 1.0)}
@@ -3189,7 +3172,6 @@ export default function ControlPanelPage() {
         )}
       </div>
       <Filters
-        colourLift={state.displaySettings.colourLift}
         recolourHex={
           isColourTheme(state.displaySettings.theme)
             ? applyBrightness(

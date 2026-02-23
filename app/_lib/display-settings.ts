@@ -58,7 +58,7 @@ const THEME_PALETTES: Record<Theme, ThemePalette> = {
     primary: "#ffffff",
     secondary: "#9333EA",
     tertiary: "#FF4500",
-    // invert only — no url(#lift-blacks) because Dark theme wants pure white lines.
+    // invert only — Dark theme wants pure white lines.
     filter: "invert(1)",
     fill: "#000000",
     dark: true,
@@ -67,13 +67,10 @@ const THEME_PALETTES: Record<Theme, ThemePalette> = {
     primary: "#75FFCD",
     secondary: "#9333EA",
     tertiary: "#FF4500",
-    // url(#lift-blacks) is intentionally NOT here — it is applied earlier in the
-    // pixel/canvas pipeline (erosionFilter for Chrome, enhanceLineQualityFast LUT
-    // for Safari) so that the container CSS filter stays url()-free. If a url()
-    // reference is used here and Safari can't resolve it briefly (e.g. during a
-    // React re-render), Safari silently drops the entire filter string including
-    // invert(1), which shows the unprocessed black-on-white PDF instead.
-    filter: "invert(1) sepia(100%) saturate(300%) hue-rotate(80deg)",
+    // Colour themes use the feColorMatrix recolour pipeline instead of CSS filter strings.
+    // The 'filter' field is unused for colour themes — themeRecolourFilter() returns
+    // the push-darks + recolour chain instead.
+    filter: "none",
     fill: "#000000",
     dark: true,
   },
@@ -81,7 +78,7 @@ const THEME_PALETTES: Record<Theme, ThemePalette> = {
     primary: "#7DEBFF",
     secondary: "#9333EA",
     tertiary: "#FF4500",
-    filter: "invert(1) sepia(100%) saturate(280%) hue-rotate(135deg)",
+    filter: "none",
     fill: "#000000",
     dark: true,
   },
@@ -89,7 +86,7 @@ const THEME_PALETTES: Record<Theme, ThemePalette> = {
     primary: "#FFD17A",
     secondary: "#9333EA",
     tertiary: "#FF4500",
-    filter: "invert(1) sepia(100%) saturate(330%) hue-rotate(350deg)",
+    filter: "none",
     fill: "#000000",
     dark: true,
   },
@@ -97,7 +94,7 @@ const THEME_PALETTES: Record<Theme, ThemePalette> = {
     primary: "#86ffa0",
     secondary: "#9333EA",
     tertiary: "#FF4500",
-    filter: "invert(1) sepia(100%) saturate(280%) hue-rotate(250deg)",
+    filter: "none",
     fill: "#000000",
     dark: true,
   },
@@ -106,12 +103,6 @@ const THEME_PALETTES: Record<Theme, ThemePalette> = {
 export interface DisplaySettings {
   theme: Theme;
   overlay: OverlaySettings;
-  /** Lifts the black floor before inversion so lines absorb theme colour.
-   * 0 = lines invert to pure white (bright, little colour).
-   * 0.5 = lines invert to mid-grey (vivid colour).
-   * Default 0.35.
-   */
-  colourLift: number;
   /** Brightness multiplier for recoloured themes (0.1–2.0).
    * 1.0 = theme primary colour at full intensity.
    * < 1.0 = dimmer, > 1.0 = brighter (can wash out).
@@ -124,7 +115,6 @@ export function getDefaultDisplaySettings() {
   return {
     theme: Theme.Light,
     overlay: getDefaultOverlaySettings(),
-    colourLift: 0.35,
     brightness: 1.0,
   };
 }
@@ -139,10 +129,6 @@ export function themePalette(theme: Theme): ThemePalette {
 
 export function isDarkTheme(theme: Theme) {
   return themePalette(theme).dark;
-}
-
-export function themeFilter(theme: Theme): string {
-  return themePalette(theme).filter;
 }
 
 /**
@@ -174,7 +160,7 @@ export function tertiaryColor(theme: Theme) {
   return themePalette(theme).tertiary;
 }
 
-/** Returns true for colour themes (Green, Cyan, Amber, Magenta) that use lift-blacks. */
+/** Returns true for colour themes (Green, Cyan, Amber, Magenta) that use the recolour pipeline. */
 export function isColourTheme(theme: Theme): boolean {
   return (
     theme === Theme.Green ||

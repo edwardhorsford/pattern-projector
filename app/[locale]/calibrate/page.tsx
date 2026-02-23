@@ -33,7 +33,7 @@ import {
   applyBrightness,
   secondaryColor,
   strokeColor,
-  themeFilter,
+  themeRecolourFilter,
   Theme,
 } from "@/_lib/display-settings";
 import { getPtDensity, Unit } from "@/_lib/unit";
@@ -197,7 +197,6 @@ export default function Page() {
       stitchSettings,
       lineThickness,
       showPreviewImage && !isCalibrating,
-      isColourTheme(displaySettings.theme) ? displaySettings.colourLift : 0,
     );
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -229,7 +228,6 @@ export default function Page() {
       magnifying,
       lineThickness,
       displaySettings.theme,
-      isRecolour ? 0 : 0,
       isRecolour,
     ),
   };
@@ -239,13 +237,12 @@ export default function Page() {
     magnifying: boolean,
     lineThickness: number,
     theme: Theme,
-    colourLift: number = 0,
     useRecolour: boolean = false,
   ) {
     // When recolouring, the container theme filter is "none" — the recolour
     // SVG filter applied on the canvas/element handles inversion + colouring.
-    const t = useRecolour ? "none" : themeFilter(theme);
-    const thicken = erosionFilter(magnifying ? 0 : lineThickness, colourLift, useRecolour);
+    const t = useRecolour ? "none" : themeRecolourFilter(theme);
+    const thicken = erosionFilter(magnifying ? 0 : lineThickness, useRecolour);
     // Add contrast after erosion to clean up grey anti-aliased edges before inverting
     const contrastBoost =
       isDarkTheme(theme) && thicken !== "none" ? "contrast(2)" : "";
@@ -831,7 +828,6 @@ export default function Page() {
       setDisplaySettings({
         overlay: localSettings.overlay ?? defaults.overlay,
         theme: localSettings.theme ?? defaults.theme,
-        colourLift: localSettings.colourLift ?? defaults.colourLift,
         brightness: localSettings.brightness ?? defaults.brightness,
       });
     }
@@ -1195,12 +1191,7 @@ export default function Page() {
                       filter={
                         isColourTheme(displaySettings.theme)
                           ? "none"
-                          : themeFilter(displaySettings.theme)
-                      }
-                      colourLift={
-                        isColourTheme(displaySettings.theme)
-                          ? displaySettings.colourLift
-                          : 0
+                          : themeRecolourFilter(displaySettings.theme)
                       }
                       recolourHex={recolourHex}
                       dispatchStitchSettings={dispatchStitchSettings}
@@ -1420,7 +1411,6 @@ export default function Page() {
         </FullScreen>
       </div>
       <Filters
-        colourLift={displaySettings.colourLift}
         recolourHex={recolourHex}
       />
     </main>

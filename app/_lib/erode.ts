@@ -1,17 +1,9 @@
 export function erosionFilter(
   erosions: number,
   /**
-   * Colour lift floor (0–1). Pass `displaySettings.colourLift` for colour themes
-   * (Green/Cyan/Amber/Magenta); pass 0 for Light and Dark themes where no lift
-   * is wanted. When non-zero, `url(#lift-blacks)` is appended so the floor step
-   * runs on the canvas draw call rather than in the container CSS filter — this
-   * prevents Safari from dropping the whole filter if the SVG ref is unresolvable.
-   */
-  colourLift: number = 0,
-  /**
-   * When true, append `url(#recolor)` instead of `url(#lift-blacks)`.
+   * When true, append `url(#recolor)` to the filter chain.
    * The recolor SVG filter maps black→target colour and white→black directly
-   * via a feColorMatrix, replacing the old invert+sepia+hue-rotate approach.
+   * via a feColorMatrix.
    */
   useRecolour: boolean = false,
 ): string {
@@ -37,11 +29,7 @@ export function erosionFilter(
 
   if (useRecolour) {
     // Use the feColorMatrix recolour filter which does invert+colourise in one step.
-    // This replaces both lift-blacks and the container invert+sepia+hue-rotate filters.
     result.push("url(#recolor)");
-  } else if (colourLift > 0) {
-    // Legacy path: lift blacks before container-level invert+sepia+hue-rotate.
-    result.push("url(#lift-blacks)");
   }
   return result.join(" ");
 }
@@ -169,25 +157,22 @@ export function enhanceLineQuality(
 
 // Cached lookup tables for fast enhancement
 let cachedLUT: Uint8Array | null = null;
-let cachedLUTParams: { gamma: number; contrast: number; floor: number } | null =
+let cachedLUTParams: { gamma: number; contrast: number } | null =
   null;
 
 /**
- * Build a lookup table for gamma + contrast + floor transformation.
+ * Build a lookup table for gamma + contrast transformation.
  * This precomputes all 256 possible output values.
- * @param floor - Minimum output value (0-1). Lifts blacks so lines absorb colour after inversion.
  */
 function buildEnhancementLUT(
   gamma: number,
   contrast: number,
-  floor: number = 0,
 ): Uint8Array {
   // Return cached LUT if params match
   if (
     cachedLUT &&
     cachedLUTParams?.gamma === gamma &&
-    cachedLUTParams?.contrast === contrast &&
-    cachedLUTParams?.floor === floor
+    cachedLUTParams?.contrast === contrast
   ) {
     return cachedLUT;
   }
@@ -199,14 +184,12 @@ function buildEnhancementLUT(
     value = Math.pow(value, gamma);
     // Apply contrast around midpoint
     value = (value - 0.5) * contrast + 0.5;
-    // Lift floor so lines absorb theme colour after inversion
-    value = Math.max(value, floor);
     // Clamp and convert to 0-255
     lut[i] = Math.max(0, Math.min(255, Math.round(value * 255)));
   }
 
   cachedLUT = lut;
-  cachedLUTParams = { gamma, contrast, floor };
+  cachedLUTParams = { gamma, contrast };
   return lut;
 }
 
@@ -214,15 +197,13 @@ function buildEnhancementLUT(
  * Fast enhancement using a lookup table.
  * Much faster than enhanceLineQuality because it avoids Math.pow() per pixel.
  * Use this for Safari where we need pixel-by-pixel processing.
- * @param floor - Minimum output value (0-1). Pass colourLift value for colour themes, 0 otherwise.
  */
 export function enhanceLineQualityFast(
   imageData: ImageData,
   gamma: number = 2,
   contrast: number = 1.5,
-  floor: number = 0,
 ) {
-  const lut = buildEnhancementLUT(gamma, contrast, floor);
+  const lut = buildEnhancementLUT(gamma, contrast);
   const data = imageData.data;
   const len = data.length;
 

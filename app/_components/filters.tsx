@@ -1,6 +1,3 @@
-/** Default intercept (floor) used when colourLift is not provided. */
-const DEFAULT_COLOUR_LIFT = 0.25;
-
 /**
  * Parse a hex colour string to 0-1 RGB values.
  */
@@ -16,16 +13,10 @@ function hexToUnit(hex: string): { r: number; g: number; b: number } {
 }
 
 export default function Filters({
-  colourLift = DEFAULT_COLOUR_LIFT,
   recolourHex,
 }: {
-  colourLift?: number;
   recolourHex?: string;
 }) {
-  // slope + intercept must sum to ≤ 1 so white (1.0) stays white.
-  const slope = Math.max(0, 1 - colourLift);
-  const intercept = colourLift;
-
   // Build the recolour feColorMatrix values string.
   // Maps black (0,0,0) → target colour and white (1,1,1) → black (0,0,0).
   // Intermediate greys map to proportionally dimmer shades of the target.
@@ -69,22 +60,6 @@ export default function Filters({
           <feFuncR type="gamma" amplitude="1" exponent="2" offset="0" />
           <feFuncG type="gamma" amplitude="1" exponent="2" offset="0" />
           <feFuncB type="gamma" amplitude="1" exponent="2" offset="0" />
-        </feComponentTransfer>
-      </filter>
-
-      {/*
-        Lift blacks before inversion so lines absorb theme colour.
-        After push-darks+contrast, pattern lines are at 0 (pure black).
-        This lifts the minimum to 0.35 so that after invert(1) they
-        become ~0.65 (mid-bright grey) which absorbs sepia/hue-rotate
-        colour strongly. White background (1.0) maps to 1.0 unchanged.
-        slope = 1 - floor, intercept = floor.
-      */}
-      <filter id="lift-blacks" colorInterpolationFilters="sRGB">
-        <feComponentTransfer>
-          <feFuncR type="linear" slope={slope} intercept={intercept} />
-          <feFuncG type="linear" slope={slope} intercept={intercept} />
-          <feFuncB type="linear" slope={slope} intercept={intercept} />
         </feComponentTransfer>
       </filter>
 
