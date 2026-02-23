@@ -56,11 +56,13 @@ import {
   DisplaySettings,
   getDefaultDisplaySettings,
   isDarkTheme,
+  isColourTheme,
+  applyBrightness,
   secondaryColor,
   themePalette,
   strokeColor,
   themes,
-  themeFilter,
+  themeRecolourFilter,
   Theme,
 } from "@/_lib/display-settings";
 import { rotateRange } from "@/_lib/get-page-numbers";
@@ -883,7 +885,7 @@ function Preview({
             height: effectiveLayoutHeight * scale,
             // Apply filter to container - Safari has issues with filter on transformed children
             filter:
-              showPreviewImage && previewImage ? themeFilter(theme) : undefined,
+              showPreviewImage && previewImage ? themeRecolourFilter(theme) : undefined,
             // Background: for inverted themes, set to white so it inverts to black
             // (filter inverts the background too)
             backgroundColor: isDarkTheme(theme) ? "#fff" : "#fff",
@@ -978,7 +980,7 @@ function Preview({
                 width: markerSize,
                 height: markerSize,
                 // Apply theme filter to invert colors when in dark mode
-                filter: themeFilter(theme),
+                filter: themeRecolourFilter(theme),
               }}
             >
               <svg viewBox="0 0 100 100" width="100%" height="100%">
@@ -2201,6 +2203,7 @@ export default function ControlPanelPage() {
                   </div>
                 </DropdownMenu>
               </div>
+
             </section>
 
             {/* Pattern Controls - matches right menu group */}
@@ -2935,6 +2938,38 @@ export default function ControlPanelPage() {
                 />
               </div>
 
+              <div className="flex flex-wrap items-center gap-2 rounded border dark:border-gray-700 px-2 py-1 w-full">
+                <label
+                  htmlFor="dev-brightness"
+                  className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap"
+                >
+                  Brightness:{" "}
+                  <span className="font-mono">
+                    {(state.displaySettings.brightness ?? 1.0).toFixed(2)}
+                  </span>
+                </label>
+                <input
+                  id="dev-brightness"
+                  type="range"
+                  min={0.3}
+                  max={1.5}
+                  step={0.05}
+                  value={state.displaySettings.brightness ?? 1.0}
+                  onChange={(e) => {
+                    const value = parseFloat(e.target.value);
+                    handleAction("setBrightness", value);
+                  }}
+                  className="flex-1 accent-purple-600"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleAction("setBrightness", 1.0)}
+                  className="text-xs text-purple-600 dark:text-purple-400 hover:underline"
+                >
+                  Reset
+                </button>
+              </div>
+
               <div className="flex flex-wrap items-center gap-2 rounded border dark:border-gray-700 px-2 py-1">
                 <span className="text-xs text-gray-500 dark:text-gray-400">
                   Theme preset
@@ -3153,7 +3188,17 @@ export default function ControlPanelPage() {
           </section>
         )}
       </div>
-      <Filters colourLift={state.displaySettings.colourLift} />
+      <Filters
+        colourLift={state.displaySettings.colourLift}
+        recolourHex={
+          isColourTheme(state.displaySettings.theme)
+            ? applyBrightness(
+                strokeColor(state.displaySettings.theme),
+                state.displaySettings.brightness ?? 1.0,
+              )
+            : undefined
+        }
+      />
     </main>
   );
 }

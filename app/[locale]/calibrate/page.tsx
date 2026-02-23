@@ -30,7 +30,9 @@ import {
   getDefaultDisplaySettings,
   isDarkTheme,
   isColourTheme,
+  applyBrightness,
   secondaryColor,
+  strokeColor,
   themeFilter,
   Theme,
 } from "@/_lib/display-settings";
@@ -213,12 +215,22 @@ export default function Page() {
 
   const IDLE_TIMEOUT = 8000;
 
+  const isRecolour = isColourTheme(displaySettings.theme);
+
+  const recolourHex = isRecolour
+    ? applyBrightness(
+        strokeColor(displaySettings.theme),
+        displaySettings.brightness,
+      )
+    : undefined;
+
   const svgStyle = {
     filter: filter(
       magnifying,
       lineThickness,
       displaySettings.theme,
-      isColourTheme(displaySettings.theme) ? displaySettings.colourLift : 0,
+      isRecolour ? 0 : 0,
+      isRecolour,
     ),
   };
 
@@ -228,9 +240,12 @@ export default function Page() {
     lineThickness: number,
     theme: Theme,
     colourLift: number = 0,
+    useRecolour: boolean = false,
   ) {
-    const t = themeFilter(theme);
-    const thicken = erosionFilter(magnifying ? 0 : lineThickness, colourLift);
+    // When recolouring, the container theme filter is "none" — the recolour
+    // SVG filter applied on the canvas/element handles inversion + colouring.
+    const t = useRecolour ? "none" : themeFilter(theme);
+    const thicken = erosionFilter(magnifying ? 0 : lineThickness, colourLift, useRecolour);
     // Add contrast after erosion to clean up grey anti-aliased edges before inverting
     const contrastBoost =
       isDarkTheme(theme) && thicken !== "none" ? "contrast(2)" : "";
@@ -817,6 +832,7 @@ export default function Page() {
         overlay: localSettings.overlay ?? defaults.overlay,
         theme: localSettings.theme ?? defaults.theme,
         colourLift: localSettings.colourLift ?? defaults.colourLift,
+        brightness: localSettings.brightness ?? defaults.brightness,
       });
     }
 
@@ -1167,7 +1183,6 @@ export default function Page() {
                 >
                   {file === null || file.type === "application/pdf" ? (
                     <PdfViewer
-                      key={pdfRenderKey}
                       file={file}
                       setPageCount={setPageCount}
                       pageCount={pageCount}
@@ -1177,12 +1192,17 @@ export default function Page() {
                       setLayoutHeight={setLayoutHeight}
                       lineThickness={lineThickness}
                       stitchSettings={stitchSettings}
-                      filter={themeFilter(displaySettings.theme)}
+                      filter={
+                        isColourTheme(displaySettings.theme)
+                          ? "none"
+                          : themeFilter(displaySettings.theme)
+                      }
                       colourLift={
                         isColourTheme(displaySettings.theme)
                           ? displaySettings.colourLift
                           : 0
                       }
+                      recolourHex={recolourHex}
                       dispatchStitchSettings={dispatchStitchSettings}
                       setLineThicknessStatus={setLineThicknessStatus}
                       setFileLoadStatus={setFileLoadStatus}
@@ -1194,6 +1214,7 @@ export default function Page() {
                       )}
                       patternScale={patternScaleFactor}
                       setMenuStates={setMenuStates}
+                      renderVersion={pdfRenderKey}
                     />
                   ) : (
                     <SvgViewer
@@ -1398,7 +1419,10 @@ export default function Page() {
           </Transformable>
         </FullScreen>
       </div>
-      <Filters colourLift={displaySettings.colourLift} />
+      <Filters
+        colourLift={displaySettings.colourLift}
+        recolourHex={recolourHex}
+      />
     </main>
   );
 }

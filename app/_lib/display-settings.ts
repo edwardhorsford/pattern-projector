@@ -94,7 +94,7 @@ const THEME_PALETTES: Record<Theme, ThemePalette> = {
     dark: true,
   },
   [Theme.Magenta]: {
-    primary: "#03fc39",
+    primary: "#86ffa0",
     secondary: "#9333EA",
     tertiary: "#FF4500",
     filter: "invert(1) sepia(100%) saturate(280%) hue-rotate(250deg)",
@@ -112,6 +112,12 @@ export interface DisplaySettings {
    * Default 0.35.
    */
   colourLift: number;
+  /** Brightness multiplier for recoloured themes (0.1–2.0).
+   * 1.0 = theme primary colour at full intensity.
+   * < 1.0 = dimmer, > 1.0 = brighter (can wash out).
+   * Default 1.0.
+   */
+  brightness: number;
 }
 
 export function getDefaultDisplaySettings() {
@@ -119,6 +125,7 @@ export function getDefaultDisplaySettings() {
     theme: Theme.Light,
     overlay: getDefaultOverlaySettings(),
     colourLift: 0.35,
+    brightness: 1.0,
   };
 }
 
@@ -135,6 +142,19 @@ export function isDarkTheme(theme: Theme) {
 }
 
 export function themeFilter(theme: Theme): string {
+  return themePalette(theme).filter;
+}
+
+/**
+ * Returns the CSS filter string for rendering content in the theme colour.
+ * For colour themes (Green, Cyan, etc.) this includes push-darks and contrast
+ * before the feColorMatrix recolour filter, matching the main rendering pipeline.
+ * For non-colour themes (Light, Dark) this returns the legacy filter string.
+ */
+export function themeRecolourFilter(theme: Theme): string {
+  if (isColourTheme(theme)) {
+    return "url(#push-darks) contrast(1.5) url(#recolor)";
+  }
   return themePalette(theme).filter;
 }
 
@@ -188,6 +208,19 @@ function rgbToHex({ r, g, b }: { r: number; g: number; b: number }) {
     clamp(Math.round(component), 0, 255).toString(16).padStart(2, "0");
 
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+/**
+ * Applies a brightness multiplier to a hex colour.
+ * brightness 1.0 = unchanged, 0.5 = half intensity, 2.0 = double (clamped to 255).
+ */
+export function applyBrightness(hex: string, brightness: number): string {
+  const { r, g, b } = hexToRgb(hex);
+  return rgbToHex({
+    r: r * brightness,
+    g: g * brightness,
+    b: b * brightness,
+  });
 }
 
 function mixHex(baseHex: string, mixHexColor: string, ratio: number) {
