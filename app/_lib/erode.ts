@@ -8,6 +8,12 @@ export function erosionFilter(
    * prevents Safari from dropping the whole filter if the SVG ref is unresolvable.
    */
   colourLift: number = 0,
+  /**
+   * When true, append `url(#recolor)` instead of `url(#lift-blacks)`.
+   * The recolor SVG filter maps black→target colour and white→black directly
+   * via a feColorMatrix, replacing the old invert+sepia+hue-rotate approach.
+   */
+  useRecolour: boolean = false,
 ): string {
   const result = [];
 
@@ -28,10 +34,13 @@ export function erosionFilter(
   // Always add push-darks and contrast for better line quality
   result.push("url(#push-darks)");
   result.push("contrast(1.5)");
-  // Apply lift-blacks here (on the canvas) rather than in the container CSS
-  // filter, so the container filter stays url()-free and won't be dropped by
-  // Safari if the SVG filter reference is briefly unavailable.
-  if (colourLift > 0) {
+
+  if (useRecolour) {
+    // Use the feColorMatrix recolour filter which does invert+colourise in one step.
+    // This replaces both lift-blacks and the container invert+sepia+hue-rotate filters.
+    result.push("url(#recolor)");
+  } else if (colourLift > 0) {
+    // Legacy path: lift blacks before container-level invert+sepia+hue-rotate.
     result.push("url(#lift-blacks)");
   }
   return result.join(" ");
@@ -366,4 +375,38 @@ function erodeAtIndex(
     }
   }
   return c;
+}
+
+/**
+ * Recolour image data in-place: maps pixel luminance to a target colour.
+ * Black (luminance 0) → target colour at full intensity.
+ * White (luminance 1) → black (0, 0, 0).
+ * Greys map to proportionally dimmer shades of the target.
+ * This is the pixel-level equivalent of the feColorMatrix recolour SVG filter.
+ *
+ * @param imageData - The image data to recolour in-place.
+ * @param hex - Target colour as a hex string (e.g. "#75FFCD").
+ */
+export function recolourImageData(imageData: ImageData, hex: string) {
+  const v = hex.replace("#", "");
+  const n = v.length === 3 ? `${v[0]}${v[0]}${v[1]}${v[1]}${v[2]}${v[2]}` : v;
+  const parsed = Number.parseInt(n, 16);
+  const tR = ((parsed >> 16) & 255) / 255;
+  const tG = ((parsed >> 8) & 255) / 255;
+  const tB = (parsed & 255) / 255;
+
+  const data = imageData.data;
+  const len = data.length;
+
+  for (let i = 0; i < len; i += 4) {
+    // Compute luminance from the source pixel (already enhanced via LUT)
+    const luminance =
+      (data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722) / 255;
+    // Invert: black (0) → full colour, white (1) → black
+    const intensity = 1 - luminance;
+    data[i] = Math.round(intensity * tR * 255); // R
+    data[i + 1] = Math.round(intensity * tG * 255); // G
+    data[i + 2] = Math.round(intensity * tB * 255); // B
+    // Alpha unchanged
+  }
 }

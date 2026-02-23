@@ -1202,6 +1202,12 @@ export function ControlPanelBridge({
               colourLift: params as number,
             });
             break;
+          case "setBrightness":
+            setDisplaySettings({
+              ...displaySettings,
+              brightness: params as number,
+            });
+            break;
           case "adjustScale": {
             const delta = params as number;
             const screenCenterAnchor = getCalibrationCenterScreenAnchor();

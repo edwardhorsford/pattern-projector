@@ -11,6 +11,10 @@ export interface RenderContextType {
   patternScale: number;
   /** Colour lift floor value (0-1). Non-zero only for colour themes (Green/Cyan/Amber/Magenta). */
   colourLift: number;
+  /** When set, the recolour SVG filter is used instead of lift-blacks + container invert/sepia/hue-rotate. */
+  recolourHex?: string;
+  /** Incremented to bust the render cache and force all pages to re-render from scratch. */
+  renderVersion: number;
 }
 
 export const RenderContext = createContext<RenderContextType>({
@@ -21,6 +25,8 @@ export const RenderContext = createContext<RenderContextType>({
   onPageRenderSuccess: () => {},
   patternScale: 1,
   colourLift: 0,
+  recolourHex: undefined,
+  renderVersion: 0,
 });
 
 export default function useRenderContext() {

@@ -12,6 +12,7 @@ import {
   erodeImageData,
   erosionFilter,
   enhanceLineQualityFast,
+  recolourImageData,
 } from "@/_lib/erode";
 import useRenderContext from "@/_hooks/use-render-context";
 
@@ -26,8 +27,10 @@ function getCacheKey(
   width: number,
   height: number,
   colourLift: number,
+  recolourHex?: string,
+  renderVersion?: number,
 ): string {
-  return `${pageNumber}-${erosions}-${width}-${height}-${colourLift}`;
+  return `${pageNumber}-${erosions}-${width}-${height}-${colourLift}-${recolourHex ?? ""}-${renderVersion ?? 0}`;
 }
 
 function addToCache(key: string, data: ImageData) {
@@ -56,6 +59,8 @@ export default function CustomRenderer() {
     onPageRenderSuccess,
     patternScale,
     colourLift,
+    recolourHex,
+    renderVersion,
   } = useRenderContext();
   const pageContext = usePageContext();
 
@@ -74,13 +79,17 @@ export default function CustomRenderer() {
   // So on Safari: all processing (erode, push-darks, colourLift floor) is done via pixels.
   // On other browsers: the full chain runs as canvas 2D CSS filters.
   //
-  // colourLift is passed into erosionFilter so it appends url(#lift-blacks) on the
-  // canvas draw call — keeping the container CSS filter url()-free. This avoids a
-  // Safari bug where a url() in the container filter causes the entire filter (including
-  // invert) to be silently dropped if the SVG reference can't be resolved briefly.
+  // When recolourHex is set, we use the feColorMatrix recolour filter on the canvas
+  // draw call. This replaces both the old lift-blacks step AND the container-level
+  // invert+sepia+hue-rotate filters — the container filter should be "none".
+  const useRecolour = !!recolourHex && !isSafari;
   const cssFilter = isSafari
     ? undefined // Safari: all processing done via pixels (no CSS filter on canvas)
-    : erosionFilter(magnifying ? 0 : erosions, colourLift); // Others: full filter chain via CSS
+    : erosionFilter(
+        magnifying ? 0 : erosions,
+        useRecolour ? 0 : colourLift,
+        useRecolour,
+      );
 
   // Safari does erosion and enhancement via pixel manipulation
   const renderErosions = isSafari ? (magnifying ? 0 : erosions) : 0;
@@ -152,6 +161,8 @@ export default function CustomRenderer() {
       renderWidth,
       renderHeight,
       isSafari ? colourLift : 0,
+      recolourHex,
+      renderVersion,
     );
     const cachedData = isSafari ? renderCache.get(cacheKey) : null;
 
@@ -175,7 +186,7 @@ export default function CustomRenderer() {
     }
 
     // Only signal loading if params actually changed (not just a re-render)
-    const currentParams = `${pageNumber}-${renderErosions}-${renderWidth}-${renderHeight}-${colourLift}`;
+    const currentParams = `${pageNumber}-${renderErosions}-${renderWidth}-${renderHeight}-${colourLift}-${recolourHex ?? ""}`;
     if (lastRenderedParams.current !== currentParams) {
       onPageRenderStart();
       lastRenderedParams.current = currentParams;
@@ -248,7 +259,18 @@ export default function CustomRenderer() {
             }
 
             // Always apply enhancement (gamma + contrast + floor) for Safari using fast LUT
-            enhanceLineQualityFast(result, 2, 1.5, colourLift);
+            // When recolouring, skip the floor lift — the recolour step handles inversion.
+            enhanceLineQualityFast(
+              result,
+              2,
+              1.5,
+              recolourHex ? 0 : colourLift,
+            );
+
+            // If recolouring, apply pixel-level recolour (maps luminance to target colour)
+            if (recolourHex) {
+              recolourImageData(result, recolourHex);
+            }
 
             // Cache the processed result for quick switching
             addToCache(cacheKey, result);
@@ -311,6 +333,8 @@ export default function CustomRenderer() {
     isSafari,
     pageNumber,
     colourLift,
+    recolourHex,
+    renderVersion,
     onPageRenderStart,
     onPageRenderSuccess,
   ]);

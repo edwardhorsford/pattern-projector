@@ -46,12 +46,14 @@ export default function PdfViewer({
   stitchSettings,
   filter,
   colourLift,
+  recolourHex,
   magnifying,
   setFileLoadStatus,
   setLineThicknessStatus,
   gridCenter,
   patternScale,
   setMenuStates,
+  renderVersion,
 }: {
   file: any;
   layers: Layers;
@@ -65,12 +67,14 @@ export default function PdfViewer({
   stitchSettings: StitchSettings;
   filter: string;
   colourLift: number;
+  recolourHex?: string;
   magnifying: boolean;
   setFileLoadStatus: Dispatch<SetStateAction<LoadStatusEnum>>;
   setLineThicknessStatus: Dispatch<SetStateAction<LoadStatusEnum>>;
   gridCenter: Point;
   patternScale: number;
   setMenuStates: Dispatch<SetStateAction<MenuStates>>;
+  renderVersion: number;
 }) {
   const [pageSizes, setPageSize] = useReducer(
     pageSizeReducer,
@@ -257,6 +261,8 @@ export default function PdfViewer({
                     onPageRenderSuccess,
                     patternScale,
                     colourLift,
+                    recolourHex,
+                    renderVersion,
                   }}
                 >
                   <Page

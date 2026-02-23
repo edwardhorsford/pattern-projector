@@ -5,7 +5,7 @@ import { Marker, MARKER_SIZE_INCHES } from "@/_lib/marker";
 import { useTransformContext } from "@/_hooks/use-transform-context";
 import Matrix from "ml-matrix";
 import { getPtDensity, Unit } from "@/_lib/unit";
-import { Theme, secondaryColor, themeFilter } from "@/_lib/display-settings";
+import { Theme, secondaryColor, themeRecolourFilter } from "@/_lib/display-settings";
 import { scale, transformPoint } from "@/_lib/geometry";
 
 interface MarkerCanvasProps {
@@ -84,7 +84,7 @@ export default function MarkerCanvas({
               width: markerSizePx,
               height: markerSizePx,
               // Apply theme filter to invert colors when in dark mode
-              filter: themeFilter(theme),
+              filter: themeRecolourFilter(theme),
             }}
           >
             <svg viewBox="0 0 100 100" width="100%" height="100%">
