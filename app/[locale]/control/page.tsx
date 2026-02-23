@@ -883,17 +883,21 @@ function Preview({
             top: scaledBufferY,
             width: effectiveLayoutWidth * scale,
             height: effectiveLayoutHeight * scale,
-            // Apply filter to container - Safari has issues with filter on transformed children
-            filter:
-              showPreviewImage && previewImage ? themeRecolourFilter(theme) : undefined,
-            // Background: for inverted themes, set to white so it inverts to black
-            // (filter inverts the background too)
-            backgroundColor: isDarkTheme(theme) ? "#fff" : "#fff",
+            // Set background directly to match theme — no CSS filter needed
+            // on the container, which avoids Safari filter-flickering bugs.
+            backgroundColor: isDarkTheme(theme) ? "#000" : "#fff",
           }}
         >
           {/* Loading indicator */}
           {isPreviewLoading && showPreviewImage && (
-            <div className="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-gray-800/50">
+            <div
+              className="absolute inset-0 flex items-center justify-center"
+              style={{
+                backgroundColor: isDarkTheme(theme)
+                  ? "rgba(0, 0, 0, 0.5)"
+                  : "rgba(255, 255, 255, 0.5)",
+              }}
+            >
               <div className="w-6 h-6 border-2 border-gray-300 dark:border-gray-600 border-t-purple-500 rounded-full animate-spin" />
             </div>
           )}
@@ -913,6 +917,10 @@ function Preview({
                 // Apply the transform (rotation/flip)
                 transform: `translate(-50%, -50%) matrix(${transformA}, ${transformC}, ${transformB}, ${transformD}, 0, 0)`,
                 transformOrigin: "center center",
+                // Apply theme filter directly on the image rather than on
+                // the container — avoids Safari dropping the filter during
+                // React re-renders when state syncs.
+                filter: themeRecolourFilter(theme),
               }}
               draggable={false}
             />
@@ -2203,7 +2211,6 @@ export default function ControlPanelPage() {
                   </div>
                 </DropdownMenu>
               </div>
-
             </section>
 
             {/* Pattern Controls - matches right menu group */}
@@ -2921,17 +2928,18 @@ export default function ControlPanelPage() {
                   Brightness:{" "}
                   <span className="font-mono">
                     {(() => {
-                      const val = (state.displaySettings.brightness ?? 1.0) - 1.0
-                      const sign = val >= 0 ? "+" : ""
-                      return `${sign}${Math.round(val * 100)}%`
+                      const val =
+                        (state.displaySettings.brightness ?? 1.0) - 1.0;
+                      const sign = val >= 0 ? "+" : "";
+                      return `${sign}${Math.round(val * 100)}%`;
                     })()}
                   </span>
                 </label>
                 <input
                   id="dev-brightness"
                   type="range"
-                  min={0.65}
-                  max={1.35}
+                  min={0.5}
+                  max={1.5}
                   step={0.05}
                   list="brightness-ticks"
                   value={state.displaySettings.brightness ?? 1.0}

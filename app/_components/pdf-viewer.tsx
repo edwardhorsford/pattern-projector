@@ -45,6 +45,7 @@ export default function PdfViewer({
   lineThickness,
   stitchSettings,
   filter,
+  canvasBackground,
   recolourHex,
   magnifying,
   setFileLoadStatus,
@@ -65,6 +66,7 @@ export default function PdfViewer({
   lineThickness: number;
   stitchSettings: StitchSettings;
   filter: string;
+  canvasBackground?: string;
   recolourHex?: string;
   magnifying: boolean;
   setFileLoadStatus: Dispatch<SetStateAction<LoadStatusEnum>>;
@@ -268,6 +270,7 @@ export default function PdfViewer({
                     renderMode="custom"
                     customRenderer={CustomRenderer}
                     customTextRenderer={customTextRenderer}
+                    canvasBackground={canvasBackground}
                     // We render our own canvas output; disabling extra react-pdf layers
                     // avoids additional absolute/z-indexed sublayers.
                     renderTextLayer={false}
