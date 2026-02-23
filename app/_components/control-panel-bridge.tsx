@@ -1196,12 +1196,6 @@ export function ControlPanelBridge({
           case "setLineThickness":
             setLineThickness(params as number);
             break;
-          case "setColourLift":
-            setDisplaySettings({
-              ...displaySettings,
-              colourLift: params as number,
-            });
-            break;
           case "setBrightness":
             setDisplaySettings({
               ...displaySettings,
