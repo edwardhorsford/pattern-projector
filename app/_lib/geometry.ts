@@ -412,12 +412,12 @@ export function constrained(p: Point, anchorPoint: Point) {
   } else if (dx === 0 && dy === 0) {
     return anchorPoint;
   } else {
-    // snap to 45 degree angle
-    if (dx < dy) {
-      return { x: p.x, y: anchorPoint.y + ((p.y - anchorPoint.y) / dy) * dx };
-    } else {
-      return { x: anchorPoint.x + ((p.x - anchorPoint.x) / dx) * dy, y: p.y };
-    }
+    // snap to 45 degree angle - project p onto the nearest diagonal direction
+    // using the perpendicular foot from p to the snapped line
+    const signX = p.x >= anchorPoint.x ? 1 : -1
+    const signY = p.y >= anchorPoint.y ? 1 : -1
+    const t = (dx + dy) / 2
+    return { x: anchorPoint.x + signX * t, y: anchorPoint.y + signY * t }
   }
 }
 
