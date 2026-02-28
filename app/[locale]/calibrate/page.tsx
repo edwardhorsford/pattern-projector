@@ -948,7 +948,7 @@ export default function Page() {
       <div className="bg-white dark:bg-black dark:text-white w-screen h-screen ">
         <FullScreen
           handle={fullScreenHandle}
-          className="bg-white dark:bg-black transition-all duration-500 w-screen h-screen"
+          className="bg-white dark:bg-black w-screen h-screen"
         >
           {showCalibrationAlert ? (
             <div className="flex flex-col items-center gap-4 absolute left-1/4 top-1/2 -translate-y-1/2 w-1/2 bg-white dark:bg-black dark:text-white z-[150] p-4 rounded border-2 border-black dark:border-white pointer-events-none">
@@ -1196,7 +1196,7 @@ export default function Page() {
                           : themeRecolourFilter(displaySettings.theme)
                       }
                       canvasBackground={
-                        isColourTheme(displaySettings.theme)
+                        isDarkTheme(displaySettings.theme)
                           ? "#000000"
                           : "#ffffff"
                       }

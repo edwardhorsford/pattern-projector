@@ -302,7 +302,7 @@ export default function Draggable({
       tabIndex={0}
       // isolate + overflow-hidden creates a predictable stacking/paint boundary
       // so transformed PDF content cannot visually bleed over sibling UI layers.
-      className={`${className ?? ""} ${cursorMode} ${visible(!isCalibrating)} z-0 isolate overflow-hidden select-none absolute top-0 bg-white dark:bg-black transition-all duration-500 w-screen h-screen`}
+      className={`${className ?? ""} ${cursorMode} ${visible(!isCalibrating)} z-0 isolate overflow-hidden select-none absolute top-0 bg-white dark:bg-black w-screen h-screen`}
       onPointerMove={handleMove}
       onPointerDown={handleOnStart}
       onPointerUp={handleOnEnd}

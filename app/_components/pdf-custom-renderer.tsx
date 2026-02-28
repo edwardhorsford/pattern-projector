@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useCallback } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
 import invariant from "tiny-invariant";
 import { usePageContext, useDocumentContext } from "react-pdf";
 import type { PixelProcessRequest, PixelProcessResponse } from "@/_lib/pixel-processor.worker";
@@ -113,6 +113,21 @@ export default function CustomRenderer() {
     ? (recolourHex ?? (themeFilter === "invert(1)" ? "#ffffff" : undefined))
     : undefined;
 
+  // Background colour the current theme expects the canvas to sit on.
+  // Dark/colour themes render on black; Light theme on white.
+  // Computed at component body level so the useLayoutEffect below can access it.
+  const canvasBackgroundColor =
+    !!recolourHex ||
+    !!safariEffectiveRecolourHex ||
+    (!!themeFilter && themeFilter !== "none")
+      ? "#000000"
+      : "#ffffff";
+
+  // Always-current ref so drawPageOnCanvas can read the current background
+  // colour without needing it in the callback's dependency array.
+  const canvasBackgroundColorRef = useRef(canvasBackgroundColor);
+  canvasBackgroundColorRef.current = canvasBackgroundColor;
+
   const _className = pageContext._className;
   const page = pageContext.page;
   const pdf = docContext.pdf;
@@ -130,6 +145,39 @@ export default function CustomRenderer() {
   // Last content key for which we actually rendered, used to detect when a
   // re-render is needed because content (not just scale) changed.
   const lastContentKeyRef = useRef("");
+
+  // Tracks the background colour of whatever pixels are currently in the
+  // visible canvas. Used to detect dark/light orientation crossings so the
+  // useLayoutEffect below can hide the canvas before the next paint.
+  const lastDrawnBackgroundRef = useRef<string>("");
+
+  // Tracks whether we've hidden the canvas for a cross-theme transition, so
+  // the render-success callbacks know to restore visibility.
+  const canvasHiddenRef = useRef(false);
+
+  // When the dark/light orientation changes, hide the canvas via
+  // visibility:hidden. useLayoutEffect fires after React's DOM mutations but
+  // before the browser paints — this lands in the same frame as the theme
+  // commit. Crucially, visibility is a CSS property, so it goes through the
+  // same compositor path as the parent's background-color change, keeping
+  // them in perfect sync. The parent div's backgroundColor (set from
+  // canvasBackground) then shows through until the new render is ready.
+  // fillRect was used previously but flushed to the GPU compositor ahead of
+  // CSS recalculations, causing the canvas to visibly lead the UI.
+  useLayoutEffect(() => {
+    const visibleCanvas = canvasElement.current;
+    if (!visibleCanvas) return;
+    const hasPixels = visibleCanvas.width > 0 && visibleCanvas.height > 0;
+    if (
+      hasPixels &&
+      lastDrawnBackgroundRef.current !== "" &&
+      canvasBackgroundColor !== lastDrawnBackgroundRef.current
+    ) {
+      visibleCanvas.style.visibility = "hidden";
+      canvasHiddenRef.current = true;
+      lastDrawnBackgroundRef.current = canvasBackgroundColor;
+    }
+  }, [canvasBackgroundColor]);
 
   // Off-main-thread pixel processing (Safari path).
   // One worker per component instance, created lazily, terminated on unmount.
@@ -281,6 +329,7 @@ export default function CustomRenderer() {
       if (ctx) {
         ctx.drawImage(cachedData, 0, 0);
       }
+      lastDrawnBackgroundRef.current = canvasBackgroundColorRef.current;
       onPageRenderSuccess();
       return;
     }
@@ -383,6 +432,12 @@ export default function CustomRenderer() {
             if (dest) {
               dest.drawImage(bitmap, 0, 0);
             }
+            // Restore visibility if we hid the canvas for a cross-theme transition.
+            if (canvasHiddenRef.current) {
+              visibleCanvas.style.visibility = "";
+              canvasHiddenRef.current = false;
+            }
+            lastDrawnBackgroundRef.current = canvasBackgroundColorRef.current;
             onPageRenderSuccess();
           };
           worker.postMessage(request, [request.buffer]);
@@ -403,6 +458,12 @@ export default function CustomRenderer() {
           dest.imageSmoothingEnabled = false;
           dest.filter = cssFilter ?? "none";
           dest.drawImage(renderTarget, 0, 0);
+          // Restore visibility if we hid the canvas for a cross-theme transition.
+          if (canvasHiddenRef.current) {
+            visibleCanvas.style.visibility = "";
+            canvasHiddenRef.current = false;
+          }
+          lastDrawnBackgroundRef.current = canvasBackgroundColorRef.current;
           onPageRenderSuccess();
         }
       })
