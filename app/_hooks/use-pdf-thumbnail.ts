@@ -7,8 +7,24 @@ import {
   StitchSettings,
   LineDirection,
 } from "@/_lib/interfaces/stitch-settings";
-import { erodeImageData, enhanceLineQualityFast } from "@/_lib/erode";
 import { Layers } from "@/_lib/layers";
+import type {
+  PixelProcessRequest,
+  PixelProcessResponse,
+} from "@/_lib/pixel-processor.worker";
+
+// Module-level cache: thumbnail data URLs keyed by rendering parameters.
+// Avoids re-processing identical settings we've seen before.
+const thumbnailCache = new Map<string, string>();
+const MAX_THUMBNAIL_CACHE_SIZE = 30;
+
+function addToThumbnailCache(key: string, dataUrl: string) {
+  if (thumbnailCache.size >= MAX_THUMBNAIL_CACHE_SIZE) {
+    const firstKey = thumbnailCache.keys().next().value;
+    if (firstKey) thumbnailCache.delete(firstKey);
+  }
+  thumbnailCache.set(key, dataUrl);
+}
 
 // Stable empty object for default layers parameter
 // Using a constant prevents creating a new object reference on each render
@@ -97,6 +113,17 @@ export function usePdfThumbnail(
     setIsLoading(true);
 
     async function generateThumbnail() {
+      // Build a cache key from all parameters that affect the output.
+      const cacheKey = `${file!.name}-${file!.size}-${pageCount}-${stitchSettings.pageRange}-${stitchSettings.lineCount}-${stitchSettings.lineDirection}-${lineThickness}-${renderVersion}-${layersKey}`;
+
+      // Return cached result immediately if available — avoids all re-processing.
+      const cached = thumbnailCache.get(cacheKey);
+      if (cached) {
+        setCachedThumbnail(cached);
+        setIsLoading(false);
+        return;
+      }
+
       try {
         // Load the PDF document
         const arrayBuffer = await file!.arrayBuffer();
@@ -213,35 +240,38 @@ export function usePdfThumbnail(
           renderCtx.drawImage(pageCanvas, x, y, tileWidth, tileHeight);
         }
 
-        // Apply erosion (line thickening) on high-res canvas
-        // At line weight 0, use base erosion to keep lines visible; otherwise match main window exactly
+        // Process pixels off-thread (erode + enhance) using the pixel-processor worker.
+        // The worker always runs enhanceLineQualityFast, and erodes if erosions > 0.
         const effectiveErosion =
           lineThickness === 0 ? THUMBNAIL_BASE_EROSION : lineThickness;
         const totalErosion = effectiveErosion * RENDER_SCALE_MULTIPLIER;
-        if (totalErosion > 0) {
-          let imageData = renderCtx.getImageData(
-            0,
-            0,
-            renderWidth,
-            renderHeight,
+        const rawImageData = renderCtx.getImageData(0, 0, renderWidth, renderHeight);
+        const processedBitmap = await new Promise<ImageBitmap>((resolve, reject) => {
+          if (signal.aborted) { reject(new DOMException("Aborted")); return; }
+          const worker = new Worker(
+            new URL("../_lib/pixel-processor.worker", import.meta.url),
           );
-          let buffer = new ImageData(renderWidth, renderHeight);
-          for (let i = 0; i < totalErosion; i++) {
-            erodeImageData(imageData, buffer);
-            [imageData, buffer] = [buffer, imageData];
-          }
-          renderCtx.putImageData(imageData, 0, 0);
-        }
+          const onAbort = () => { worker.terminate(); reject(new DOMException("Aborted")); };
+          signal.addEventListener("abort", onAbort);
+          worker.onmessage = (e: MessageEvent<PixelProcessResponse>) => {
+            signal.removeEventListener("abort", onAbort);
+            worker.terminate();
+            resolve(e.data.bitmap);
+          };
+          const request: PixelProcessRequest = {
+            id: 1,
+            buffer: rawImageData.data.buffer,
+            width: renderWidth,
+            height: renderHeight,
+            erosions: totalErosion,
+          };
+          worker.postMessage(request, [request.buffer]);
+        });
+        if (signal.aborted) { processedBitmap.close(); return; }
 
-        // Apply push-darks + contrast on the high-res canvas before downscaling.
-        const highResImageData = renderCtx.getImageData(
-          0,
-          0,
-          renderWidth,
-          renderHeight,
-        );
-        enhanceLineQualityFast(highResImageData, 2, 1.5);
-        renderCtx.putImageData(highResImageData, 0, 0);
+        // Draw the processed result back onto the high-res canvas for downscaling.
+        renderCtx.drawImage(processedBitmap, 0, 0);
+        processedBitmap.close();
 
         // Create final thumbnail canvas and scale down
         const canvas = document.createElement("canvas");
@@ -259,6 +289,7 @@ export function usePdfThumbnail(
         const dataUrl = encodeToJpeg(finalImageData);
 
         if (!signal.aborted) {
+          addToThumbnailCache(cacheKey, dataUrl);
           setCachedThumbnail(dataUrl);
           setIsLoading(false);
         }
@@ -278,6 +309,7 @@ export function usePdfThumbnail(
         abortControllerRef.current.abort();
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- layersKey is a stable derived key from layers; using layers directly would cause spurious re-runs
   }, [
     file,
     pageCount,

@@ -4,8 +4,10 @@ import "react-pdf/dist/esm/Page/TextLayer.css";
 import {
   Dispatch,
   SetStateAction,
+  memo,
   useCallback,
   useEffect,
+  useMemo,
   useReducer,
   useRef,
 } from "react";
@@ -33,7 +35,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url,
 ).toString();
 
-export default function PdfViewer({
+function PdfViewer({
   file,
   layers,
   setLayers,
@@ -171,6 +173,29 @@ export default function PdfViewer({
     }, 50); // Small delay to batch multiple page completions
   }, [setFileLoadStatus, setLineThicknessStatus]);
 
+  const renderContextValue = useMemo(
+    () => ({
+      erosions: lineThickness,
+      layers,
+      magnifying,
+      onPageRenderStart,
+      onPageRenderSuccess,
+      patternScale,
+      recolourHex,
+      renderVersion,
+    }),
+    [
+      lineThickness,
+      layers,
+      magnifying,
+      onPageRenderStart,
+      onPageRenderSuccess,
+      patternScale,
+      recolourHex,
+      renderVersion,
+    ],
+  );
+
   const customTextRenderer = useCallback(({ str }: { str: string }) => {
     return `<span class="opacity-0 hover:opacity-100" style="background-color: #FFF; color: #000; padding: 2px 4px; border-radius: 2px; transform-origin: center; display: inline-block;" onmouseover="this.style.transform='scale(2)'" onmouseout="this.style.transform='scale(1)'">${str}</span>`;
   }, []);
@@ -257,16 +282,7 @@ export default function PdfViewer({
             >
               {value != 0 && (
                 <RenderContext.Provider
-                  value={{
-                    erosions: lineThickness,
-                    layers,
-                    magnifying,
-                    onPageRenderStart,
-                    onPageRenderSuccess,
-                    patternScale,
-                    recolourHex,
-                    renderVersion,
-                  }}
+                  value={renderContextValue}
                 >
                   <Page
                     // Pass a fixed scale so react-pdf's internal page context
@@ -295,6 +311,8 @@ export default function PdfViewer({
     </Document>
   );
 }
+
+export default memo(PdfViewer);
 
 function getKeys(pages: number[]): string[] {
   const keys: string[] = [];
