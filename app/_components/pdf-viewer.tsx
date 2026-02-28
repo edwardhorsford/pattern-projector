@@ -148,10 +148,11 @@ export default function PdfViewer({
     // Debounce: only set loading if not already pending
     if (renderStartTimeoutRef.current) return;
     renderStartTimeoutRef.current = setTimeout(() => {
+      setFileLoadStatus(LoadStatusEnum.LOADING);
       setLineThicknessStatus(LoadStatusEnum.LOADING);
       renderStartTimeoutRef.current = null;
     }, 0);
-  }, [setLineThicknessStatus]);
+  }, [setFileLoadStatus, setLineThicknessStatus]);
 
   const onPageRenderSuccess = useCallback(() => {
     // Clear any pending start timeout
@@ -268,7 +269,12 @@ export default function PdfViewer({
                   }}
                 >
                   <Page
-                    scale={PDF_TO_CSS_UNITS * patternScale}
+                    // Pass a fixed scale so react-pdf's internal page context
+                    // doesn't change when patternScale changes. Our CustomRenderer
+                    // reads patternScale from RenderContext and computes its own
+                    // viewport independently. Changing this prop causes react-pdf
+                    // to remount the custom renderer, resetting all refs/canvas.
+                    scale={PDF_TO_CSS_UNITS}
                     pageNumber={value}
                     renderMode="custom"
                     customRenderer={CustomRenderer}

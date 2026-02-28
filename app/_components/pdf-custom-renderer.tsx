@@ -102,6 +102,14 @@ export default function CustomRenderer() {
   // Track last rendered params to only signal loading when they change
   const lastRenderedParams = useRef<string>("");
 
+  // Last content key for which we actually rendered, used to detect when a
+  // re-render is needed because content (not just scale) changed.
+  const lastContentKeyRef = useRef("");
+  // Track layers object identity so we can include it in the content key
+  // without having to serialise the whole object.
+  const layersRef = useRef(layers);
+  const layersVersionRef = useRef(0);
+
   const userUnit = (page as PDFPageProxy).userUnit || 1;
 
   invariant(page, "Unable to find page.");
@@ -126,6 +134,15 @@ export default function CustomRenderer() {
   const renderHeight = Math.floor(renderViewport.height);
   const pageNumber = (page as PDFPageProxy).pageNumber;
 
+  // Keep refs in sync so drawPageOnCanvas can always read the latest dimensions
+  // without them needing to be in its dependency array (see below).
+  const renderViewportRef = useRef(renderViewport);
+  renderViewportRef.current = renderViewport;
+  const renderWidthRef = useRef(renderWidth);
+  renderWidthRef.current = renderWidth;
+  const renderHeightRef = useRef(renderHeight);
+  renderHeightRef.current = renderHeight;
+
   // Ensure back canvas exists for Safari pixel processing
   if (isSafari && backCanvas.current === null) {
     backCanvas.current = document.createElement("canvas");
@@ -147,6 +164,59 @@ export default function CustomRenderer() {
     if (!page || !visibleCanvas) {
       return;
     }
+
+    // Read latest dimensions from refs — they are always current even though
+    // they are deliberately NOT in this callback's dependency array.  This
+    // prevents the callback from being recreated (and the effect from firing)
+    // on every patternScale step when only the scale changes.
+    const renderWidth = renderWidthRef.current;
+    const renderHeight = renderHeightRef.current;
+    const renderViewport = renderViewportRef.current;
+
+    // Detect layers identity changes so we can include them in the content key.
+    if (layersRef.current !== layers) {
+      layersRef.current = layers;
+      layersVersionRef.current++;
+    }
+
+    // Content key captures everything that affects what pixels look like,
+    // deliberately excluding renderWidth/renderHeight.
+    const contentKey = `${pageNumber}-${renderErosions}-${recolourHex ?? ""}-${renderVersion ?? 0}-${layersVersionRef.current}`;
+
+    // When zooming out the existing canvas pixels remain valid — CSS width/height
+    // already handles the visual downscale, so there is no need to re-render.
+    // Use the canvas's own dimensions as ground truth rather than a separate ref:
+    // if the canvas already holds pixels at >= the required resolution and content
+    // hasn't changed, skip the render entirely.
+    const canvasHasPixels =
+      visibleCanvas.width > 0 && visibleCanvas.height > 0;
+    if (
+      contentKey === lastContentKeyRef.current &&
+      canvasHasPixels &&
+      renderWidth <= visibleCanvas.width &&
+      renderHeight <= visibleCanvas.height
+    ) {
+      onPageRenderSuccess();
+      return;
+    }
+
+    console.warn("[pdf-custom-renderer] proceeding to render:", {
+      reason:
+        contentKey !== lastContentKeyRef.current
+          ? "content changed"
+          : !canvasHasPixels
+            ? "no pixels yet"
+            : "larger dims needed",
+      renderWidth,
+      renderHeight,
+      canvasWidth: visibleCanvas.width,
+      canvasHeight: visibleCanvas.height,
+      contentKey,
+      lastContentKey: lastContentKeyRef.current,
+    });
+
+    // Commit the new content key now that we're actually going to render.
+    lastContentKeyRef.current = contentKey;
 
     // Check cache first (Safari only, since non-Safari uses CSS filters)
     const cacheKey = getCacheKey(
@@ -310,24 +380,39 @@ export default function CustomRenderer() {
     };
   }, [
     page,
-    renderViewport,
     layers,
     pdf,
     cssFilter,
     renderErosions,
-    renderWidth,
-    renderHeight,
     isSafari,
     pageNumber,
     recolourHex,
     renderVersion,
     onPageRenderStart,
     onPageRenderSuccess,
+    // NOTE: renderViewport, renderWidth, renderHeight intentionally omitted.
+    // They are read from refs inside the callback so they are always fresh,
+    // but we don't want patternScale changes to recreate this callback and
+    // retrigger the effect — that is handled by the zoom-in effect below.
   ]);
 
+  // Fire when content changes (any dep in drawPageOnCanvas above).
   useEffect(() => {
     drawPageOnCanvas();
   }, [drawPageOnCanvas]);
+
+  // Fire when zooming IN past the currently-rendered canvas resolution so we
+  // render at the new (higher) resolution.  Zoom-out is intentionally not
+  // triggered here — the existing canvas pixels remain valid and the browser
+  // CSS-downscales them without any re-render.
+  useEffect(() => {
+    const canvas = canvasElement.current;
+    const canvasW = canvas?.width ?? 0;
+    const canvasH = canvas?.height ?? 0;
+    if (renderWidth > canvasW || renderHeight > canvasH) {
+      drawPageOnCanvas();
+    }
+  }, [renderWidth, renderHeight, drawPageOnCanvas]);
 
   const canvasStyle = {
     width:
