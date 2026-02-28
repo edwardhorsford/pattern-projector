@@ -61,12 +61,12 @@ export function updateLineMeasurements(
 
   if (a < 0) a += 360;
 
-  let angle = a.toFixed(0);
+  let angle = a.toFixed(1);
 
   if (isConstrained) {
-    angle = (Math.round(a / 45) * 45).toFixed(0);
+    angle = (Math.round(a / 45) * 45).toFixed(1);
   }
-  if (angle === "360") angle = "0";
+  if (angle === "360.0") angle = "0.0";
   return { ...line, distance, angle };
 }
 
