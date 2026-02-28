@@ -82,11 +82,13 @@ export default function PdfViewer({
   );
   const transformer = useTransformerContext();
   const t = useTranslations("PdfViewer");
+  const hasRecenteredRef = useRef(false);
 
   function onDocumentLoadSuccess(docProxy: PDFDocumentProxy) {
     const numPages = docProxy.numPages;
     setPageCount(numPages);
     setPageSize({ action: "clear" });
+    hasRecenteredRef.current = false;
     if (stitchSettings.pageRange.endsWith("-") && numPages > 0) {
       dispatchStitchSettings({
         type: "set-page-range",
@@ -128,7 +130,8 @@ export default function PdfViewer({
       width,
       height,
     });
-    if (pageCount === 1) {
+    if (pageCount === 1 && !hasRecenteredRef.current) {
+      hasRecenteredRef.current = true;
       transformer.recenter(gridCenter, width, height);
     }
   }
