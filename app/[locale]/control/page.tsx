@@ -1942,7 +1942,7 @@ export default function ControlPanelPage() {
   const selectedThemePalette = themePalette(devThemePreset);
   const overlaysDisabled = state.displaySettings.overlay?.disabled;
 
-  const lineThicknessOptions = [0, 1, 2, 3, 4, 5, 6, 7];
+  const lineThicknessOptions = [0, 1, 2, 3, 4];
 
   return (
     <main
