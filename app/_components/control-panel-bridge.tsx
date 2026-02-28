@@ -1290,6 +1290,21 @@ export function ControlPanelBridge({
               height: "40",
             };
 
+            // Compute old and new calibration centres so we can keep the
+            // view centred when the grid size changes.
+            const oldCenter = getCalibrationCenterPoint(
+              width,
+              height,
+              unitOfMeasure,
+            );
+            const parsedWidth = Math.max(1, Number(presetWidth) || 1);
+            const parsedHeight = Math.max(1, Number(presetHeight) || 1);
+            const newCenter = getCalibrationCenterPoint(
+              parsedWidth,
+              parsedHeight,
+              unitOfMeasure,
+            );
+
             handleWidthChange({
               target: { value: presetWidth },
             } as ChangeEvent<HTMLInputElement>);
@@ -1297,8 +1312,6 @@ export function ControlPanelBridge({
               target: { value: presetHeight },
             } as ChangeEvent<HTMLInputElement>);
 
-            const parsedWidth = Math.max(1, Number(presetWidth) || 1);
-            const parsedHeight = Math.max(1, Number(presetHeight) || 1);
             dispatchPoints({
               type: "set",
               points:
@@ -1316,6 +1329,13 @@ export function ControlPanelBridge({
                         parsedWidth,
                         parsedHeight,
                       ),
+            });
+
+            // Translate the local transform so the content follows the
+            // calibration centre rather than appearing to jump.
+            transformer.translate({
+              x: newCenter.x - oldCenter.x,
+              y: newCenter.y - oldCenter.y,
             });
 
             setCorners(new Set([0]));
