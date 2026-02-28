@@ -284,6 +284,10 @@ function PdfViewer({
               style={{
                 width: insetWidth,
                 height: insetHeight,
+                // Background shows through when canvas is hidden during a
+                // cross-theme transition — must match the canvas background
+                // colour so the page area looks correct before the new render.
+                backgroundColor: canvasBackground ?? "#ffffff",
                 mixBlendMode:
                   cssEdgeInsets.horizontal == 0 && cssEdgeInsets.vertical == 0
                     ? "normal"

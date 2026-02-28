@@ -374,7 +374,7 @@ export default function Header({
         </ModalActions>
       </Modal>
       <header
-        className={`relative z-10 bg-opacity-60 dark:bg-opacity-50 bg-white dark:bg-black left-0 w-full ${menuStates.menuPosition === "bottom" ? "border-t" : "border-b"} dark:border-gray-700 transition-all duration-500 h-16 flex items-center ${menuStates.nav ? "translate-y-0" : menuStates.menuPosition === "bottom" ? "translate-y-16" : "-translate-y-16"}`}
+        className={`relative z-10 bg-opacity-60 dark:bg-opacity-50 bg-white dark:bg-black left-0 w-full ${menuStates.menuPosition === "bottom" ? "border-t" : "border-b"} dark:border-gray-700 transition-transform duration-500 h-16 flex items-center ${menuStates.nav ? "translate-y-0" : menuStates.menuPosition === "bottom" ? "translate-y-16" : "-translate-y-16"}`}
       >
         <nav
           className="mx-auto flex max-w-7xl items-center justify-between p-2 lg:px-8 w-full"
