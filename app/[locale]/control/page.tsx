@@ -194,8 +194,8 @@ const defaultSyncedState: SyncedState = {
     stitch: false,
     scale: false,
   },
-  widthInput: "90",
-  heightInput: "45",
+  widthInput: "60",
+  heightInput: "40",
   unitOfMeasure: Unit.CM,
   layers: {},
   stitchSettings: defaultStitchSettings,
@@ -1303,9 +1303,13 @@ export default function ControlPanelPage() {
     "none" | "moderate" | "extreme" | "custom"
   >("none");
   const [devThemePreset, setDevThemePreset] = useState<Theme>(Theme.Light);
-  const [devGridPreset, setDevGridPreset] = useState<
-    "60x40" | "30x20" | "15x10"
-  >("60x40");
+  const devGridPreset = (() => {
+    const key = `${state.widthInput}x${state.heightInput}`;
+    if (key === "60x40" || key === "30x20" || key === "15x10") {
+      return key;
+    }
+    return "custom";
+  })();
   const [memoryStats, setMemoryStats] = useState<HeapMemoryStats | null>(null);
   const [memoryAvailable, setMemoryAvailable] = useState(true);
   const [storageBytes, setStorageBytes] = useState(0);
@@ -1752,7 +1756,13 @@ export default function ControlPanelPage() {
 
       // Draw a double-headed grain line arrow (PDF coordinate space, y up)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const drawGrainLine = (page: any, x1: number, y1: number, x2: number, y2: number) => {
+      const drawGrainLine = (
+        page: any,
+        x1: number,
+        y1: number,
+        x2: number,
+        y2: number,
+      ) => {
         const dx = x2 - x1;
         const dy = y2 - y1;
         const len = Math.sqrt(dx * dx + dy * dy);
@@ -1762,25 +1772,72 @@ export default function ControlPanelPage() {
         const ny = ux;
         const a = 32;
         const w = 12;
-        page.drawLine({ start: { x: x1, y: y1 }, end: { x: x2, y: y2 }, thickness: 1.5, color: black });
-        page.drawLine({ start: { x: x2, y: y2 }, end: { x: x2 - ux * a + nx * w, y: y2 - uy * a + ny * w }, thickness: 1.5, color: black });
-        page.drawLine({ start: { x: x2, y: y2 }, end: { x: x2 - ux * a - nx * w, y: y2 - uy * a - ny * w }, thickness: 1.5, color: black });
-        page.drawLine({ start: { x: x1, y: y1 }, end: { x: x1 + ux * a + nx * w, y: y1 + uy * a + ny * w }, thickness: 1.5, color: black });
-        page.drawLine({ start: { x: x1, y: y1 }, end: { x: x1 + ux * a - nx * w, y: y1 + uy * a - ny * w }, thickness: 1.5, color: black });
+        page.drawLine({
+          start: { x: x1, y: y1 },
+          end: { x: x2, y: y2 },
+          thickness: 1.5,
+          color: black,
+        });
+        page.drawLine({
+          start: { x: x2, y: y2 },
+          end: { x: x2 - ux * a + nx * w, y: y2 - uy * a + ny * w },
+          thickness: 1.5,
+          color: black,
+        });
+        page.drawLine({
+          start: { x: x2, y: y2 },
+          end: { x: x2 - ux * a - nx * w, y: y2 - uy * a - ny * w },
+          thickness: 1.5,
+          color: black,
+        });
+        page.drawLine({
+          start: { x: x1, y: y1 },
+          end: { x: x1 + ux * a + nx * w, y: y1 + uy * a + ny * w },
+          thickness: 1.5,
+          color: black,
+        });
+        page.drawLine({
+          start: { x: x1, y: y1 },
+          end: { x: x1 + ux * a - nx * w, y: y1 + uy * a - ny * w },
+          thickness: 1.5,
+          color: black,
+        });
       };
 
       // Draw a notch mark (perpendicular to seam direction) in PDF coordinate space
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const drawNotch = (page: any, x: number, y: number, seamAngle: number) => {
+      const drawNotch = (
+        page: any,
+        x: number,
+        y: number,
+        seamAngle: number,
+      ) => {
         const perpAngle = seamAngle + Math.PI / 2;
         const size = 28;
         page.drawLine({
-          start: { x: x - Math.cos(perpAngle) * size, y: y - Math.sin(perpAngle) * size },
-          end: { x: x + Math.cos(perpAngle) * size, y: y + Math.sin(perpAngle) * size },
+          start: {
+            x: x - Math.cos(perpAngle) * size,
+            y: y - Math.sin(perpAngle) * size,
+          },
+          end: {
+            x: x + Math.cos(perpAngle) * size,
+            y: y + Math.sin(perpAngle) * size,
+          },
           thickness: 2,
           color: black,
         });
       };
+
+      // Helper: convert an SVG-space offset (sx, sy) to PDF absolute coordinates,
+      // given a piece origin (ox, oy) in PDF space and a scale S.
+      // drawSvgPath flips the y axis so SVG-down maps to PDF-up.
+      const p = (
+        ox: number,
+        oy: number,
+        S: number,
+        sx: number,
+        sy: number,
+      ) => ({ x: ox + sx * S, y: oy - sy * S });
 
       // ===== PAGE 1: FRONT BODICE + BACK BODICE =====
       // drawSvgPath places the SVG origin at (x, y) in PDF space and flips the
@@ -1794,32 +1851,45 @@ export default function ControlPanelPage() {
         font: boldFont,
         color: black,
       });
-      page1.drawText("Page 1 of 3  ·  All seam allowances 1.5 cm  ·  Grain lines indicated by arrows", {
-        x: 96,
-        y: A0.height - 162,
-        size: 24,
-        font,
-        color: midGrey,
-      });
+      page1.drawText(
+        "Page 1 of 3  ·  All seam allowances 1.5 cm  ·  Grain lines indicated by arrows",
+        {
+          x: 96,
+          y: A0.height - 162,
+          size: 24,
+          font,
+          color: midGrey,
+        },
+      );
+
+      // Scale applied uniformly to bodice pieces so they fill the page height
+      const S1 = 1.9;
 
       // Front bodice – right half, CF (centre front) on fold at left edge
-      const fbX = 220;
-      const fbY = 2950;
+      const fbX = 120;
+      const fbY = 3160;
 
       // Cutting line: neckline curve, shoulder, armhole S-curve, side seam, waist
       page1.drawSvgPath(
         "M 0 30 C 80 6 210 0 290 0 L 470 92 C 530 165 560 295 565 440 C 568 530 555 615 525 680 L 470 1060 L 0 1040 Z",
-        { x: fbX, y: fbY, borderColor: black, borderWidth: 2 },
+        { x: fbX, y: fbY, scale: S1, borderColor: black, borderWidth: 2 },
       );
       // Stitching line (1.5 cm seam allowance, dashed)
       page1.drawSvgPath(
         "M 36 30 C 100 14 215 10 280 10 L 445 100 C 502 172 532 298 537 440 C 540 522 528 603 500 667 L 446 1023 L 36 1004 Z",
-        { x: fbX, y: fbY, borderColor: midGrey, borderWidth: 1, borderDashArray: [12, 8] },
+        {
+          x: fbX,
+          y: fbY,
+          scale: S1,
+          borderColor: midGrey,
+          borderWidth: 1,
+          borderDashArray: [12, 8],
+        },
       );
       // CF fold line (dashed)
       page1.drawLine({
-        start: { x: fbX, y: fbY - 30 },
-        end: { x: fbX, y: fbY - 1040 },
+        start: p(fbX, fbY, S1, 0, 30),
+        end: p(fbX, fbY, S1, 0, 1040),
         thickness: 1.5,
         color: black,
         dashArray: [20, 10],
@@ -1827,117 +1897,163 @@ export default function ControlPanelPage() {
       // Size 10 size line
       page1.drawSvgPath(
         "M 0 30 C 78 8 205 3 282 3 L 452 97 C 512 169 541 298 546 440 C 549 528 537 611 508 675 L 453 1046 L 0 1028 Z",
-        { x: fbX, y: fbY, borderColor: rgb(0.65, 0.65, 0.65), borderWidth: 0.8, borderDashArray: [6, 5] },
+        {
+          x: fbX,
+          y: fbY,
+          scale: S1,
+          borderColor: rgb(0.65, 0.65, 0.65),
+          borderWidth: 0.8,
+          borderDashArray: [6, 5],
+        },
       );
-      drawGrainLine(page1, fbX + 240, fbY - 140, fbX + 240, fbY - 900);
-      drawNotch(page1, fbX + 520, fbY - 440, 0.15);
-      drawNotch(page1, fbX + 555, fbY - 340, 0.4);
+      drawGrainLine(
+        page1,
+        ...(Object.values(p(fbX, fbY, S1, 240, 140)) as [number, number]),
+        ...(Object.values(p(fbX, fbY, S1, 240, 900)) as [number, number]),
+      );
+      drawNotch(
+        page1,
+        p(fbX, fbY, S1, 520, 440).x,
+        p(fbX, fbY, S1, 520, 440).y,
+        0.15,
+      );
+      drawNotch(
+        page1,
+        p(fbX, fbY, S1, 555, 340).x,
+        p(fbX, fbY, S1, 555, 340).y,
+        0.4,
+      );
       page1.drawText("FRONT BODICE", {
-        x: fbX + 62,
-        y: fbY - 490,
+        ...p(fbX, fbY, S1, 62, 490),
         size: 32,
         font: boldFont,
         color: black,
       });
       page1.drawText("Cut 1 on fold", {
-        x: fbX + 62,
-        y: fbY - 534,
+        ...p(fbX, fbY, S1, 62, 538),
         size: 22,
         font,
         color: darkGrey,
       });
       page1.drawText("Sizes 10–16", {
-        x: fbX + 62,
-        y: fbY - 568,
+        ...p(fbX, fbY, S1, 62, 576),
         size: 20,
         font,
         color: darkGrey,
       });
-      page1.drawText("PLACE ON FOLD →", {
-        x: fbX - 196,
-        y: fbY - 536,
-        size: 18,
-        font,
-        color: midGrey,
-      });
 
       // Back bodice – right half, CB (centre back) on fold at left edge
-      const bbX = 880;
-      const bbY = 2950;
+      // Placed to the right of the front bodice (front bodice SVG width ~565, scaled ~1074)
+      const bbX = fbX + Math.round(565 * S1) + 80;
+      const bbY = fbY;
 
       page1.drawSvgPath(
         "M 0 0 L 248 26 L 438 100 C 498 172 528 296 533 440 C 535 530 522 612 494 678 L 440 1060 L 0 1040 Z",
-        { x: bbX, y: bbY, borderColor: black, borderWidth: 2 },
+        { x: bbX, y: bbY, scale: S1, borderColor: black, borderWidth: 2 },
       );
       page1.drawSvgPath(
         "M 36 12 L 240 38 L 418 109 C 475 179 504 298 508 440 C 510 522 498 600 472 664 L 418 1023 L 36 1004 Z",
-        { x: bbX, y: bbY, borderColor: midGrey, borderWidth: 1, borderDashArray: [12, 8] },
+        {
+          x: bbX,
+          y: bbY,
+          scale: S1,
+          borderColor: midGrey,
+          borderWidth: 1,
+          borderDashArray: [12, 8],
+        },
       );
       // CB fold line
       page1.drawLine({
-        start: { x: bbX, y: bbY },
-        end: { x: bbX, y: bbY - 1040 },
+        start: p(bbX, bbY, S1, 0, 0),
+        end: p(bbX, bbY, S1, 0, 1040),
         thickness: 1.5,
         color: black,
         dashArray: [20, 10],
       });
-      drawGrainLine(page1, bbX + 240, bbY - 140, bbX + 240, bbY - 900);
-      drawNotch(page1, bbX + 486, bbY - 440, 0.15);
-      drawNotch(page1, bbX + 124, bbY - 13, -0.8);
+      drawGrainLine(
+        page1,
+        ...(Object.values(p(bbX, bbY, S1, 240, 140)) as [number, number]),
+        ...(Object.values(p(bbX, bbY, S1, 240, 900)) as [number, number]),
+      );
+      drawNotch(
+        page1,
+        p(bbX, bbY, S1, 486, 440).x,
+        p(bbX, bbY, S1, 486, 440).y,
+        0.15,
+      );
+      drawNotch(
+        page1,
+        p(bbX, bbY, S1, 124, 13).x,
+        p(bbX, bbY, S1, 124, 13).y,
+        -0.8,
+      );
       // Waist dart
       page1.drawLine({
-        start: { x: bbX + 196, y: bbY - 700 },
-        end: { x: bbX + 238, y: bbY - 960 },
+        start: p(bbX, bbY, S1, 196, 700),
+        end: p(bbX, bbY, S1, 238, 960),
         thickness: 1.5,
         color: black,
       });
       page1.drawLine({
-        start: { x: bbX + 280, y: bbY - 700 },
-        end: { x: bbX + 238, y: bbY - 960 },
+        start: p(bbX, bbY, S1, 280, 700),
+        end: p(bbX, bbY, S1, 238, 960),
         thickness: 1.5,
         color: black,
       });
       page1.drawLine({
-        start: { x: bbX + 196, y: bbY - 700 },
-        end: { x: bbX + 280, y: bbY - 700 },
+        start: p(bbX, bbY, S1, 196, 700),
+        end: p(bbX, bbY, S1, 280, 700),
         thickness: 1.5,
         color: black,
         dashArray: [5, 4],
       });
       page1.drawText("BACK BODICE", {
-        x: bbX + 62,
-        y: bbY - 490,
+        ...p(bbX, bbY, S1, 62, 490),
         size: 32,
         font: boldFont,
         color: black,
       });
       page1.drawText("Cut 1 on fold", {
-        x: bbX + 62,
-        y: bbY - 534,
+        ...p(bbX, bbY, S1, 62, 538),
         size: 22,
         font,
         color: darkGrey,
       });
       page1.drawText("Sizes 10–16", {
-        x: bbX + 62,
-        y: bbY - 568,
+        ...p(bbX, bbY, S1, 62, 576),
         size: 20,
         font,
         color: darkGrey,
       });
-      page1.drawText("← PLACE ON FOLD", {
-        x: bbX + 8,
-        y: bbY - 536,
-        size: 18,
-        font,
-        color: midGrey,
-      });
 
       // Legend
-      page1.drawLine({ start: { x: 160, y: 180 }, end: { x: 360, y: 180 }, thickness: 2, color: black });
-      page1.drawText("Cutting line", { x: 376, y: 172, size: 20, font, color: black });
-      page1.drawLine({ start: { x: 160, y: 140 }, end: { x: 360, y: 140 }, thickness: 1, color: midGrey, dashArray: [12, 8] });
-      page1.drawText("Stitching line (1.5 cm seam allowance)", { x: 376, y: 132, size: 20, font, color: darkGrey });
+      page1.drawLine({
+        start: { x: 160, y: 180 },
+        end: { x: 360, y: 180 },
+        thickness: 2,
+        color: black,
+      });
+      page1.drawText("Cutting line", {
+        x: 376,
+        y: 172,
+        size: 20,
+        font,
+        color: black,
+      });
+      page1.drawLine({
+        start: { x: 160, y: 140 },
+        end: { x: 360, y: 140 },
+        thickness: 1,
+        color: midGrey,
+        dashArray: [12, 8],
+      });
+      page1.drawText("Stitching line (1.5 cm seam allowance)", {
+        x: 376,
+        y: 132,
+        size: 20,
+        font,
+        color: darkGrey,
+      });
 
       // ===== PAGE 2: SLEEVE + SIDE PANEL =====
       const page2 = pdfDoc.addPage([A0.width, A0.height]);
@@ -1957,55 +2073,135 @@ export default function ControlPanelPage() {
         color: midGrey,
       });
 
-      // Sleeve – centred in left half of page
-      const slX = 680;
-      const slY = 3150;
+      const S2 = 1.85;
+
+      // Sleeve – left side of page, scaled to fill most of the page height
+      const slX = 200;
+      const slY = 3160;
 
       // Sleeve cap curves up (negative y in SVG = higher on page), tapers to wrist
       page2.drawSvgPath(
         "M 270 0 C 310 8 380 36 440 82 C 500 128 540 205 560 308 L 560 1450 L 0 1450 L 0 308 C 20 205 60 128 120 82 C 180 36 230 8 270 0 Z",
-        { x: slX, y: slY, borderColor: black, borderWidth: 2 },
+        { x: slX, y: slY, scale: S2, borderColor: black, borderWidth: 2 },
       );
       page2.drawSvgPath(
         "M 270 10 C 308 18 374 44 432 89 C 489 133 529 208 547 308 L 547 1413 L 13 1413 L 13 308 C 31 208 71 133 128 89 C 186 44 232 18 270 10 Z",
-        { x: slX, y: slY, borderColor: midGrey, borderWidth: 1, borderDashArray: [12, 8] },
+        {
+          x: slX,
+          y: slY,
+          scale: S2,
+          borderColor: midGrey,
+          borderWidth: 1,
+          borderDashArray: [12, 8],
+        },
       );
-      drawGrainLine(page2, slX + 280, slY - 100, slX + 280, slY - 1350);
+      drawGrainLine(
+        page2,
+        ...(Object.values(p(slX, slY, S2, 280, 100)) as [number, number]),
+        ...(Object.values(p(slX, slY, S2, 280, 1350)) as [number, number]),
+      );
       // Single notch – front sleeve cap
-      drawNotch(page2, slX + 444, slY - 84, -0.25);
+      drawNotch(
+        page2,
+        p(slX, slY, S2, 444, 84).x,
+        p(slX, slY, S2, 444, 84).y,
+        -0.25,
+      );
       // Double notch – back sleeve cap
-      drawNotch(page2, slX + 116, slY - 80, -2.9);
-      drawNotch(page2, slX + 104, slY - 56, -2.9);
+      drawNotch(
+        page2,
+        p(slX, slY, S2, 116, 80).x,
+        p(slX, slY, S2, 116, 80).y,
+        -2.9,
+      );
+      drawNotch(
+        page2,
+        p(slX, slY, S2, 104, 56).x,
+        p(slX, slY, S2, 104, 56).y,
+        -2.9,
+      );
       // Elbow line
       page2.drawLine({
-        start: { x: slX + 13, y: slY - 780 },
-        end: { x: slX + 547, y: slY - 780 },
+        start: p(slX, slY, S2, 13, 780),
+        end: p(slX, slY, S2, 547, 780),
         thickness: 1,
         color: midGrey,
         dashArray: [14, 8],
       });
-      page2.drawText("ELBOW LINE", { x: slX + 568, y: slY - 788, size: 18, font, color: midGrey });
-      page2.drawText("SLEEVE", { x: slX + 155, y: slY - 660, size: 48, font: boldFont, color: black });
-      page2.drawText("Cut 2 – 1 pair", { x: slX + 155, y: slY - 720, size: 24, font, color: darkGrey });
-      page2.drawText("Sizes 10–16", { x: slX + 155, y: slY - 758, size: 22, font, color: darkGrey });
+      page2.drawText("ELBOW LINE", {
+        ...p(slX, slY, S2, 568, 788),
+        size: 18,
+        font,
+        color: midGrey,
+      });
+      page2.drawText("SLEEVE", {
+        ...p(slX, slY, S2, 155, 660),
+        size: 48,
+        font: boldFont,
+        color: black,
+      });
+      page2.drawText("Cut 2 – 1 pair", {
+        ...p(slX, slY, S2, 155, 720),
+        size: 24,
+        font,
+        color: darkGrey,
+      });
+      page2.drawText("Sizes 10–16", {
+        ...p(slX, slY, S2, 155, 758),
+        size: 22,
+        font,
+        color: darkGrey,
+      });
 
-      // Side panel – narrow curved piece on right side of page
-      const spX = 1500;
-      const spY = 2900;
+      // Side panel – narrow tapered piece to the right of the sleeve
+      // Sleeve SVG width is 560, so scaled right edge = slX + 560*S2
+      const spX = slX + Math.round(560 * S2) + 100;
+      const spY = slY;
 
-      page2.drawSvgPath(
-        "M 0 0 L 320 0 L 340 900 L -20 900 Z",
-        { x: spX, y: spY, borderColor: black, borderWidth: 2 },
+      page2.drawSvgPath("M 0 0 L 320 0 L 340 900 L -20 900 Z", {
+        x: spX,
+        y: spY,
+        scale: S2,
+        borderColor: black,
+        borderWidth: 2,
+      });
+      page2.drawSvgPath("M 36 36 L 284 36 L 303 864 L 17 864 Z", {
+        x: spX,
+        y: spY,
+        scale: S2,
+        borderColor: midGrey,
+        borderWidth: 1,
+        borderDashArray: [12, 8],
+      });
+      drawGrainLine(
+        page2,
+        ...(Object.values(p(spX, spY, S2, 160, 80)) as [number, number]),
+        ...(Object.values(p(spX, spY, S2, 160, 820)) as [number, number]),
       );
-      page2.drawSvgPath(
-        "M 36 36 L 284 36 L 303 864 L 17 864 Z",
-        { x: spX, y: spY, borderColor: midGrey, borderWidth: 1, borderDashArray: [12, 8] },
+      drawNotch(
+        page2,
+        p(spX, spY, S2, 0, 380).x,
+        p(spX, spY, S2, 0, 380).y,
+        -Math.PI / 2,
       );
-      drawGrainLine(page2, spX + 160, spY - 80, spX + 160, spY - 820);
-      drawNotch(page2, spX, spY - 380, -Math.PI / 2);
-      drawNotch(page2, spX + 320, spY - 380, Math.PI / 2);
-      page2.drawText("SIDE PANEL", { x: spX + 28, y: spY - 440, size: 26, font: boldFont, color: black });
-      page2.drawText("Cut 2 pairs", { x: spX + 28, y: spY - 478, size: 20, font, color: darkGrey });
+      drawNotch(
+        page2,
+        p(spX, spY, S2, 320, 380).x,
+        p(spX, spY, S2, 320, 380).y,
+        Math.PI / 2,
+      );
+      page2.drawText("SIDE PANEL", {
+        ...p(spX, spY, S2, 28, 440),
+        size: 26,
+        font: boldFont,
+        color: black,
+      });
+      page2.drawText("Cut 2 pairs", {
+        ...p(spX, spY, S2, 28, 478),
+        size: 20,
+        font,
+        color: darkGrey,
+      });
 
       // ===== PAGE 3: SKIRT FRONT + SKIRT BACK + WAISTBAND =====
       const page3 = pdfDoc.addPage([A0.width, A0.height]);
@@ -2017,101 +2213,236 @@ export default function ControlPanelPage() {
         font: boldFont,
         color: black,
       });
-      page3.drawText("Page 3 of 3  ·  All seam allowances 1.5 cm  ·  Hem allowance 3 cm", {
-        x: 96,
-        y: A0.height - 162,
-        size: 24,
-        font,
-        color: midGrey,
-      });
+      page3.drawText(
+        "Page 3 of 3  ·  All seam allowances 1.5 cm  ·  Hem allowance 3 cm",
+        {
+          x: 96,
+          y: A0.height - 162,
+          size: 24,
+          font,
+          color: midGrey,
+        },
+      );
+
+      // Skirt pieces are tall (SVG height 1640), scale 1.6 fills most of the page
+      const S3 = 1.6;
 
       // Skirt front – right half on fold, slightly flared A-line shape
-      const sfX = 180;
-      const sfY = 2900;
+      const sfX = 120;
+      const sfY = 3150;
 
       page3.drawSvgPath(
         "M 0 0 C 180 -22 420 -28 600 -12 L 660 1640 L 0 1640 Z",
-        { x: sfX, y: sfY, borderColor: black, borderWidth: 2 },
+        { x: sfX, y: sfY, scale: S3, borderColor: black, borderWidth: 2 },
       );
       page3.drawSvgPath(
         "M 36 8 C 196 -14 412 -19 565 -4 L 623 1604 L 36 1604 Z",
-        { x: sfX, y: sfY, borderColor: midGrey, borderWidth: 1, borderDashArray: [12, 8] },
+        {
+          x: sfX,
+          y: sfY,
+          scale: S3,
+          borderColor: midGrey,
+          borderWidth: 1,
+          borderDashArray: [12, 8],
+        },
       );
       // CF fold line
       page3.drawLine({
-        start: { x: sfX, y: sfY },
-        end: { x: sfX, y: sfY - 1640 },
+        start: p(sfX, sfY, S3, 0, 0),
+        end: p(sfX, sfY, S3, 0, 1640),
         thickness: 1.5,
         color: black,
         dashArray: [20, 10],
       });
-      drawGrainLine(page3, sfX + 320, sfY - 200, sfX + 320, sfY - 1450);
-      drawNotch(page3, sfX + 460, sfY + 14, 0.05);
+      drawGrainLine(
+        page3,
+        ...(Object.values(p(sfX, sfY, S3, 320, 200)) as [number, number]),
+        ...(Object.values(p(sfX, sfY, S3, 320, 1450)) as [number, number]),
+      );
+      drawNotch(
+        page3,
+        p(sfX, sfY, S3, 460, -14).x,
+        p(sfX, sfY, S3, 460, -14).y,
+        0.05,
+      );
       // Hem fold line
       page3.drawLine({
-        start: { x: sfX, y: sfY - 1553 },
-        end: { x: sfX + 634, y: sfY - 1553 },
+        start: p(sfX, sfY, S3, 0, 1553),
+        end: p(sfX, sfY, S3, 634, 1553),
         thickness: 1.2,
         color: midGrey,
         dashArray: [10, 6],
       });
-      page3.drawText("HEM FOLD LINE", { x: sfX + 80, y: sfY - 1580, size: 18, font, color: midGrey });
-      page3.drawText("SKIRT FRONT", { x: sfX + 80, y: sfY - 780, size: 36, font: boldFont, color: black });
-      page3.drawText("Cut 1 on fold", { x: sfX + 80, y: sfY - 828, size: 24, font, color: darkGrey });
-      page3.drawText("Sizes 10–16", { x: sfX + 80, y: sfY - 866, size: 22, font, color: darkGrey });
-      page3.drawText("PLACE ON FOLD →", { x: sfX - 196, y: sfY - 818, size: 18, font, color: midGrey });
+      page3.drawText("HEM FOLD LINE", {
+        ...p(sfX, sfY, S3, 80, 1590),
+        size: 18,
+        font,
+        color: midGrey,
+      });
+      page3.drawText("SKIRT FRONT", {
+        ...p(sfX, sfY, S3, 80, 780),
+        size: 36,
+        font: boldFont,
+        color: black,
+      });
+      page3.drawText("Cut 1 on fold", {
+        ...p(sfX, sfY, S3, 80, 828),
+        size: 24,
+        font,
+        color: darkGrey,
+      });
+      page3.drawText("Sizes 10–16", {
+        ...p(sfX, sfY, S3, 80, 866),
+        size: 22,
+        font,
+        color: darkGrey,
+      });
 
       // Skirt back – right half on fold with waist dart
-      const sbX = 1000;
-      const sbY = 2900;
+      // Skirt front SVG width is 660, so scaled right edge = sfX + 660*S3
+      const sbX = sfX + Math.round(660 * S3) + 80;
+      const sbY = sfY;
 
       page3.drawSvgPath(
         "M 0 0 C 180 -22 430 -28 620 -12 L 680 1640 L 0 1640 Z",
-        { x: sbX, y: sbY, borderColor: black, borderWidth: 2 },
+        { x: sbX, y: sbY, scale: S3, borderColor: black, borderWidth: 2 },
       );
       page3.drawSvgPath(
         "M 36 8 C 196 -14 418 -20 582 -4 L 642 1604 L 36 1604 Z",
-        { x: sbX, y: sbY, borderColor: midGrey, borderWidth: 1, borderDashArray: [12, 8] },
+        {
+          x: sbX,
+          y: sbY,
+          scale: S3,
+          borderColor: midGrey,
+          borderWidth: 1,
+          borderDashArray: [12, 8],
+        },
       );
       // CB fold line
       page3.drawLine({
-        start: { x: sbX, y: sbY },
-        end: { x: sbX, y: sbY - 1640 },
+        start: p(sbX, sbY, S3, 0, 0),
+        end: p(sbX, sbY, S3, 0, 1640),
         thickness: 1.5,
         color: black,
         dashArray: [20, 10],
       });
-      drawGrainLine(page3, sbX + 320, sbY - 200, sbX + 320, sbY - 1450);
-      drawNotch(page3, sbX + 480, sbY + 14, 0.05);
+      drawGrainLine(
+        page3,
+        ...(Object.values(p(sbX, sbY, S3, 320, 200)) as [number, number]),
+        ...(Object.values(p(sbX, sbY, S3, 320, 1450)) as [number, number]),
+      );
+      drawNotch(
+        page3,
+        p(sbX, sbY, S3, 480, -14).x,
+        p(sbX, sbY, S3, 480, -14).y,
+        0.05,
+      );
       // Waist dart
-      page3.drawLine({ start: { x: sbX + 200, y: sbY - 10 }, end: { x: sbX + 238, y: sbY - 240 }, thickness: 1.5, color: black });
-      page3.drawLine({ start: { x: sbX + 276, y: sbY - 10 }, end: { x: sbX + 238, y: sbY - 240 }, thickness: 1.5, color: black });
-      page3.drawLine({ start: { x: sbX + 200, y: sbY - 10 }, end: { x: sbX + 276, y: sbY - 10 }, thickness: 1.5, color: black, dashArray: [5, 4] });
+      page3.drawLine({
+        start: p(sbX, sbY, S3, 200, 10),
+        end: p(sbX, sbY, S3, 238, 240),
+        thickness: 1.5,
+        color: black,
+      });
+      page3.drawLine({
+        start: p(sbX, sbY, S3, 276, 10),
+        end: p(sbX, sbY, S3, 238, 240),
+        thickness: 1.5,
+        color: black,
+      });
+      page3.drawLine({
+        start: p(sbX, sbY, S3, 200, 10),
+        end: p(sbX, sbY, S3, 276, 10),
+        thickness: 1.5,
+        color: black,
+        dashArray: [5, 4],
+      });
       // Hem fold line
       page3.drawLine({
-        start: { x: sbX, y: sbY - 1553 },
-        end: { x: sbX + 650, y: sbY - 1553 },
+        start: p(sbX, sbY, S3, 0, 1553),
+        end: p(sbX, sbY, S3, 650, 1553),
         thickness: 1.2,
         color: midGrey,
         dashArray: [10, 6],
       });
-      page3.drawText("HEM FOLD LINE", { x: sbX + 80, y: sbY - 1580, size: 18, font, color: midGrey });
-      page3.drawText("SKIRT BACK", { x: sbX + 80, y: sbY - 780, size: 36, font: boldFont, color: black });
-      page3.drawText("Cut 1 on fold", { x: sbX + 80, y: sbY - 828, size: 24, font, color: darkGrey });
-      page3.drawText("Sizes 10–16", { x: sbX + 80, y: sbY - 866, size: 22, font, color: darkGrey });
-      page3.drawText("← PLACE ON FOLD", { x: sbX + 8, y: sbY - 818, size: 18, font, color: midGrey });
+      page3.drawText("HEM FOLD LINE", {
+        ...p(sbX, sbY, S3, 80, 1590),
+        size: 18,
+        font,
+        color: midGrey,
+      });
+      page3.drawText("SKIRT BACK", {
+        ...p(sbX, sbY, S3, 80, 780),
+        size: 36,
+        font: boldFont,
+        color: black,
+      });
+      page3.drawText("Cut 1 on fold", {
+        ...p(sbX, sbY, S3, 80, 828),
+        size: 24,
+        font,
+        color: darkGrey,
+      });
+      page3.drawText("Sizes 10–16", {
+        ...p(sbX, sbY, S3, 80, 866),
+        size: 22,
+        font,
+        color: darkGrey,
+      });
 
       // Waistband – a folded strip at the bottom of the page
-      const wbX = 180;
-      const wbY = 700;
+      // Bottom of skirt pieces: sfY - 1640*S3 ≈ 526. Waistband sits just below.
+      const wbX = 120;
+      const wbY = 160;
+      const wbW = A0.width - 240;
+      const wbH = 280;
 
-      page3.drawRectangle({ x: wbX, y: wbY, width: 1800, height: 240, borderWidth: 2, borderColor: black });
-      page3.drawRectangle({ x: wbX + 36, y: wbY + 36, width: 1728, height: 168, borderWidth: 1, borderColor: midGrey, borderDashArray: [12, 8] });
+      page3.drawRectangle({
+        x: wbX,
+        y: wbY,
+        width: wbW,
+        height: wbH,
+        borderWidth: 2,
+        borderColor: black,
+      });
+      page3.drawRectangle({
+        x: wbX + 36,
+        y: wbY + 36,
+        width: wbW - 72,
+        height: wbH - 72,
+        borderWidth: 1,
+        borderColor: midGrey,
+        borderDashArray: [12, 8],
+      });
       // Centre fold line
-      page3.drawLine({ start: { x: wbX + 900, y: wbY }, end: { x: wbX + 900, y: wbY + 240 }, thickness: 1, color: midGrey, dashArray: [10, 6] });
-      page3.drawText("WAISTBAND", { x: wbX + 60, y: wbY + 108, size: 30, font: boldFont, color: black });
-      page3.drawText("Cut 1 – fold along centre line", { x: wbX + 60, y: wbY + 64, size: 20, font, color: darkGrey });
-      drawGrainLine(page3, wbX + 1400, wbY + 120, wbX + 1700, wbY + 120);
+      page3.drawLine({
+        start: { x: wbX + wbW / 2, y: wbY },
+        end: { x: wbX + wbW / 2, y: wbY + wbH },
+        thickness: 1,
+        color: midGrey,
+        dashArray: [10, 6],
+      });
+      page3.drawText("WAISTBAND", {
+        x: wbX + 60,
+        y: wbY + wbH - 72,
+        size: 30,
+        font: boldFont,
+        color: black,
+      });
+      page3.drawText("Cut 1 – fold along centre line", {
+        x: wbX + 60,
+        y: wbY + wbH - 118,
+        size: 20,
+        font,
+        color: darkGrey,
+      });
+      drawGrainLine(
+        page3,
+        wbX + wbW - 420,
+        wbY + wbH / 2,
+        wbX + wbW - 120,
+        wbY + wbH / 2,
+      );
 
       const bytes = await pdfDoc.save();
       const pdfBuffer = bytes.buffer.slice(
@@ -3202,10 +3533,10 @@ export default function ControlPanelPage() {
                   name="dev-calibration-preset"
                   value={devCalibrationPreset}
                   options={[
-                    { value: "none", label: "none" },
-                    { value: "moderate", label: "moderate" },
-                    { value: "extreme", label: "extreme" },
-                    { value: "custom", label: "custom" },
+                    { value: "none", label: "None" },
+                    { value: "moderate", label: "Moderate" },
+                    { value: "extreme", label: "Extreme" },
+                    { value: "custom", label: "Custom" },
                   ]}
                   handleChange={(e) => {
                     const preset = e.target.value as
@@ -3240,10 +3571,12 @@ export default function ControlPanelPage() {
                     { value: "60x40", label: "60×40" },
                     { value: "30x20", label: "30×20" },
                     { value: "15x10", label: "15×10" },
+                    ...(devGridPreset === "custom"
+                      ? [{ value: "custom", label: "Custom" }]
+                      : []),
                   ]}
                   handleChange={(e) => {
                     const value = e.target.value as "60x40" | "30x20" | "15x10";
-                    setDevGridPreset(value);
                     const [presetWidth, presetHeight] = value.split("x");
                     appendDebugMessage(
                       `Applied calibration size preset ${presetWidth}×${presetHeight}`,
