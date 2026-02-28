@@ -196,24 +196,12 @@ export default function CustomRenderer() {
       renderWidth <= visibleCanvas.width &&
       renderHeight <= visibleCanvas.height
     ) {
+      if (renderWidth < visibleCanvas.width || renderHeight < visibleCanvas.height) {
+        console.log(`[render p${pageNumber}] skip (zoom-out): have ${visibleCanvas.width}×${visibleCanvas.height}, need ${renderWidth}×${renderHeight}`);
+      }
       onPageRenderSuccess();
       return;
     }
-
-    console.warn("[pdf-custom-renderer] proceeding to render:", {
-      reason:
-        contentKey !== lastContentKeyRef.current
-          ? "content changed"
-          : !canvasHasPixels
-            ? "no pixels yet"
-            : "larger dims needed",
-      renderWidth,
-      renderHeight,
-      canvasWidth: visibleCanvas.width,
-      canvasHeight: visibleCanvas.height,
-      contentKey,
-      lastContentKey: lastContentKeyRef.current,
-    });
 
     // Commit the new content key now that we're actually going to render.
     lastContentKeyRef.current = contentKey;
@@ -254,6 +242,9 @@ export default function CustomRenderer() {
       onPageRenderStart();
       lastRenderedParams.current = currentParams;
     }
+
+    const t0 = performance.now();
+    console.log(`[render p${pageNumber}] start ${renderWidth}×${renderHeight}`);
 
     // Cancel any existing render task
     if (renderTaskRef.current) {
@@ -307,6 +298,8 @@ export default function CustomRenderer() {
 
     cancellable.promise
       .then(() => {
+        const t1 = performance.now();
+        console.log(`[render p${pageNumber}] pdfjs done in ${(t1 - t0).toFixed(0)}ms`);
         if (isSafari) {
           // Safari path: do erosion and enhancement via pixels
           // Use setTimeout to yield to browser and keep UI responsive
@@ -329,6 +322,9 @@ export default function CustomRenderer() {
               recolourImageData(result, recolourHex);
             }
 
+            const t2 = performance.now();
+            console.log(`[render p${pageNumber}] pixel processing done in ${(t2 - t1).toFixed(0)}ms`);
+
             // Cache the processed result for quick switching
             addToCache(cacheKey, result);
 
@@ -346,6 +342,8 @@ export default function CustomRenderer() {
               if (dest) {
                 dest.putImageData(result, 0, 0);
               }
+              const t3 = performance.now();
+              console.log(`[render p${pageNumber}] total ${(t3 - t0).toFixed(0)}ms (pdfjs: ${(t1 - t0).toFixed(0)}ms, pixels: ${(t2 - t1).toFixed(0)}ms, draw: ${(t3 - t2).toFixed(0)}ms)`);
               onPageRenderSuccess();
             }, 0);
           }, 0);
@@ -366,6 +364,8 @@ export default function CustomRenderer() {
           dest.imageSmoothingEnabled = false;
           dest.filter = cssFilter ?? "none";
           dest.drawImage(renderTarget, 0, 0);
+          const t2 = performance.now();
+          console.log(`[render p${pageNumber}] total ${(t2 - t0).toFixed(0)}ms (pdfjs: ${(t1 - t0).toFixed(0)}ms, draw: ${(t2 - t1).toFixed(0)}ms)`);
           onPageRenderSuccess();
         }
       })
@@ -390,29 +390,22 @@ export default function CustomRenderer() {
     renderVersion,
     onPageRenderStart,
     onPageRenderSuccess,
-    // NOTE: renderViewport, renderWidth, renderHeight intentionally omitted.
-    // They are read from refs inside the callback so they are always fresh,
-    // but we don't want patternScale changes to recreate this callback and
-    // retrigger the effect — that is handled by the zoom-in effect below.
+    // renderViewport, renderWidth, renderHeight intentionally omitted — they are
+    // read from refs inside the callback so they're always fresh without this
+    // callback needing to be recreated on every zoom step. The effect below
+    // lists renderWidth/renderHeight directly in its own deps to catch zoom-ins.
   ]);
 
-  // Fire when content changes (any dep in drawPageOnCanvas above).
+  // Single effect covering both cases:
+  // - content changes (drawPageOnCanvas gets a new reference)
+  // - zoom changes (renderWidth/renderHeight change)
+  // The guard logic inside drawPageOnCanvas decides whether to actually render
+  // or skip (zoom-out with existing pixels is skipped; zoom-in triggers a render).
+  // Having one effect prevents the double-render that occurred on mount when two
+  // separate effects both fired in the same commit.
   useEffect(() => {
     drawPageOnCanvas();
-  }, [drawPageOnCanvas]);
-
-  // Fire when zooming IN past the currently-rendered canvas resolution so we
-  // render at the new (higher) resolution.  Zoom-out is intentionally not
-  // triggered here — the existing canvas pixels remain valid and the browser
-  // CSS-downscales them without any re-render.
-  useEffect(() => {
-    const canvas = canvasElement.current;
-    const canvasW = canvas?.width ?? 0;
-    const canvasH = canvas?.height ?? 0;
-    if (renderWidth > canvasW || renderHeight > canvasH) {
-      drawPageOnCanvas();
-    }
-  }, [renderWidth, renderHeight, drawPageOnCanvas]);
+  }, [drawPageOnCanvas, renderWidth, renderHeight]);
 
   const canvasStyle = {
     width:
