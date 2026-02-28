@@ -28,8 +28,7 @@ const MAX_THUMBNAIL_SIZE = 1200;
 // This helps preserve thin lines that would otherwise be sub-pixel
 const RENDER_SCALE_MULTIPLIER = 3;
 
-// Base erosion to apply to make lines visible at thumbnail scale
-// Set to 1 for minimal thickening to ensure lines are visible
+// Base erosion to apply when line weight is 0, to keep lines visible at thumbnail scale
 const THUMBNAIL_BASE_EROSION = 1;
 
 /**
@@ -214,9 +213,10 @@ export function usePdfThumbnail(
         }
 
         // Apply erosion (line thickening) on high-res canvas
-        // Use base erosion plus user's lineThickness, scaled for the render multiplier
-        const totalErosion =
-          (THUMBNAIL_BASE_EROSION + lineThickness) * RENDER_SCALE_MULTIPLIER;
+        // At line weight 0, use base erosion to keep lines visible; otherwise match main window exactly
+        const effectiveErosion =
+          lineThickness === 0 ? THUMBNAIL_BASE_EROSION : lineThickness;
+        const totalErosion = effectiveErosion * RENDER_SCALE_MULTIPLIER;
         if (totalErosion > 0) {
           let imageData = renderCtx.getImageData(
             0,
