@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useCallback } from "react";
 import invariant from "tiny-invariant";
 import { usePageContext, useDocumentContext } from "react-pdf";
+import type { PixelProcessRequest, PixelProcessResponse } from "@/_lib/pixel-processor.worker";
 
 import type {
   RenderParameters,
@@ -9,10 +10,7 @@ import type {
 import { PDFPageProxy } from "pdfjs-dist";
 import { PDF_TO_CSS_UNITS } from "@/_lib/pixels-per-inch";
 import {
-  erodeImageData,
   erosionFilter,
-  enhanceLineQualityFast,
-  recolourImageData,
 } from "@/_lib/erode";
 import useRenderContext from "@/_hooks/use-render-context";
 
@@ -105,6 +103,29 @@ export default function CustomRenderer() {
   // Last content key for which we actually rendered, used to detect when a
   // re-render is needed because content (not just scale) changed.
   const lastContentKeyRef = useRef("");
+
+  // Off-main-thread pixel processing (Safari path).
+  // One worker per component instance, created lazily, terminated on unmount.
+  const workerRef = useRef<Worker | null>(null);
+  // Monotonically increasing ID so we can discard stale worker responses.
+  const renderIdRef = useRef(0);
+
+  const getWorker = useCallback((): Worker => {
+    if (!workerRef.current) {
+      workerRef.current = new Worker(
+        new URL("../_lib/pixel-processor.worker", import.meta.url),
+      );
+    }
+    return workerRef.current;
+  }, []);
+
+  // Terminate the worker when the component unmounts.
+  useEffect(() => {
+    return () => {
+      workerRef.current?.terminate();
+      workerRef.current = null;
+    };
+  }, []);
   // Track layers object identity so we can include it in the content key
   // without having to serialise the whole object.
   const layersRef = useRef(layers);
@@ -181,7 +202,9 @@ export default function CustomRenderer() {
 
     // Content key captures everything that affects what pixels look like,
     // deliberately excluding renderWidth/renderHeight.
-    const contentKey = `${pageNumber}-${renderErosions}-${recolourHex ?? ""}-${renderVersion ?? 0}-${layersVersionRef.current}`;
+    // - renderErosions: pixel erosion applied on Safari
+    // - cssFilter: CSS filter applied on Chrome (encodes erosion + magnifying on that path)
+    const contentKey = `${pageNumber}-${renderErosions}-${cssFilter ?? ""}-${recolourHex ?? ""}-${renderVersion ?? 0}-${layersVersionRef.current}`;
 
     // When zooming out the existing canvas pixels remain valid — CSS width/height
     // already handles the visual downscale, so there is no need to re-render.
@@ -301,52 +324,52 @@ export default function CustomRenderer() {
         const t1 = performance.now();
         console.log(`[render p${pageNumber}] pdfjs done in ${(t1 - t0).toFixed(0)}ms`);
         if (isSafari) {
-          // Safari path: do erosion and enhancement via pixels
-          // Use setTimeout to yield to browser and keep UI responsive
-          setTimeout(() => {
-            let result = ctx.getImageData(0, 0, renderWidth, renderHeight);
-
-            if (renderErosions > 0) {
-              let buffer = new ImageData(renderWidth, renderHeight);
-              for (let i = 0; i < renderErosions; i++) {
-                erodeImageData(result, buffer);
-                [result, buffer] = [buffer, result];
-              }
+          // Safari path: hand off pixel processing to a dedicated Web Worker so
+          // the main thread stays responsive while erosion + enhancement runs.
+          const thisRenderId = ++renderIdRef.current;
+          const rawImageData = ctx.getImageData(0, 0, renderWidth, renderHeight);
+          // Transfer ownership of the buffer to the worker (zero-copy).
+          const request: PixelProcessRequest = {
+            id: thisRenderId,
+            buffer: rawImageData.data.buffer,
+            width: renderWidth,
+            height: renderHeight,
+            erosions: renderErosions,
+            recolourHex: recolourHex ?? undefined,
+          };
+          const worker = getWorker();
+          worker.onmessage = (e: MessageEvent<PixelProcessResponse>) => {
+            const { id, buffer } = e.data;
+            // Discard stale responses from a superseded render.
+            if (id !== renderIdRef.current) {
+              return;
             }
-
-            // Always apply enhancement (gamma + contrast) for Safari using fast LUT
-            enhanceLineQualityFast(result, 2, 1.5);
-
-            // If recolouring, apply pixel-level recolour (maps luminance to target colour)
-            if (recolourHex) {
-              recolourImageData(result, recolourHex);
-            }
-
+            const result = new ImageData(
+              new Uint8ClampedArray(buffer),
+              renderWidth,
+              renderHeight,
+            );
             const t2 = performance.now();
             console.log(`[render p${pageNumber}] pixel processing done in ${(t2 - t1).toFixed(0)}ms`);
-
-            // Cache the processed result for quick switching
+            // Cache the processed result for quick switching.
             addToCache(cacheKey, result);
-
-            // Yield again before final canvas update
-            setTimeout(() => {
-              // Only update canvas dimensions if they changed to avoid layout shift
-              if (
-                visibleCanvas.width !== renderWidth ||
-                visibleCanvas.height !== renderHeight
-              ) {
-                visibleCanvas.width = renderWidth;
-                visibleCanvas.height = renderHeight;
-              }
-              const dest = visibleCanvas.getContext("2d", { alpha: false });
-              if (dest) {
-                dest.putImageData(result, 0, 0);
-              }
-              const t3 = performance.now();
-              console.log(`[render p${pageNumber}] total ${(t3 - t0).toFixed(0)}ms (pdfjs: ${(t1 - t0).toFixed(0)}ms, pixels: ${(t2 - t1).toFixed(0)}ms, draw: ${(t3 - t2).toFixed(0)}ms)`);
-              onPageRenderSuccess();
-            }, 0);
-          }, 0);
+            // Only update canvas dimensions if they changed to avoid layout shift.
+            if (
+              visibleCanvas.width !== renderWidth ||
+              visibleCanvas.height !== renderHeight
+            ) {
+              visibleCanvas.width = renderWidth;
+              visibleCanvas.height = renderHeight;
+            }
+            const dest = visibleCanvas.getContext("2d", { alpha: false });
+            if (dest) {
+              dest.putImageData(result, 0, 0);
+            }
+            const t3 = performance.now();
+            console.log(`[render p${pageNumber}] total ${(t3 - t0).toFixed(0)}ms (pdfjs: ${(t1 - t0).toFixed(0)}ms, pixels: ${(t2 - t1).toFixed(0)}ms, draw: ${(t3 - t2).toFixed(0)}ms)`);
+            onPageRenderSuccess();
+          };
+          worker.postMessage(request, [request.buffer]);
         } else {
           // Non-Safari: draw from offscreen to visible canvas with CSS filter
           // Only update canvas dimensions if they changed to avoid layout shift
@@ -390,6 +413,7 @@ export default function CustomRenderer() {
     renderVersion,
     onPageRenderStart,
     onPageRenderSuccess,
+    getWorker,
     // renderViewport, renderWidth, renderHeight intentionally omitted — they are
     // read from refs inside the callback so they're always fresh without this
     // callback needing to be recreated on every zoom step. The effect below
