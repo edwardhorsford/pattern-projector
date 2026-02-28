@@ -290,18 +290,6 @@ export default function Header({
       text: "4px",
       value: 4,
     },
-    {
-      text: "5px",
-      value: 5,
-    },
-    {
-      text: "6px",
-      value: 6,
-    },
-    {
-      text: "7px",
-      value: 7,
-    },
   ];
 
   useEffect(() => {
