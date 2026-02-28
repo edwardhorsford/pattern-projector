@@ -1383,14 +1383,26 @@ export default function Page() {
               )}
             </IconButton>
             {!isCalibrating && fileLoadStatus === LoadStatusEnum.LOADING ? (
-              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+              <div
+                className="absolute -translate-x-1/2 -translate-y-1/2"
+                style={{
+                  left: getCalibrationCenterScreenAnchor().x,
+                  top: getCalibrationCenterScreenAnchor().y,
+                }}
+              >
                 <LoadingSpinner height={100} width={100} />
               </div>
             ) : null}
             {!isCalibrating &&
             fileLoadStatus !== LoadStatusEnum.LOADING &&
             lineThicknessStatus === LoadStatusEnum.LOADING ? (
-              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+              <div
+                className="absolute -translate-x-1/2 -translate-y-1/2"
+                style={{
+                  left: getCalibrationCenterScreenAnchor().x,
+                  top: getCalibrationCenterScreenAnchor().y,
+                }}
+              >
                 <LoadingSpinner height={80} width={80} />
               </div>
             ) : null}

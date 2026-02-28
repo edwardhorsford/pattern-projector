@@ -898,7 +898,7 @@ function Preview({
                   : "rgba(255, 255, 255, 0.5)",
               }}
             >
-              <div className="w-6 h-6 border-2 border-gray-300 dark:border-gray-600 border-t-purple-500 rounded-full animate-spin" />
+              <div className="w-12 h-12 border-4 border-gray-300 dark:border-gray-600 border-t-purple-500 dark:border-t-purple-400 rounded-full animate-spin" />
             </div>
           )}
           {/* PDF thumbnail image */}

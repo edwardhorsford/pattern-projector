@@ -150,11 +150,10 @@ function PdfViewer({
     // Debounce: only set loading if not already pending
     if (renderStartTimeoutRef.current) return;
     renderStartTimeoutRef.current = setTimeout(() => {
-      setFileLoadStatus(LoadStatusEnum.LOADING);
       setLineThicknessStatus(LoadStatusEnum.LOADING);
       renderStartTimeoutRef.current = null;
     }, 0);
-  }, [setFileLoadStatus, setLineThicknessStatus]);
+  }, [setLineThicknessStatus]);
 
   const onPageRenderSuccess = useCallback(() => {
     // Clear any pending start timeout

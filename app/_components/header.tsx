@@ -61,7 +61,6 @@ import FlippedPatternIcon from "@/_icons/flipped-pattern-icon";
 import ZoomOutIcon from "@/_icons/zoom-out-icon";
 import FullSceenExitIcon from "@/_icons/full-screen-exit-icon";
 import FullScreenIcon from "@/_icons/full-screen-icon";
-import LoadingSpinner from "@/_icons/loading-spinner";
 import { LoadStatusEnum } from "@/_lib/load-status-enum";
 import { ButtonStyle, getButtonStyleClasses } from "./theme/styles";
 import { ButtonColor, getColorClasses } from "./theme/colors";
@@ -160,7 +159,7 @@ export default function Header({
 
   const fileInputClassNames = useMemo(() => {
     if (!isCalibrating && fileLoadStatus === LoadStatusEnum.LOADING) {
-      return "outline-gray-50 !text-gray-50 !bg-gray-500";
+      return "opacity-75 pointer-events-none";
     }
   }, [isCalibrating, fileLoadStatus]);
 
@@ -610,7 +609,7 @@ export default function Header({
                 type="file"
               />
               {fileLoadStatus === LoadStatusEnum.LOADING && !isCalibrating ? (
-                <LoadingSpinner className="mr-1 mt-0.5 w-4 h-4" />
+                <div className="mr-1 mt-0.5 w-4 h-4 border-2 border-gray-300 dark:border-gray-600 border-t-purple-500 dark:border-t-purple-400 rounded-full animate-spin flex-shrink-0" />
               ) : (
                 <PdfIcon ariaLabel={t("openPDF")} fill="currentColor" />
               )}
