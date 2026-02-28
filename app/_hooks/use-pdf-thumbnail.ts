@@ -62,6 +62,7 @@ export function usePdfThumbnail(
   lineThickness: number,
   enabled: boolean = true,
   layers: Layers = EMPTY_LAYERS,
+  renderVersion: number = 0,
 ): { thumbnail: string | null; isLoading: boolean } {
   const [cachedThumbnail, setCachedThumbnail] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -285,6 +286,7 @@ export function usePdfThumbnail(
     stitchSettings.lineDirection,
     lineThickness,
     layersKey,
+    renderVersion,
   ]);
   // Note: 'enabled' is NOT in the dep array — it uses the cache.
 

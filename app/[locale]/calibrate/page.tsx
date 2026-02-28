@@ -198,6 +198,8 @@ export default function Page() {
       stitchSettings,
       lineThickness,
       showPreviewImage && !isCalibrating,
+      undefined,
+      pdfRenderKey,
     );
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
