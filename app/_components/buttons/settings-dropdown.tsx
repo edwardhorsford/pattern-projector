@@ -77,7 +77,7 @@ export function SettingsDropdown({
               window.open(
                 `/${locale}/control`,
                 "controlPanel",
-                "width=400,height=600,menubar=no,toolbar=no,location=no,status=no",
+                "width=500,height=1200,menubar=no,toolbar=no,location=no,status=no",
               );
               setIsOpen(false);
             }}
