@@ -1839,6 +1839,14 @@ export function ControlPanelBridge({
     stateVersionRef.current += 1;
   }, [buildState]);
 
+  // Send an immediate sync when preview loading starts so the control panel sees
+  // the loading state before the 150ms throttle interval fires
+  useEffect(() => {
+    if (isPreviewLoading) {
+      sendStateSync(buildStateRef.current());
+    }
+  }, [isPreviewLoading, sendStateSync]);
+
   // Throttled sync - send updates at most every 150ms, only when state has changed
   // This provides responsive updates without overwhelming the channel
   useEffect(() => {

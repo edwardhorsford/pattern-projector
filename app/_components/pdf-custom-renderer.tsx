@@ -179,7 +179,7 @@ export default function CustomRenderer() {
     }
 
     // Only signal loading if params actually changed (not just a re-render)
-    const currentParams = `${pageNumber}-${renderErosions}-${renderWidth}-${renderHeight}-${recolourHex ?? ""}`;
+    const currentParams = `${pageNumber}-${renderErosions}-${renderWidth}-${renderHeight}-${recolourHex ?? ""}-${renderVersion ?? 0}`;
     if (lastRenderedParams.current !== currentParams) {
       onPageRenderStart();
       lastRenderedParams.current = currentParams;
