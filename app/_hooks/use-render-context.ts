@@ -13,6 +13,13 @@ export interface RenderContextType {
   recolourHex?: string;
   /** Incremented to bust the render cache and force all pages to re-render from scratch. */
   renderVersion: number;
+  /**
+   * The CSS filter string representing the active theme transformation
+   * (e.g. "invert(1)" for Dark). On non-Safari browsers this is baked
+   * directly into the canvas draw call so the container div doesn't need
+   * it, avoiding the split-ownership flash between commits and paint.
+   */
+  themeFilter?: string;
 }
 
 export const RenderContext = createContext<RenderContextType>({
@@ -24,6 +31,7 @@ export const RenderContext = createContext<RenderContextType>({
   patternScale: 1,
   recolourHex: undefined,
   renderVersion: 0,
+  themeFilter: undefined,
 });
 
 export default function useRenderContext() {

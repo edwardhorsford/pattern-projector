@@ -182,6 +182,10 @@ function PdfViewer({
       patternScale,
       recolourHex,
       renderVersion,
+      // themeFilter is baked into each canvas draw call by CustomRenderer,
+      // so the container div never needs a CSS filter. On Safari the worker
+      // pixel path handles Dark theme inversion via recolour-to-white.
+      themeFilter: filter,
     }),
     [
       lineThickness,
@@ -192,6 +196,7 @@ function PdfViewer({
       patternScale,
       recolourHex,
       renderVersion,
+      filter,
     ],
   );
 
@@ -260,7 +265,13 @@ function PdfViewer({
               : "row",
           marginRight: cssEdgeInsets.horizontal,
           marginBottom: cssEdgeInsets.vertical,
-          filter: filter,
+          // The theme filter is baked into each canvas draw call by
+          // CustomRenderer (Chrome: appended to cssFilter; Safari: Dark theme
+          // handled as pixel-level inversion in the worker). The container
+          // never needs a CSS filter — this prevents the split-ownership
+          // flash that occurred when the container filter committed
+          // synchronously while canvas pixels were still from the old theme.
+          filter: "none",
           // Keep page blending and stacking scoped to this container.
           isolation: "isolate",
           position: "relative",

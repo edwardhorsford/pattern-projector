@@ -62,6 +62,7 @@ export default function CustomRenderer() {
     patternScale,
     recolourHex,
     renderVersion,
+    themeFilter,
   } = useRenderContext();
   const pageContext = usePageContext();
 
@@ -77,19 +78,40 @@ export default function CustomRenderer() {
   }, []);
 
   // Safari doesn't support feMorphology (erode) or SVG filter references on canvas CSS.
-  // So on Safari: all processing (erode, push-darks) is done via pixels.
+  // So on Safari: all processing (erode, push-darks, recolouring, inversion) is done via pixels.
   // On other browsers: the full chain runs as canvas 2D CSS filters.
   //
-  // When recolourHex is set, we use the feColorMatrix recolour filter on the canvas
-  // draw call. This maps black→target colour and white→black in one step.
-  // The container filter should be "none" for colour themes.
+  // The container div's filter is always "none" — theme transformation is baked
+  // into the canvas pixels on both paths, preventing the split-ownership flash.
   const useRecolour = !!recolourHex && !isSafari;
+  // Build the full canvas draw filter for non-Safari browsers.
+  // Appending themeFilter here (e.g. "invert(1)" for Dark theme) means the
+  // canvas already holds the final inverted/coloured pixels, so the container
+  // div doesn't need a CSS filter. This prevents the flash that occurred when
+  // the container filter committed synchronously but the canvas content was
+  // still stale from the previous theme.
   const cssFilter = isSafari
     ? undefined // Safari: all processing done via pixels (no CSS filter on canvas)
-    : erosionFilter(magnifying ? 0 : erosions, useRecolour);
+    : [
+        erosionFilter(magnifying ? 0 : erosions, useRecolour),
+        themeFilter && themeFilter !== "none" ? themeFilter : undefined,
+      ]
+        .filter(Boolean)
+        .join(" ");
 
   // Safari does erosion and enhancement via pixel manipulation
   const renderErosions = isSafari ? (magnifying ? 0 : erosions) : 0;
+
+  // Effective recolour target for the Safari pixel-processing path.
+  // Colour themes: use recolourHex directly (green, cyan, amber, magenta).
+  // Dark theme: themeFilter is "invert(1)" — treat as recolour-to-white so
+  // the worker inverts the pixels at pixel level. This keeps the canvas
+  // self-contained (container filter is always "none") and means the old
+  // dark canvas stays visible while the new render is in flight, preventing
+  // the flash of non-inverted content when switching themes on Safari.
+  const safariEffectiveRecolourHex = isSafari
+    ? (recolourHex ?? (themeFilter === "invert(1)" ? "#ffffff" : undefined))
+    : undefined;
 
   const _className = pageContext._className;
   const page = pageContext.page;
@@ -208,8 +230,10 @@ export default function CustomRenderer() {
     // Content key captures everything that affects what pixels look like,
     // deliberately excluding renderWidth/renderHeight.
     // - renderErosions: pixel erosion applied on Safari
-    // - cssFilter: CSS filter applied on Chrome (encodes erosion + magnifying on that path)
-    const contentKey = `${pageNumber}-${renderErosions}-${cssFilter ?? ""}-${recolourHex ?? ""}-${renderVersion ?? 0}-${layersVersionRef.current}`;
+    // - cssFilter: CSS filter applied on Chrome (encodes erosion + magnifying + theme filter)
+    // - On Safari, safariEffectiveRecolourHex distinguishes Dark (#ffffff), Light (none),
+    //   and colour themes, replacing the old recolourHex-only distinction.
+    const contentKey = `${pageNumber}-${renderErosions}-${cssFilter ?? ""}-${(isSafari ? safariEffectiveRecolourHex : recolourHex) ?? ""}-${renderVersion ?? 0}-${layersVersionRef.current}`;
 
     // When zooming out the existing canvas pixels remain valid — CSS width/height
     // already handles the visual downscale, so there is no need to re-render.
@@ -237,7 +261,7 @@ export default function CustomRenderer() {
       renderErosions,
       renderWidth,
       renderHeight,
-      recolourHex,
+      isSafari ? safariEffectiveRecolourHex : recolourHex,
       renderVersion,
     );
     const cachedData = isSafari ? renderCache.get(cacheKey) : null;
@@ -262,7 +286,7 @@ export default function CustomRenderer() {
     }
 
     // Only signal loading if params actually changed (not just a re-render)
-    const currentParams = `${pageNumber}-${renderErosions}-${renderWidth}-${renderHeight}-${recolourHex ?? ""}-${renderVersion ?? 0}`;
+    const currentParams = `${pageNumber}-${renderErosions}-${renderWidth}-${renderHeight}-${(isSafari ? safariEffectiveRecolourHex : recolourHex) ?? ""}-${renderVersion ?? 0}`;
     if (lastRenderedParams.current !== currentParams) {
       onPageRenderStart();
       lastRenderedParams.current = currentParams;
@@ -332,7 +356,10 @@ export default function CustomRenderer() {
             width: renderWidth,
             height: renderHeight,
             erosions: renderErosions,
-            recolourHex: recolourHex ?? undefined,
+            // Use safariEffectiveRecolourHex so Dark theme is handled as
+            // pixel-level inversion (recolour-to-white) rather than a
+            // container CSS filter.
+            recolourHex: safariEffectiveRecolourHex ?? undefined,
           };
           const worker = getWorker();
           worker.onmessage = (e: MessageEvent<PixelProcessResponse>) => {
@@ -397,6 +424,11 @@ export default function CustomRenderer() {
     isSafari,
     pageNumber,
     recolourHex,
+    // safariEffectiveRecolourHex is derived from recolourHex + themeFilter.
+    // On Safari it changes when the theme changes (e.g. Dark ↔ Light) even
+    // when recolourHex stays undefined, so it must be listed explicitly.
+    // On Chrome it is always undefined and never causes extra rebuilds.
+    safariEffectiveRecolourHex,
     renderVersion,
     onPageRenderStart,
     onPageRenderSuccess,
