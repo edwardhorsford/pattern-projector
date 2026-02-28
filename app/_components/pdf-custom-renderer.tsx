@@ -14,9 +14,10 @@ import {
 } from "@/_lib/erode";
 import useRenderContext from "@/_hooks/use-render-context";
 
-// Cache for rendered pages at different erosion levels (Safari only)
-// Key format: `${pageNumber}-${erosions}-${width}-${height}`
-const renderCache = new Map<string, ImageData>();
+// Cache for rendered pages as ImageBitmap (Safari only).
+// ImageBitmap lives on the GPU — drawImage is instant vs putImageData which is slow+blocking.
+// Key format: `${pageNumber}-${erosions}-${width}-${height}-${recolourHex}-${renderVersion}`
+const renderCache = new Map<string, ImageBitmap>();
 const MAX_CACHE_SIZE = 20; // Limit cache to prevent memory issues
 
 function getCacheKey(
@@ -30,13 +31,16 @@ function getCacheKey(
   return `${pageNumber}-${erosions}-${width}-${height}-${recolourHex ?? ""}-${renderVersion ?? 0}`;
 }
 
-function addToCache(key: string, data: ImageData) {
+function addToCache(key: string, bitmap: ImageBitmap) {
   // Evict oldest entries if cache is full
   if (renderCache.size >= MAX_CACHE_SIZE) {
     const firstKey = renderCache.keys().next().value;
-    if (firstKey) renderCache.delete(firstKey);
+    if (firstKey) {
+      renderCache.get(firstKey)?.close(); // free GPU memory
+      renderCache.delete(firstKey);
+    }
   }
-  renderCache.set(key, data);
+  renderCache.set(key, bitmap);
 }
 
 /**
@@ -44,6 +48,7 @@ function addToCache(key: string, data: ImageData) {
  * Call this when you want to force pages to re-render from scratch (e.g. for debugging).
  */
 export function clearRenderCache() {
+  renderCache.forEach((bitmap) => bitmap.close()); // free GPU memory
   renderCache.clear();
 }
 
@@ -219,9 +224,6 @@ export default function CustomRenderer() {
       renderWidth <= visibleCanvas.width &&
       renderHeight <= visibleCanvas.height
     ) {
-      if (renderWidth < visibleCanvas.width || renderHeight < visibleCanvas.height) {
-        console.log(`[render p${pageNumber}] skip (zoom-out): have ${visibleCanvas.width}×${visibleCanvas.height}, need ${renderWidth}×${renderHeight}`);
-      }
       onPageRenderSuccess();
       return;
     }
@@ -241,7 +243,7 @@ export default function CustomRenderer() {
     const cachedData = isSafari ? renderCache.get(cacheKey) : null;
 
     if (cachedData && isSafari) {
-      // Use cached data - instant display
+      // Cache hit — drawImage with ImageBitmap is GPU-composited, essentially instant.
       lastRenderedParams.current = cacheKey;
       // Only update canvas dimensions if they changed to avoid layout shift
       if (
@@ -253,7 +255,7 @@ export default function CustomRenderer() {
       }
       const ctx = visibleCanvas.getContext("2d", { alpha: false });
       if (ctx) {
-        ctx.putImageData(cachedData, 0, 0);
+        ctx.drawImage(cachedData, 0, 0);
       }
       onPageRenderSuccess();
       return;
@@ -265,9 +267,6 @@ export default function CustomRenderer() {
       onPageRenderStart();
       lastRenderedParams.current = currentParams;
     }
-
-    const t0 = performance.now();
-    console.log(`[render p${pageNumber}] start ${renderWidth}×${renderHeight}`);
 
     // Cancel any existing render task
     if (renderTaskRef.current) {
@@ -321,8 +320,6 @@ export default function CustomRenderer() {
 
     cancellable.promise
       .then(() => {
-        const t1 = performance.now();
-        console.log(`[render p${pageNumber}] pdfjs done in ${(t1 - t0).toFixed(0)}ms`);
         if (isSafari) {
           // Safari path: hand off pixel processing to a dedicated Web Worker so
           // the main thread stays responsive while erosion + enhancement runs.
@@ -339,20 +336,14 @@ export default function CustomRenderer() {
           };
           const worker = getWorker();
           worker.onmessage = (e: MessageEvent<PixelProcessResponse>) => {
-            const { id, buffer } = e.data;
+            const { id, bitmap } = e.data;
             // Discard stale responses from a superseded render.
             if (id !== renderIdRef.current) {
+              bitmap.close(); // free GPU memory for discarded renders
               return;
             }
-            const result = new ImageData(
-              new Uint8ClampedArray(buffer),
-              renderWidth,
-              renderHeight,
-            );
-            const t2 = performance.now();
-            console.log(`[render p${pageNumber}] pixel processing done in ${(t2 - t1).toFixed(0)}ms`);
-            // Cache the processed result for quick switching.
-            addToCache(cacheKey, result);
+            // bitmap was created in the worker — just cache and draw it directly.
+            addToCache(cacheKey, bitmap);
             // Only update canvas dimensions if they changed to avoid layout shift.
             if (
               visibleCanvas.width !== renderWidth ||
@@ -363,10 +354,8 @@ export default function CustomRenderer() {
             }
             const dest = visibleCanvas.getContext("2d", { alpha: false });
             if (dest) {
-              dest.putImageData(result, 0, 0);
+              dest.drawImage(bitmap, 0, 0);
             }
-            const t3 = performance.now();
-            console.log(`[render p${pageNumber}] total ${(t3 - t0).toFixed(0)}ms (pdfjs: ${(t1 - t0).toFixed(0)}ms, pixels: ${(t2 - t1).toFixed(0)}ms, draw: ${(t3 - t2).toFixed(0)}ms)`);
             onPageRenderSuccess();
           };
           worker.postMessage(request, [request.buffer]);
@@ -387,8 +376,6 @@ export default function CustomRenderer() {
           dest.imageSmoothingEnabled = false;
           dest.filter = cssFilter ?? "none";
           dest.drawImage(renderTarget, 0, 0);
-          const t2 = performance.now();
-          console.log(`[render p${pageNumber}] total ${(t2 - t0).toFixed(0)}ms (pdfjs: ${(t1 - t0).toFixed(0)}ms, draw: ${(t2 - t1).toFixed(0)}ms)`);
           onPageRenderSuccess();
         }
       })
@@ -463,7 +450,7 @@ function getScale(
   if (renderArea > maxArea) {
     // scale to fit max area.
     scale = Math.sqrt(maxArea / (w * h));
-    console.log(
+    console.warn(
       `Canvas area ${renderArea} exceeds max area ${maxArea}, scaling by ${scale} instead.`,
     );
   }

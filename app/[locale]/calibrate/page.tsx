@@ -226,6 +226,13 @@ export default function Page() {
       )
     : undefined;
 
+  // Memoised so downstream components (e.g. PdfViewer via React.memo) don't get
+  // a new object reference on every parent render, avoiding unnecessary re-renders.
+  const calibrationCenter = useMemo(
+    () => getCalibrationCenterPoint(width, height, unitOfMeasure),
+    [width, height, unitOfMeasure],
+  );
+
   const svgStyle = {
     filter: filter(
       magnifying,
@@ -1132,11 +1139,7 @@ export default function Page() {
                 measuring={measuring}
                 setMeasuring={setMeasuring}
                 file={file}
-                gridCenter={getCalibrationCenterPoint(
-                  width,
-                  height,
-                  unitOfMeasure,
-                )}
+                gridCenter={calibrationCenter}
                 zoomedOut={zoomedOut}
                 magnifying={magnifying}
                 menusHidden={menusHidden}
@@ -1165,11 +1168,7 @@ export default function Page() {
                   setZoomedOut={setZoomedOut}
                   layoutWidth={layoutWidth}
                   layoutHeight={layoutHeight}
-                  calibrationCenter={getCalibrationCenterPoint(
-                    width,
-                    height,
-                    unitOfMeasure,
-                  )}
+                  calibrationCenter={calibrationCenter}
                   patternScale={patternScaleFactor}
                   menuStates={menuStates}
                   file={file}
@@ -1206,11 +1205,7 @@ export default function Page() {
                       setLineThicknessStatus={setLineThicknessStatus}
                       setFileLoadStatus={setFileLoadStatus}
                       magnifying={magnifying}
-                      gridCenter={getCalibrationCenterPoint(
-                        width,
-                        height,
-                        unitOfMeasure,
-                      )}
+                      gridCenter={calibrationCenter}
                       patternScale={patternScaleFactor}
                       setMenuStates={setMenuStates}
                       renderVersion={pdfRenderKey}
