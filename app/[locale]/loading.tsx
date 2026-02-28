@@ -3,7 +3,7 @@ export default function Loading() {
     <div role="status" className="flex h-screen">
       <svg
         aria-hidden="true"
-        className="w-8 h-8 text-gray-200 animate-spin  fill-gray-600 m-auto"
+        className="w-8 h-8 text-gray-200 dark:text-gray-700 animate-spin fill-purple-600 m-auto"
         viewBox="0 0 100 101"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
