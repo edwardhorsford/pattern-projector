@@ -629,12 +629,14 @@ export function ControlPanelBridge({
       "calibrationContext",
       "mailRead",
       "installed",
+      "undefined",
     ]);
 
     const removablePrefixKeys = [
       "lineThickness:",
       "stitchSettings:",
-      "layers:",
+      "visibleLayers:",
+      "localTransform:",
     ];
 
     for (let index = localStorage.length - 1; index >= 0; index--) {

@@ -92,12 +92,13 @@ import { Marker } from "@/_lib/marker";
 import MarkerCanvas from "@/_components/canvases/marker-canvas";
 import linesReducer from "@/_reducers/linesReducer";
 
-const defaultStitchSettings = {
+const defaultStitchSettings: StitchSettings = {
+  key: "stitchSettings:default",
   lineCount: 1,
   edgeInsets: { horizontal: 0, vertical: 0 },
   pageRange: "1-",
   lineDirection: LineDirection.Column,
-} as StitchSettings;
+};
 
 type ProjectScaleDetail =
   | { type: "delta"; delta: number; anchor: { x: number; y: number } }
