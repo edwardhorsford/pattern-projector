@@ -42,7 +42,7 @@
 //M*/
 
 import { Point, subtract } from "@/_lib/point";
-import { AbstractMatrix, Matrix, solve } from "ml-matrix";
+import { AbstractMatrix, Matrix, solve, inverse } from "ml-matrix";
 import { Unit, getPtDensity } from "@/_lib/unit";
 
 export type SimpleLine = [Point, Point];
@@ -212,6 +212,34 @@ export function transformPoint(p: Point, mm: Matrix): Point {
   const oy = (p.x * m[3] + p.y * m[4] + m[5]) * w;
   const result = { x: ox, y: oy };
   return result;
+}
+
+/**
+ * Maps the four screen corners into PDF/pattern coordinate space.
+ *
+ * Useful for determining which region of the PDF is currently visible —
+ * e.g. for the mini map viewport indicator or a high-res sub-region render.
+ *
+ * @param perspective - Transforms from screen space to pattern space (inverse of calibrationTransform)
+ * @param localTransform - Cumulative pan/zoom/rotate/flip transform in pattern space
+ * @param screenWidth - Visible viewport width in CSS pixels
+ * @param screenHeight - Visible viewport height in CSS pixels
+ * @returns Four points (TL, TR, BR, BL) in PDF/pattern coordinate space
+ */
+export function getViewportQuad(
+  perspective: Matrix,
+  localTransform: Matrix,
+  screenWidth: number,
+  screenHeight: number,
+): Point[] {
+  const inverseLocal = inverse(localTransform);
+  const screenCorners = rectCorners(screenWidth, screenHeight);
+  return screenCorners.map((p) => {
+    // Screen space → calibrated/pattern space
+    const calibrated = transformPoint(p, perspective);
+    // Pattern space → PDF space (undo localTransform)
+    return transformPoint(calibrated, inverseLocal);
+  });
 }
 
 export function translate(p: Point): Matrix {

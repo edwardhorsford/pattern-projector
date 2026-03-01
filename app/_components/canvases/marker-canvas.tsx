@@ -5,7 +5,11 @@ import { Marker, MARKER_SIZE_INCHES } from "@/_lib/marker";
 import { useTransformContext } from "@/_hooks/use-transform-context";
 import Matrix from "ml-matrix";
 import { getPtDensity, Unit } from "@/_lib/unit";
-import { Theme, secondaryColor, themeRecolourFilter } from "@/_lib/display-settings";
+import {
+  Theme,
+  secondaryColor,
+  themeRecolourFilter,
+} from "@/_lib/display-settings";
 import { scale, transformPoint } from "@/_lib/geometry";
 
 interface MarkerCanvasProps {
