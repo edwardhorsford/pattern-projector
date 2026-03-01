@@ -17,19 +17,40 @@ import { Matrix } from "ml-matrix";
 import { getBounds, getViewportQuad } from "@/_lib/geometry";
 import { PDF_TO_CSS_UNITS } from "@/_lib/pixels-per-inch";
 import { erosionFilter } from "@/_lib/erode";
-import useRenderContext from "@/_hooks/use-render-context"
-import { getScale } from "@/_components/pdf-custom-renderer"
+import useRenderContext from "@/_hooks/use-render-context";
+import { getScale } from "@/_components/pdf-custom-renderer";
 import { useTransformContext } from "@/_hooks/use-transform-context";
 import type {
   PixelProcessRequest,
   PixelProcessResponse,
 } from "@/_lib/pixel-processor.worker";
 
-/** How much wider/taller than the visible quad to render, for panning headroom. */
-const PADDING_FACTOR = 1.5;
+/**
+ * How much wider/taller than the visible quad to render, for panning headroom.
+ * Chrome renders fast — a larger tile means panning rarely exposes the base canvas.
+ * Safari renders slowly via the CPU pixel worker — keep the tile small so each
+ * render completes quickly.
+ */
+const CHROME_PADDING_FACTOR = 3;
+const SAFARI_PADDING_FACTOR = 1.5;
+
+/**
+ * When checking whether to skip a re-render because the viewport is still within
+ * the existing tile, require at least this fraction of the tile's dimension as
+ * clearance on every side. Ensures a new tile is queued before the user reaches
+ * the edge of the current one.
+ */
+const MIN_TILE_MARGIN_FRACTION = 0.15;
 
 /** Milliseconds to wait after a pan/zoom change before triggering a re-render. */
 const DEBOUNCE_MS = 300;
+
+/**
+ * Milliseconds after which a safety re-render is triggered even if the viewport
+ * appears to be within the existing tile. Guards against stale tiles persisting
+ * indefinitely (e.g. after a content change that didn't trigger a pan/zoom).
+ */
+const STALE_TILE_MS = 2000;
 
 interface Props {
   /** Perspective matrix: maps screen space → pattern space. */
@@ -85,6 +106,7 @@ export default function PdfHighResViewport({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderTaskRef = useRef<ReturnType<PDFPageProxy["render"]> | null>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const staleTileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const workerRef = useRef<Worker | null>(null);
   /** Monotonically increasing ID so stale Safari worker responses can be discarded. */
   const renderIdRef = useRef(0);
@@ -103,6 +125,7 @@ export default function PdfHighResViewport({
   const renderedPatternScaleRef = useRef<number | null>(null);
   const renderedCssLeftRef = useRef(0);
   const renderedCssTopRef = useRef(0);
+  const renderedRenderVersionRef = useRef<number | null>(null);
   // Always reflects the latest patternScale so async render completions can
   // check whether their scale is still current before committing CSS values.
   const currentPatternScaleRef = useRef(patternScale);
@@ -194,7 +217,12 @@ export default function PdfHighResViewport({
 
     const screenWidth = window.innerWidth;
     const screenHeight = window.innerHeight;
-    const dpr = window.devicePixelRatio;
+    // On Safari, cap the effective DPR to limit pixel budget. The pixel worker
+    // runs erosion in a CPU loop — full 2× DPR on a 16M px canvas makes renders
+    // slow even after the maxArea cap. 1.5× still exceeds the base render resolution
+    // while reducing canvas area by ~44% on retina screens.
+    const rawDpr = window.devicePixelRatio;
+    const dpr = isSafari ? Math.min(rawDpr, 1.5) : rawDpr;
 
     // Find which region of the PDF grid's CSS coordinate space is currently
     // visible on screen. getViewportQuad returns CSS pixels relative to the
@@ -211,13 +239,42 @@ export default function PdfHighResViewport({
     const quadH = br.y - tl.y;
     if (quadW <= 0 || quadH <= 0) return;
 
+    // If a tile has already been rendered at the current scale, check whether the
+    // viewport still fits comfortably within it. "Comfortably" means each edge of
+    // the viewport has at least MIN_TILE_MARGIN_FRACTION of the tile's dimension
+    // as clearance — so a new tile will be queued before the user pans far enough
+    // to expose the base canvas. Saves a full re-render on every small pan.
+    const paddingFactor = isSafari
+      ? SAFARI_PADDING_FACTOR
+      : CHROME_PADDING_FACTOR;
+    if (
+      renderedPatternScaleRef.current !== null &&
+      patternScale === renderedPatternScaleRef.current &&
+      renderedRenderVersionRef.current === renderVersion
+    ) {
+      const tileLeft = renderedCssLeftRef.current;
+      const tileTop = renderedCssTopRef.current;
+      const tileW = parseFloat(canvas.style.width) || 0;
+      const tileH = parseFloat(canvas.style.height) || 0;
+      const marginX = tileW * MIN_TILE_MARGIN_FRACTION;
+      const marginY = tileH * MIN_TILE_MARGIN_FRACTION;
+      if (
+        tl.x >= tileLeft + marginX &&
+        br.x <= tileLeft + tileW - marginX &&
+        tl.y >= tileTop + marginY &&
+        br.y <= tileTop + tileH - marginY
+      ) {
+        return;
+      }
+    }
+
     // Expand region by the padding factor so small pans don't trigger a re-render.
-    const padW = (quadW * (PADDING_FACTOR - 1)) / 2;
-    const padH = (quadH * (PADDING_FACTOR - 1)) / 2;
+    const padW = (quadW * (paddingFactor - 1)) / 2;
+    const padH = (quadH * (paddingFactor - 1)) / 2;
     const regionX_css = tl.x - padW;
     const regionY_css = tl.y - padH;
-    const regionW_css = quadW * PADDING_FACTOR;
-    const regionH_css = quadH * PADDING_FACTOR;
+    const regionW_css = quadW * paddingFactor;
+    const regionH_css = quadH * paddingFactor;
 
     const page = (await pdf.getPage(pageNumber)) as PDFPageProxy;
     const userUnit = page.userUnit || 1;
@@ -285,14 +342,26 @@ export default function PdfHighResViewport({
     // Compare against the base render's scale. If the overlay wouldn't be
     // sharper than the base, hide it and bail — a lower-res overlay degrades
     // quality and produces incorrectly thick eroded lines rather than helping.
-    const baseRenderScale = getScale(pageView.width, pageView.height, userUnit, isSafari, debugLowResBase ?? false)
+    const baseRenderScale = getScale(
+      pageView.width,
+      pageView.height,
+      userUnit,
+      isSafari,
+      debugLowResBase ?? false,
+    );
     if (renderScale <= baseRenderScale) {
-      canvas.style.display = "none"
+      canvas.style.display = "none";
       // Reset so the zoom-alignment useLayoutEffect doesn't apply a stale
       // CSS transform when the overlay is brought back on the next zoom-in.
-      renderedPatternScaleRef.current = null
-      return
+      renderedPatternScaleRef.current = null;
+      return;
     }
+    // The erosion ratio must be calibrated against the normal (non-debug) base
+    // scale. debugLowResBase artificially lowers baseRenderScale, which would
+    // inflate the ratio and produce excessively thick lines in the overlay.
+    const normalBaseRenderScale = debugLowResBase
+      ? getScale(pageView.width, pageView.height, userUnit, isSafari, false)
+      : baseRenderScale;
     // pdf.js sub-region render: offsetX/offsetY shift the content so
     // regionX_pdf lands at canvas pixel 0, matching the canvas's cssLeft position.
     const viewport = page.getViewport({
@@ -344,25 +413,31 @@ export default function PdfHighResViewport({
 
     // Build the same post-processing config as CustomRenderer uses.
     //
-    // Scale the erosion radius proportionally to the overlay's render resolution
-    // relative to the base. The base's erosion is calibrated so N pixels at
-    // baseRenderScale produces a certain physical line-width on screen. The
-    // overlay renders at renderScale (always > baseRenderScale here), so each
-    // pixel is physically smaller — more pixels of erosion are needed to produce
-    // the same visual thickness. Without this scaling, the overlay's lines appear
-    // noticeably thinner than the base when zoomed in.
-    const effectiveErosions = magnifying
+    // Chrome (CSS filter path): scale erosion proportionally to the overlay's
+    // render resolution — more pixels of erosion are needed at higher scales
+    // to produce the same physical line-width on screen as the base render.
+    // This is GPU-accelerated (just extends the filter string) so scaling by a
+    // large factor has negligible cost.
+    //
+    // Safari (pixel worker path): the worker calls erodeImageData in a loop,
+    // O(width × height) per pass. Scaling proportionally at high zoom would give
+    // e.g. 15+ passes on a 16M px canvas, making renders take 8+ seconds.
+    // We therefore use the raw user-set erosions value — this keeps individual
+    // passes fast at the cost of some line-weight inconsistency vs the base.
+    const scaleRatio = renderScale / normalBaseRenderScale;
+    const effectiveErosionsChrome = magnifying
       ? 0
-      : Math.round(erosions * (renderScale / baseRenderScale))
-    const useRecolour = !!recolourHex && !isSafari
-    const renderErosions = isSafari ? effectiveErosions : 0
+      : Math.round(erosions * scaleRatio);
+    const effectiveErosionsSafari = magnifying ? 0 : erosions;
+    const useRecolour = !!recolourHex && !isSafari;
+    const renderErosions = isSafari ? effectiveErosionsSafari : 0;
     const safariEffectiveRecolourHex = isSafari
       ? recolourHex ?? (themeFilter === "invert(1)" ? "#ffffff" : undefined)
-      : undefined
+      : undefined;
     const cssFilter = isSafari
       ? undefined
       : [
-          erosionFilter(effectiveErosions, useRecolour),
+          erosionFilter(effectiveErosionsChrome, useRecolour),
           themeFilter && themeFilter !== "none" ? themeFilter : undefined,
         ]
           .filter(Boolean)
@@ -422,6 +497,7 @@ export default function PdfHighResViewport({
         canvas.style.filter = debugFilter;
         canvas.style.transform = "";
         renderedPatternScaleRef.current = patternScale;
+        renderedRenderVersionRef.current = renderVersion;
         renderedCssLeftRef.current = cssLeft;
         renderedCssTopRef.current = cssTop;
         const dest = canvas.getContext("2d", { alpha: false });
@@ -458,6 +534,7 @@ export default function PdfHighResViewport({
       canvas.style.filter = debugFilter;
       canvas.style.transform = "";
       renderedPatternScaleRef.current = patternScale;
+      renderedRenderVersionRef.current = renderVersion;
       renderedCssLeftRef.current = cssLeft;
       renderedCssTopRef.current = cssTop;
       canvas.style.display = showHighResOverlayRef.current ? "" : "none";
@@ -480,6 +557,8 @@ export default function PdfHighResViewport({
     themeFilter,
     isSafari,
     getWorker,
+    pageOffsetXBase,
+    pageOffsetYBase,
   ]);
 
   // Debounce render triggers so fast pan/zoom sequences don't queue up many renders.
@@ -487,13 +566,32 @@ export default function PdfHighResViewport({
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
+    if (staleTileTimerRef.current) {
+      clearTimeout(staleTileTimerRef.current);
+    }
+    // Fire immediately when no tile has been committed yet — avoids a 300 ms
+    // wait before the high-res overlay appears after the initial file load.
+    if (renderedPatternScaleRef.current === null) {
+      renderHighRes();
+      return;
+    }
     debounceTimerRef.current = setTimeout(() => {
       renderHighRes();
     }, DEBOUNCE_MS);
+    // Safety re-render: even if the viewport stays within the tile (causing
+    // renderHighRes to return early via the skip check), re-render after a
+    // longer delay to ensure no stale tile lingers indefinitely.
+    staleTileTimerRef.current = setTimeout(() => {
+      renderedPatternScaleRef.current = null;
+      renderHighRes();
+    }, STALE_TILE_MS);
 
     return () => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
+      }
+      if (staleTileTimerRef.current) {
+        clearTimeout(staleTileTimerRef.current);
       }
     };
   }, [renderHighRes]);
