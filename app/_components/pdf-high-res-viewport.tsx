@@ -17,7 +17,8 @@ import { Matrix } from "ml-matrix";
 import { getBounds, getViewportQuad } from "@/_lib/geometry";
 import { PDF_TO_CSS_UNITS } from "@/_lib/pixels-per-inch";
 import { erosionFilter } from "@/_lib/erode";
-import useRenderContext from "@/_hooks/use-render-context";
+import useRenderContext from "@/_hooks/use-render-context"
+import { getScale } from "@/_components/pdf-custom-renderer"
 import { useTransformContext } from "@/_hooks/use-transform-context";
 import type {
   PixelProcessRequest,
@@ -69,6 +70,7 @@ export default function PdfHighResViewport({
   const localTransform = useTransformContext();
 
   const {
+    debugLowResBase,
     erosions,
     layers,
     magnifying,
@@ -280,7 +282,17 @@ export default function PdfHighResViewport({
     if (pixelW <= 0 || pixelH <= 0) return;
 
     const renderScale = pixelW / regionW_pdf;
-
+    // Compare against the base render's scale. If the overlay wouldn't be
+    // sharper than the base, hide it and bail — a lower-res overlay degrades
+    // quality and produces incorrectly thick eroded lines rather than helping.
+    const baseRenderScale = getScale(pageView.width, pageView.height, userUnit, isSafari, debugLowResBase ?? false)
+    if (renderScale <= baseRenderScale) {
+      canvas.style.display = "none"
+      // Reset so the zoom-alignment useLayoutEffect doesn't apply a stale
+      // CSS transform when the overlay is brought back on the next zoom-in.
+      renderedPatternScaleRef.current = null
+      return
+    }
     // pdf.js sub-region render: offsetX/offsetY shift the content so
     // regionX_pdf lands at canvas pixel 0, matching the canvas's cssLeft position.
     const viewport = page.getViewport({
@@ -331,15 +343,26 @@ export default function PdfHighResViewport({
     }
 
     // Build the same post-processing config as CustomRenderer uses.
-    const useRecolour = !!recolourHex && !isSafari;
-    const renderErosions = isSafari ? (magnifying ? 0 : erosions) : 0;
+    //
+    // Scale the erosion radius proportionally to the overlay's render resolution
+    // relative to the base. The base's erosion is calibrated so N pixels at
+    // baseRenderScale produces a certain physical line-width on screen. The
+    // overlay renders at renderScale (always > baseRenderScale here), so each
+    // pixel is physically smaller — more pixels of erosion are needed to produce
+    // the same visual thickness. Without this scaling, the overlay's lines appear
+    // noticeably thinner than the base when zoomed in.
+    const effectiveErosions = magnifying
+      ? 0
+      : Math.round(erosions * (renderScale / baseRenderScale))
+    const useRecolour = !!recolourHex && !isSafari
+    const renderErosions = isSafari ? effectiveErosions : 0
     const safariEffectiveRecolourHex = isSafari
       ? recolourHex ?? (themeFilter === "invert(1)" ? "#ffffff" : undefined)
-      : undefined;
+      : undefined
     const cssFilter = isSafari
       ? undefined
       : [
-          erosionFilter(magnifying ? 0 : erosions, useRecolour),
+          erosionFilter(effectiveErosions, useRecolour),
           themeFilter && themeFilter !== "none" ? themeFilter : undefined,
         ]
           .filter(Boolean)
@@ -453,6 +476,7 @@ export default function PdfHighResViewport({
     // showHighResOverlay intentionally omitted — read via showHighResOverlayRef
     // so toggling visibility does not recreate this callback or trigger a render.
     debugTintHighRes,
+    debugLowResBase,
     themeFilter,
     isSafari,
     getWorker,

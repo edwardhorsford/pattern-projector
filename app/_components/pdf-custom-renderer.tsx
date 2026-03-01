@@ -543,7 +543,7 @@ export default function CustomRenderer() {
   );
 }
 
-function getScale(
+export function getScale(
   w: number,
   h: number,
   userUnit: number,
