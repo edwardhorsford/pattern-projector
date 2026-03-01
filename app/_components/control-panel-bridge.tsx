@@ -895,7 +895,7 @@ export function ControlPanelBridge({
         ),
       ];
 
-      // Get bounding box in PDF space
+      // Get bounding box in pattern space
       const xs = corners.map((c) => c.x);
       const ys = corners.map((c) => c.y);
 

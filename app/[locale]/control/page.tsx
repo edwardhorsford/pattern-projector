@@ -73,6 +73,7 @@ import {
   LineDirection,
 } from "@/_lib/interfaces/stitch-settings";
 import { Marker, MARKER_SIZE_INCHES } from "@/_lib/marker";
+import { CSS_PIXELS_PER_INCH } from "@/_lib/pixels-per-inch";
 import { Line } from "@/_reducers/linesReducer";
 import RotateToHorizontalIcon from "@/_icons/rotate-to-horizontal";
 import ShiftIcon from "@/_icons/shift-icon";
@@ -568,8 +569,8 @@ function Preview({
 
     // If in clearing mode, check if we clicked near a marker
     if (clearingMode) {
-      // Use half the marker size (2 inches = 144 points) as the click radius
-      const clickRadius = 144; // 2 inches in PDF points (half of 4 inch marker)
+      // Use half the marker size as the click radius (in pattern space: 96 CSS px/inch)
+      const clickRadius = (MARKER_SIZE_INCHES / 2) * CSS_PIXELS_PER_INCH; // 2 inches = 192 px
       let closestMarker: Marker | null = null;
       let closestDistance = Infinity;
 
