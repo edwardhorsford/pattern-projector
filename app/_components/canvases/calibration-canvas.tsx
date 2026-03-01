@@ -19,7 +19,7 @@ import { useKeyDown } from "@/_hooks/use-key-down";
 import { KeyCode } from "@/_lib/key-code";
 import { PointAction } from "@/_reducers/pointsReducer";
 import { FullScreenHandle } from "react-full-screen";
-import Matrix from "ml-matrix";
+import Matrix, { inverse } from "ml-matrix";
 import { getCalibrationContextUpdatedWithEvent } from "@/_lib/calibration-context";
 import { Unit } from "@/_lib/unit";
 
@@ -54,6 +54,13 @@ export default function CalibrationCanvas({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [hoverCorners, setHoverCorners] = useState<Set<number>>(new Set());
   const [dragPoint, setDragPoint] = useState<Point | null>(null);
+
+  // Stored at the start of an edge drag so we compute positions absolutely
+  // from the initial state rather than accumulating incremental screen deltas.
+  const dragPatternStartRef = useRef<Point | null>(null);
+  const dragInitialMatrixRef = useRef<Matrix | null>(null);
+  const dragInitialInverseMatrixRef = useRef<Matrix | null>(null);
+  const dragInitialPointsRef = useRef<Point[] | null>(null);
 
   useEffect(() => {
     if (
@@ -192,6 +199,17 @@ export default function CalibrationCanvas({
     fullScreenHandle.active,
   );
 
+  /** Returns the fixed pattern-space position for a given corner index. */
+  function getPatternCorner(corner: number): Point {
+    switch (corner) {
+      case 0: return { x: 0, y: 0 };
+      case 1: return { x: width, y: 0 };
+      case 2: return { x: width, y: height };
+      case 3: return { x: 0, y: height };
+      default: return { x: 0, y: 0 };
+    }
+  }
+
   function handlePointerDown(e: React.PointerEvent) {
     const p = { x: e.clientX, y: e.clientY };
     const selectedCorners = selectCorners(p);
@@ -199,6 +217,21 @@ export default function CalibrationCanvas({
       setDragPoint(p);
       setCorners(selectedCorners);
       setHoverCorners(new Set());
+
+      if (selectedCorners.size === 2) {
+        // For edge drags, capture pattern-space context so we can drag in pattern space.
+        const pm = getPerspectiveTransformFromPoints(points, width, height, 1.0, false);
+        const pmInverse = inverse(pm);
+        dragInitialMatrixRef.current = pm;
+        dragInitialInverseMatrixRef.current = pmInverse;
+        dragPatternStartRef.current = transformPoint(p, pmInverse);
+        dragInitialPointsRef.current = [...points];
+      } else {
+        dragPatternStartRef.current = null;
+        dragInitialMatrixRef.current = null;
+        dragInitialInverseMatrixRef.current = null;
+        dragInitialPointsRef.current = null;
+      }
     }
   }
 
@@ -206,18 +239,38 @@ export default function CalibrationCanvas({
     const p = { x: e.clientX, y: e.clientY };
     if (dragPoint === null) {
       setHoverCorners(selectCorners(p));
-    } else if (corners.size) {
-      const newPoints = [...points];
-      let dx = p.x - dragPoint.x;
-      let dy = p.y - dragPoint.y;
-      if (corners.size === 2) {
-        // axis constrained edges.
-        if (hasTopEdge(corners) || hasBottomEdge(corners)) {
-          dx = 0;
-        } else {
-          dy = 0;
-        }
+    } else if (corners.size === 2 &&
+        dragPatternStartRef.current !== null &&
+        dragInitialInverseMatrixRef.current !== null &&
+        dragInitialMatrixRef.current !== null &&
+        dragInitialPointsRef.current !== null) {
+      // Edge drag in pattern space:
+      // Convert current pointer to pattern space, constrain to the relevant
+      // axis, then project the new pattern positions back to screen space using
+      // the transform captured at drag-start. This keeps the quadrilateral
+      // angles intact while only changing the relevant dimension.
+      const patternP = transformPoint(p, dragInitialInverseMatrixRef.current);
+      let patternDx = patternP.x - dragPatternStartRef.current.x;
+      let patternDy = patternP.y - dragPatternStartRef.current.y;
+
+      if (hasTopEdge(corners) || hasBottomEdge(corners)) {
+        patternDx = 0;
+      } else {
+        patternDy = 0;
       }
+
+      const newPoints = [...dragInitialPointsRef.current];
+      for (const corner of corners) {
+        const basePattern = getPatternCorner(corner);
+        const newPattern = { x: basePattern.x + patternDx, y: basePattern.y + patternDy };
+        newPoints[corner] = transformPoint(newPattern, dragInitialMatrixRef.current);
+      }
+      dispatch({ type: "set", points: newPoints });
+    } else if (corners.size) {
+      // Corner or full-grid drag: keep existing screen-space behaviour.
+      const newPoints = [...points];
+      const dx = p.x - dragPoint.x;
+      const dy = p.y - dragPoint.y;
       for (const corner of corners) {
         const currentPoint = newPoints[corner];
         newPoints[corner] = {
