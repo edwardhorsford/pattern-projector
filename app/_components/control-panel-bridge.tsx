@@ -731,7 +731,7 @@ export function ControlPanelBridge({
     transformer,
   ]);
 
-  // Calculate viewport bounds in PDF coordinates for mini map
+  // Calculate viewport bounds in pattern space for mini map
   const calculateViewportBounds = useCallback(() => {
     if (layoutWidth === 0 || layoutHeight === 0) {
       return null;
@@ -741,7 +741,7 @@ export function ControlPanelBridge({
     const screenWidth = typeof window !== "undefined" ? window.innerWidth : 0;
     const screenHeight = typeof window !== "undefined" ? window.innerHeight : 0;
 
-    // Transform screen corners to PDF coordinates using inverse of combined transform.
+    // Transform screen corners to pattern space coordinates using inverse of combined transform.
     // Uses the ACTUAL current localTransform (not effectiveTransform) so the viewport
     // reflects the real current view position, even during zoom out.
     try {
@@ -805,21 +805,21 @@ export function ControlPanelBridge({
     effectiveTransform,
   ]);
 
-  // Calculate calibration bounds in PDF coordinates for mini map border
-  // This represents the fixed calibration rectangle (what the projector can display) in PDF space
+  // Calculate calibration bounds in pattern space for mini map border
+  // This represents the fixed calibration rectangle (what the projector can display) in pattern space
   // The size is fixed (width x height in calibration units), but position changes with pan/rotate
   const calculateCalibrationBounds = useCallback(() => {
     if (width === 0 || height === 0) {
       return null;
     }
 
-    // Calculate calibration size in PDF units (points)
+    // Calculate calibration size in pattern space (CSS px at 96px/inch)
     const ptDensity = getPtDensity(unitOfMeasure);
     const calWidth = width * ptDensity;
     const calHeight = height * ptDensity;
 
-    // The calibration area in "calibration space" is (0,0) to (calWidth, calHeight)
-    // Transform corners to PDF space using inverse of localTransform
+    // The calibration area in pattern space is (0,0) to (calWidth, calHeight)
+    // Transform corners to pre-pan/zoom pattern space using inverse of localTransform
     // This properly handles rotation and flipping
     try {
       const inverseLocal = inverse(localTransform);
@@ -832,7 +832,7 @@ export function ControlPanelBridge({
         transformPoint({ x: 0, y: calHeight }, inverseLocal),
       ];
 
-      // Get bounding box in PDF space
+      // Get bounding box in pattern space
       const xs = corners.map((c) => c.x);
       const ys = corners.map((c) => c.y);
 
@@ -847,7 +847,7 @@ export function ControlPanelBridge({
     }
   }, [width, height, unitOfMeasure, localTransform]);
 
-  // Calculate paper sheet bounds in PDF coordinates for mini map
+  // Calculate paper sheet bounds in pattern space for mini map
   // Paper sheet is centered in the calibration area, sized for A4 (CM) or Letter (IN)
   const calculatePaperBounds = useCallback(() => {
     if (width === 0 || height === 0) {
@@ -866,14 +866,14 @@ export function ControlPanelBridge({
     const paperX = (calWidth - paperWidth) * 0.5;
     const paperY = (calHeight - paperHeight) * 0.5;
 
-    // Convert to PDF units (points)
+    // Convert to pattern space (CSS px at 96px/inch)
     const ptDensity = getPtDensity(unitOfMeasure);
     const paperWidthPts = paperWidth * ptDensity;
     const paperHeightPts = paperHeight * ptDensity;
     const paperXPts = paperX * ptDensity;
     const paperYPts = paperY * ptDensity;
 
-    // Transform corners to PDF space using inverse of localTransform
+    // Transform corners to pre-pan/zoom pattern space using inverse of localTransform
     // This properly handles rotation and flipping
     try {
       const inverseLocal = inverse(localTransform);
@@ -1399,7 +1399,7 @@ export function ControlPanelBridge({
             transformer.rotate(center, degrees);
             break;
           }
-          // Mini map navigation - navigate to a point in PDF coordinates
+          // Mini map navigation - navigate to a point in pattern space coordinates
           case "navigateToPoint": {
             const { x, y } = params as { x: number; y: number };
             const center = getCalibrationCenterPoint(
@@ -1438,7 +1438,7 @@ export function ControlPanelBridge({
             transformer.translate({ x: deltaX, y: deltaY });
             break;
           }
-          // Magnify at a specific point in PDF coordinates (from mini map)
+          // Magnify at a specific point in pattern space coordinates (from mini map)
           case "magnifyAtPoint": {
             const { x, y } = params as { x: number; y: number };
             const center = getCalibrationCenterPoint(

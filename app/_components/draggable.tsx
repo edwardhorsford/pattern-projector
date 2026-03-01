@@ -29,7 +29,7 @@ import {
 } from "@/_hooks/use-transform-context";
 import { MenuStates } from "@/_lib/menu-states";
 import { inverse } from "ml-matrix";
-import { Marker, createMarker } from "@/_lib/marker";
+import { Marker, MARKER_SIZE_INCHES, createMarker } from "@/_lib/marker";
 
 export default function Draggable({
   children,
@@ -136,21 +136,21 @@ export default function Draggable({
     const p = { x: e.clientX, y: e.clientY };
     const pt = transformPoint(p, perspective);
 
-    // Convert screen position to PDF coordinates for marker operations
+    // Convert screen click to pattern space for marker operations
     const inverseLocal = inverse(transform.mmul(scale(patternScale)));
-    const pdfPoint = transformPoint(pt, inverseLocal);
+    const patternPoint = transformPoint(pt, inverseLocal);
 
     // If in clearing mode, check if click is near a marker and remove it
     if (clearingMode) {
       // Find the closest marker within a reasonable distance
-      // Use half the marker size (2 inches = 144 points) as the click radius
-      const clickRadius = 144; // 2 inches in PDF points (half of 4 inch marker)
+      // Use half the marker size as the click radius (in pattern space pixels)
+      const clickRadius = (MARKER_SIZE_INCHES / 2) * CSS_PIXELS_PER_INCH;
       let closestMarker: Marker | null = null;
       let closestDistance = Infinity;
 
       for (const marker of markers) {
-        const dx = marker.position.x - pdfPoint.x;
-        const dy = marker.position.y - pdfPoint.y;
+        const dx = marker.position.x - patternPoint.x;
+        const dy = marker.position.y - patternPoint.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         if (distance < clickRadius && distance < closestDistance) {
           closestDistance = distance;
@@ -168,7 +168,7 @@ export default function Draggable({
 
     // If in marking mode, place a marker and return
     if (markingMode) {
-      const newMarker = createMarker(pdfPoint);
+      const newMarker = createMarker(patternPoint);
       setMarkers([...markers, newMarker]);
       // Auto-disable marking mode after placing a marker
       setMarkingMode(false);

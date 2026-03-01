@@ -88,7 +88,7 @@ const defaultStitchSettings: StitchSettings = {
   lineDirection: LineDirection.Column,
 };
 
-// Viewport bounds for mini map (in PDF coordinate space)
+// Viewport bounds for mini map (in pattern space — pre-pan/zoom pattern coordinates)
 interface ViewportBounds {
   x: number;
   y: number;
@@ -104,7 +104,7 @@ interface ViewportBounds {
   hasFlip: boolean; // Whether there's any flip (determinant < 0)
 }
 
-// Calibration bounds for mini map border (in PDF coordinate space)
+// Calibration bounds for mini map border (in pattern space — pre-pan/zoom pattern coordinates)
 interface CalibrationBounds {
   x: number;
   y: number;
@@ -112,7 +112,7 @@ interface CalibrationBounds {
   height: number;
 }
 
-// Paper bounds for mini map paper sheet overlay (in PDF coordinate space)
+// Paper bounds for mini map paper sheet overlay (in pattern space — pre-pan/zoom pattern coordinates)
 // Uses same structure as CalibrationBounds
 type PaperBounds = CalibrationBounds;
 
@@ -163,9 +163,9 @@ interface SyncedState {
   fileLoadStatus: number;
   lineThicknessStatus: number;
   renderMetrics: RenderMetrics;
-  viewportBounds: ViewportBounds | null; // Current viewport in PDF coordinates
-  calibrationBounds: CalibrationBounds | null; // Fixed calibration rectangle in PDF coordinates
-  paperBounds: PaperBounds | null; // Paper sheet rectangle in PDF coordinates
+  viewportBounds: ViewportBounds | null; // Current viewport in pattern space
+  calibrationBounds: CalibrationBounds | null; // Fixed calibration rectangle in pattern space
+  paperBounds: PaperBounds | null; // Paper sheet rectangle in pattern space
   layoutWidth: number;
   layoutHeight: number;
   // Markers for "mark complete" feature
@@ -492,7 +492,7 @@ function Preview({
   const scaledBufferX = bufferX * scale;
   const scaledBufferY = bufferY * scale;
 
-  // Convert screen coordinates to PDF coordinates
+  // Convert mini map screen coordinates to pattern space coordinates
   // Uses the inverse of the transform matrix to correctly handle any rotation + flip combination
   const screenToPdfCoords = (
     screenX: number,
@@ -502,11 +502,11 @@ function Preview({
     const centerX = scaledBufferX + (effectiveLayoutWidth * scale) / 2;
     const centerY = scaledBufferY + (effectiveLayoutHeight * scale) / 2;
 
-    // Position relative to center, in PDF units
+    // Position relative to center, in pattern space units
     const relX = (screenX - centerX) / scale;
     const relY = (screenY - centerY) / scale;
 
-    // Apply inverse of the transform matrix to get back to original PDF coordinates
+    // Apply inverse of the transform matrix to get back to original pattern space coordinates
     // The transform matrix is [a, b; c, d], so inverse is (1/det) * [d, -b; -c, a]
     const det = transformA * transformD - transformB * transformC;
     if (Math.abs(det) < 0.0001) {
@@ -526,7 +526,7 @@ function Preview({
     const pdfRelX = invA * relX + invB * relY;
     const pdfRelY = invC * relX + invD * relY;
 
-    // Convert back to PDF coordinates (from center-relative)
+    // Convert back to pattern space coordinates (from center-relative)
     const pdfX = layoutWidth / 2 + pdfRelX;
     const pdfY = layoutHeight / 2 + pdfRelY;
 
@@ -689,7 +689,7 @@ function Preview({
     onZoomAtPoint(delta, point);
   };
 
-  // Transform a point from PDF coordinates to mini map display coordinates
+  // Transform a point from pattern space coordinates to mini map display coordinates
   // Uses the transform matrix to correctly handle any rotation + flip combination
   const pdfToDisplayCoords = (
     pdfX: number,
@@ -957,7 +957,7 @@ function Preview({
 
         {/* Markers - tick marks indicating completed sections (rendered before viewport so they appear below) */}
         {markers.map((marker) => {
-          // Convert marker position from PDF coordinates to preview coordinates
+          // Convert marker position from pattern space to preview coordinates
           // Need to apply the same transform as the preview image
 
           // Get position relative to PDF center
