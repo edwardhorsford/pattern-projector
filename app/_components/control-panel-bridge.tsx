@@ -40,8 +40,8 @@ import { Direction } from "@/_lib/direction";
 import { Point } from "@/_lib/point";
 import {
   transformPoint,
-  rectCorners,
   getBounds,
+  getViewportQuad,
   RestoreTransforms,
   translate,
   scale,
@@ -740,20 +740,17 @@ export function ControlPanelBridge({
     // Get screen corners (browser window dimensions)
     const screenWidth = typeof window !== "undefined" ? window.innerWidth : 0;
     const screenHeight = typeof window !== "undefined" ? window.innerHeight : 0;
-    const screenCorners = rectCorners(screenWidth, screenHeight);
 
-    // Transform screen corners to PDF coordinates using inverse of combined transform
-    // Combined transform: perspective (calibration inverse) + localTransform
-    // Use the ACTUAL current localTransform for position calculation (not effectiveTransform)
-    // This ensures the viewport shows the real current view position, even during zoom out
+    // Transform screen corners to PDF coordinates using inverse of combined transform.
+    // Uses the ACTUAL current localTransform (not effectiveTransform) so the viewport
+    // reflects the real current view position, even during zoom out.
     try {
-      const inverseLocal = inverse(localTransform);
-      const pdfCorners = screenCorners.map((p) => {
-        // First apply perspective (to get to calibrated space)
-        const calibrated = transformPoint(p, perspective);
-        // Then apply inverse local transform (to get to PDF space)
-        return transformPoint(calibrated, inverseLocal);
-      });
+      const pdfCorners = getViewportQuad(
+        perspective,
+        localTransform,
+        screenWidth,
+        screenHeight,
+      );
 
       // Get bounding box
       const [min, max] = getBounds(pdfCorners);
