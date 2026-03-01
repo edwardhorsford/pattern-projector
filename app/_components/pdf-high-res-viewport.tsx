@@ -3,7 +3,7 @@
 // renders the visible PDF sub-region at full device resolution, and composites it
 // on top of the base render so the projected area stays sharp when zoomed in.
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useDocumentContext } from "react-pdf";
 import invariant from "tiny-invariant";
 import type { PDFPageProxy } from "pdfjs-dist";
@@ -74,10 +74,21 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
   // Not using a ref here — when the tint is toggled we want a fresh render
   // so the new pixels are drawn with/without the tint applied.
 
-  // Track previous patternScale so we can detect a zoom change and immediately
-  // hide the overlay. The old high-res tile has wrong scale/position during
-  // zoom; hiding it avoids a visually jarring mis-scaled ghost image.
-  const prevPatternScaleRef = useRef(patternScale);
+  // Track the patternScale and CSS position of the last committed tile so we
+  // can apply a compensating CSS transform when patternScale changes. This keeps
+  // the overlay pixel-for-pixel aligned with the base canvas during a zoom
+  // animation, without needing a full re-render. renderHighRes clears the
+  // transform once it writes the correct CSS values for the new scale.
+  const renderedPatternScaleRef = useRef<number | null>(null);
+  const renderedCssLeftRef = useRef(0);
+  const renderedCssTopRef = useRef(0);
+  // Always reflects the latest patternScale so async render completions can
+  // check whether their scale is still current before committing CSS values.
+  const currentPatternScaleRef = useRef(patternScale);
+  // Assign during render (not in a useEffect) so the ref is updated before any
+  // async callbacks can run — closing the window where a stale render sees an
+  // outdated value.
+  currentPatternScaleRef.current = patternScale;
 
   const isSafari = useMemo(() => {
     const ua = navigator.userAgent.toLowerCase();
@@ -110,15 +121,40 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
       canvas.style.display = showHighResOverlayRef.current ? "" : "none";
   }, [showHighResOverlay]);
 
-  // Hide the overlay immediately when patternScale changes so the stale
-  // (wrongly-sized) tile is invisible during the zoom animation. The next
-  // renderHighRes call will re-show it once the correct tile is drawn.
-  useEffect(() => {
-    if (patternScale === prevPatternScaleRef.current) return;
-    prevPatternScaleRef.current = patternScale;
+  // useLayoutEffect (not useEffect) so the transform is applied synchronously
+  // after DOM commit and before the browser paints — prevents a flash frame
+  // where the canvas appears at the wrong position.
+  useLayoutEffect(() => {
+    // Bump the render ID so any in-flight async render (Safari worker or Chrome
+    // await) that started at the old patternScale is treated as stale and its
+    // commit is discarded. This prevents the race where the worker finishes
+    // between dispatchPatternScaleAction and the next React render (before
+    // currentPatternScaleRef has been updated), causing both sides of the stale
+    // check to equal the old scale and the commit to slip through.
+    renderIdRef.current += 1;
+
     const canvas = canvasRef.current;
-    if (canvas && showHighResOverlayRef.current)
-      canvas.style.display = "none";
+    if (!canvas || !showHighResOverlayRef.current) return;
+    // No tile committed yet — nothing to transform.
+    if (renderedPatternScaleRef.current === null) return;
+    const ratio = patternScale / renderedPatternScaleRef.current;
+    if (Math.abs(ratio - 1) < 0.0001) {
+      // Back to the scale we rendered at — clear any leftover transform from a
+      // previous zoom step (e.g. 1 → 0.95 → 1 leaves scale(0.95) without this).
+      canvas.style.transform = "";
+      return;
+    }
+    // Canvas left/top are in natural CSS space where PDF coordinates scale
+    // directly with patternScale. So the correct new position for a canvas
+    // rendered at L,T with scale renderedScale is simply L*ratio, T*ratio.
+    // applyPatternScale also translates localTransform, but that affects the
+    // grid container's CSS transform — not the relationship between canvas
+    // left/top and PDF coordinates.
+    const L = renderedCssLeftRef.current;
+    const T = renderedCssTopRef.current;
+    const transform = `translate(${(L * (ratio - 1)).toFixed(1)}px, ${(T * (ratio - 1)).toFixed(1)}px) scale(${ratio.toFixed(4)})`;
+    canvas.style.transformOrigin = "0 0";
+    canvas.style.transform = transform;
   }, [patternScale]);
 
   const renderHighRes = useCallback(async () => {
@@ -126,6 +162,10 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
     if (!showHighResOverlayRef.current) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
+    // Capture our render ID immediately, before any awaits, so any subsequent
+    // patternScale change (which bumps renderIdRef in useLayoutEffect) or new
+    // render invocation will invalidate this one.
+    const thisRenderId = ++renderIdRef.current;
     // Do NOT hide the canvas here. Keeping the old pixels visible during the
     // async render means the user always sees something sharp (or blurry-base)
     // rather than a black flash. After the await below, all canvas mutations
@@ -149,10 +189,6 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
     const quadW = br.x - tl.x;
     const quadH = br.y - tl.y;
     if (quadW <= 0 || quadH <= 0) return;
-
-    console.log("[high-res] quad tl:", tl, "br:", br,
-      "quadW:", quadW.toFixed(1), "quadH:", quadH.toFixed(1),
-      "patternScale:", patternScale);
 
     // Expand region by the padding factor so small pans don't trigger a re-render.
     const padW = (quadW * (PADDING_FACTOR - 1)) / 2;
@@ -185,13 +221,6 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
     const cssWidth = cssRight - cssLeft;
     const cssHeight = cssBottom - cssTop;
     if (cssWidth <= 0 || cssHeight <= 0) return;
-
-    console.log("[high-res] page css size:",
-      pageW_css.toFixed(1), "x", pageH_css.toFixed(1),
-      "| region raw left:", rawLeft.toFixed(1), "top:", rawTop.toFixed(1),
-      "right:", rawRight.toFixed(1), "bottom:", rawBottom.toFixed(1),
-      "| css left:", cssLeft, "top:", cssTop,
-      "width:", cssWidth, "height:", cssHeight);
 
     // Derive PDF region from the snapped integer CSS positions so the render
     // origin matches the canvas placement exactly.
@@ -302,7 +331,7 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
       // assigning them clears the canvas to black and there would be a visible
       // blank gap until the worker callback fires. Instead, pass all the values
       // as captured locals and resize+draw atomically inside the callback.
-      const thisRenderId = ++renderIdRef.current;
+      // thisRenderId was captured at the start of this renderHighRes call.
       const rawImageData = ctx.getImageData(0, 0, pixelW, pixelH);
       const request: PixelProcessRequest = {
         id: thisRenderId,
@@ -315,7 +344,13 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
       const worker = getWorker();
       worker.onmessage = (e: MessageEvent<PixelProcessResponse>) => {
         const { id, bitmap } = e.data;
+        // Reject if renderIdRef was bumped (patternScale changed or newer render started).
         if (id !== renderIdRef.current) {
+          bitmap.close();
+          return;
+        }
+        // Secondary guard: patternScale closure vs latest React render value.
+        if (patternScale !== currentPatternScaleRef.current) {
           bitmap.close();
           return;
         }
@@ -328,26 +363,30 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
         canvas.style.left = `${cssLeft}px`;
         canvas.style.top = `${cssTop}px`;
         canvas.style.filter = debugFilter;
+        canvas.style.transform = "";
+        renderedPatternScaleRef.current = patternScale;
+        renderedCssLeftRef.current = cssLeft;
+        renderedCssTopRef.current = cssTop;
         const dest = canvas.getContext("2d", { alpha: false });
         if (dest) {
           dest.drawImage(bitmap, 0, 0);
         }
         bitmap.close();
         canvas.style.display = showHighResOverlayRef.current ? "" : "none";
-        requestAnimationFrame(() => {
-          const r = canvas.getBoundingClientRect();
-          console.log("[high-res] canvas screen rect (Safari):",
-            `left:${r.left.toFixed(0)} top:${r.top.toFixed(0)}`,
-            `right:${r.right.toFixed(0)} bottom:${r.bottom.toFixed(0)}`,
-            `w:${r.width.toFixed(0)} h:${r.height.toFixed(0)}`,
-            `| screen: ${window.innerWidth}×${window.innerHeight}`);
-        });
       };
       worker.postMessage(request, [request.buffer]);
     } else {
       // Chrome/Firefox: resize, draw and show in one synchronous block.
       // canvas.width clears the canvas, but drawImage follows immediately
       // so the browser never paints the cleared state.
+      //
+      // Check for a stale render before touching the canvas. renderIdRef is
+      // bumped on every patternScale change (useLayoutEffect) and on every new
+      // render start, so thisRenderId !== renderIdRef.current means either the
+      // scale changed or a newer render superseded this one.
+      if (thisRenderId !== renderIdRef.current) return;
+      // Secondary guard: patternScale closure vs latest React render value.
+      if (patternScale !== currentPatternScaleRef.current) return;
       canvas.width = pixelW;
       canvas.height = pixelH;
       canvas.style.width = `${cssWidth}px`;
@@ -360,15 +399,11 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
       dest.filter = cssFilter ?? "none";
       dest.drawImage(tempCanvas, 0, 0);
       canvas.style.filter = debugFilter;
+      canvas.style.transform = "";
+      renderedPatternScaleRef.current = patternScale;
+      renderedCssLeftRef.current = cssLeft;
+      renderedCssTopRef.current = cssTop;
       canvas.style.display = showHighResOverlayRef.current ? "" : "none";
-      requestAnimationFrame(() => {
-        const r = canvas.getBoundingClientRect();
-        console.log("[high-res] canvas screen rect (Chrome):",
-          `left:${r.left.toFixed(0)} top:${r.top.toFixed(0)}`,
-          `right:${r.right.toFixed(0)} bottom:${r.bottom.toFixed(0)}`,
-          `w:${r.width.toFixed(0)} h:${r.height.toFixed(0)}`,
-          `| screen: ${window.innerWidth}×${window.innerHeight}`);
-      });
     }
   }, [
     pdf,
