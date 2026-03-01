@@ -1,7 +1,16 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useCallback,
+} from "react";
 import invariant from "tiny-invariant";
 import { usePageContext, useDocumentContext } from "react-pdf";
-import type { PixelProcessRequest, PixelProcessResponse } from "@/_lib/pixel-processor.worker";
+import type {
+  PixelProcessRequest,
+  PixelProcessResponse,
+} from "@/_lib/pixel-processor.worker";
 
 import type {
   RenderParameters,
@@ -9,9 +18,7 @@ import type {
 } from "pdfjs-dist/types/src/display/api.js";
 import { PDFPageProxy } from "pdfjs-dist";
 import { PDF_TO_CSS_UNITS } from "@/_lib/pixels-per-inch";
-import {
-  erosionFilter,
-} from "@/_lib/erode";
+import { erosionFilter } from "@/_lib/erode";
 import useRenderContext from "@/_hooks/use-render-context";
 
 // Cache for rendered pages as ImageBitmap (Safari only).
@@ -110,7 +117,7 @@ export default function CustomRenderer() {
   // dark canvas stays visible while the new render is in flight, preventing
   // the flash of non-inverted content when switching themes on Safari.
   const safariEffectiveRecolourHex = isSafari
-    ? (recolourHex ?? (themeFilter === "invert(1)" ? "#ffffff" : undefined))
+    ? recolourHex ?? (themeFilter === "invert(1)" ? "#ffffff" : undefined)
     : undefined;
 
   // Background colour the current theme expects the canvas to sit on.
@@ -216,14 +223,9 @@ export default function CustomRenderer() {
   const renderViewport = useMemo(
     () =>
       page.getViewport({
-        scale: getScale(
-          viewport.width,
-          viewport.height,
-          userUnit,
-          patternScale,
-        ),
+        scale: getScale(viewport.width, viewport.height, userUnit, isSafari),
       }),
-    [page, viewport, userUnit, patternScale],
+    [page, viewport, userUnit, isSafari],
   );
 
   const renderWidth = Math.floor(renderViewport.width);
@@ -288,8 +290,7 @@ export default function CustomRenderer() {
     // Use the canvas's own dimensions as ground truth rather than a separate ref:
     // if the canvas already holds pixels at >= the required resolution and content
     // hasn't changed, skip the render entirely.
-    const canvasHasPixels =
-      visibleCanvas.width > 0 && visibleCanvas.height > 0;
+    const canvasHasPixels = visibleCanvas.width > 0 && visibleCanvas.height > 0;
     if (
       contentKey === lastContentKeyRef.current &&
       canvasHasPixels &&
@@ -397,7 +398,12 @@ export default function CustomRenderer() {
           // Safari path: hand off pixel processing to a dedicated Web Worker so
           // the main thread stays responsive while erosion + enhancement runs.
           const thisRenderId = ++renderIdRef.current;
-          const rawImageData = ctx.getImageData(0, 0, renderWidth, renderHeight);
+          const rawImageData = ctx.getImageData(
+            0,
+            0,
+            renderWidth,
+            renderHeight,
+          );
           // Transfer ownership of the buffer to the worker (zero-copy).
           const request: PixelProcessRequest = {
             id: thisRenderId,
@@ -533,12 +539,19 @@ function getScale(
   w: number,
   h: number,
   userUnit: number,
-  patternScale: number,
+  isSafari: boolean,
 ): number {
   const dpr = window.devicePixelRatio;
-  const dpi = dpr * userUnit * PDF_TO_CSS_UNITS * patternScale;
+  // Render at base DPI (1× zoom equivalent), ignoring patternScale.
+  // The canvas CSS dimensions grow with patternScale (see canvasStyle below), so the
+  // browser CSS-upscales the fixed-resolution pixels when zoomed in. This avoids
+  // exponentially expensive re-renders on zoom-in while still providing a full
+  // quality render at base resolution.
+  const dpi = dpr * userUnit * PDF_TO_CSS_UNITS;
   const renderArea = dpi * w * dpi * h;
-  const maxArea = 16_777_216; // limit for iOS or Android device canvas size https://jhildenbiddle.github.io/canvas-size/#/?id=test-results
+  // iOS/Android limit is ~16M pixels; use a higher cap on desktop for sharper patterns.
+  // https://jhildenbiddle.github.io/canvas-size/#/?id=test-results
+  const maxArea = isSafari ? 16_777_216 : 67_108_864;
   let scale = dpi;
   if (renderArea > maxArea) {
     // scale to fit max area.
