@@ -19,7 +19,7 @@ interface MarkerCanvasProps {
 
 /**
  * Renders markers (checkmarks) on the pattern.
- * Markers are positioned in PDF coordinates and transformed to screen space.
+ * Markers are positioned in pattern space and transformed to screen space.
  * The markers themselves remain upright (not rotated/flipped with the pattern).
  */
 export default function MarkerCanvas({
@@ -52,7 +52,7 @@ export default function MarkerCanvas({
       className={`absolute top-0 left-0 w-full h-full pointer-events-none ${className ?? ""}`}
     >
       {markers.map((marker) => {
-        // Transform marker position from PDF space to screen space
+        // Transform marker position from pattern space to screen space
         const screenPos = transformPoint(marker.position, combinedTransform);
 
         const xEdge = transformPoint(
