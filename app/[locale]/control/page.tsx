@@ -1363,23 +1363,35 @@ export default function ControlPanelPage() {
   }, [state.displaySettings.theme]);
 
   useEffect(() => {
-    if ((state as unknown as Record<string, unknown>).showHighResOverlay !== undefined)
+    if (
+      (state as unknown as Record<string, unknown>).showHighResOverlay !==
+      undefined
+    )
       setShowHighResOverlay(
-        (state as unknown as Record<string, unknown>).showHighResOverlay as boolean,
+        (state as unknown as Record<string, unknown>)
+          .showHighResOverlay as boolean,
       );
   }, [(state as unknown as Record<string, unknown>).showHighResOverlay]);
 
   useEffect(() => {
-    if ((state as unknown as Record<string, unknown>).debugTintHighRes !== undefined)
+    if (
+      (state as unknown as Record<string, unknown>).debugTintHighRes !==
+      undefined
+    )
       setDebugTintHighRes(
-        (state as unknown as Record<string, unknown>).debugTintHighRes as boolean,
+        (state as unknown as Record<string, unknown>)
+          .debugTintHighRes as boolean,
       );
   }, [(state as unknown as Record<string, unknown>).debugTintHighRes]);
 
   useEffect(() => {
-    if ((state as unknown as Record<string, unknown>).debugLowResBase !== undefined)
+    if (
+      (state as unknown as Record<string, unknown>).debugLowResBase !==
+      undefined
+    )
       setDebugLowResBase(
-        (state as unknown as Record<string, unknown>).debugLowResBase as boolean,
+        (state as unknown as Record<string, unknown>)
+          .debugLowResBase as boolean,
       );
   }, [(state as unknown as Record<string, unknown>).debugLowResBase]);
 

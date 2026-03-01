@@ -3,7 +3,13 @@
 // renders the visible PDF sub-region at full device resolution, and composites it
 // on top of the base render so the projected area stays sharp when zoomed in.
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { useDocumentContext } from "react-pdf";
 import invariant from "tiny-invariant";
 import type { PDFPageProxy } from "pdfjs-dist";
@@ -47,7 +53,12 @@ interface Props {
  *
  * Must be rendered inside a react-pdf <Document> context and a RenderContext.Provider.
  */
-export default function PdfHighResViewport({ perspective, pageNumber, pageOffsetXBase = 0, pageOffsetYBase = 0 }: Props) {
+export default function PdfHighResViewport({
+  perspective,
+  pageNumber,
+  pageOffsetXBase = 0,
+  pageOffsetYBase = 0,
+}: Props) {
   const docContext = useDocumentContext();
   invariant(
     docContext,
@@ -214,8 +225,10 @@ export default function PdfHighResViewport({ perspective, pageNumber, pageOffset
     // element (pattern-space × patternScale). So regionX/Y/W/H are CSS px —
     // do NOT multiply by patternScale again. Page bounds must also be in CSS px.
     const pageView = page.getViewport({ scale: 1 });
-    const pageW_css = pageView.width * PDF_TO_CSS_UNITS * userUnit * patternScale;
-    const pageH_css = pageView.height * PDF_TO_CSS_UNITS * userUnit * patternScale;
+    const pageW_css =
+      pageView.width * PDF_TO_CSS_UNITS * userUnit * patternScale;
+    const pageH_css =
+      pageView.height * PDF_TO_CSS_UNITS * userUnit * patternScale;
 
     // Page origin in CSS px within the grid container at the current patternScale.
     const pageOriginX = pageOffsetXBase * patternScale;
@@ -224,8 +237,14 @@ export default function PdfHighResViewport({ perspective, pageNumber, pageOffset
     // Clamp within this page's bounds (CSS px), then snap each edge to integer CSS px.
     const rawLeft = Math.max(pageOriginX, regionX_css);
     const rawTop = Math.max(pageOriginY, regionY_css);
-    const rawRight = Math.min(regionX_css + regionW_css, pageOriginX + pageW_css);
-    const rawBottom = Math.min(regionY_css + regionH_css, pageOriginY + pageH_css);
+    const rawRight = Math.min(
+      regionX_css + regionW_css,
+      pageOriginX + pageW_css,
+    );
+    const rawBottom = Math.min(
+      regionY_css + regionH_css,
+      pageOriginY + pageH_css,
+    );
     const cssLeft = Math.round(rawLeft);
     const cssTop = Math.round(rawTop);
     const cssRight = Math.round(rawRight);

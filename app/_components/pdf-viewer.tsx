@@ -271,7 +271,8 @@ function PdfViewer({
   // CSS offsets for any patternScale without receiving them as props.
   const tileBaseWidth = patternScale > 0 ? tileWidth / patternScale : 0;
   const tileBaseHeight = patternScale > 0 ? tileHeight / patternScale : 0;
-  const baseEdgeInsetH = stitchSettings.edgeInsets.horizontal * PDF_TO_CSS_UNITS;
+  const baseEdgeInsetH =
+    stitchSettings.edgeInsets.horizontal * PDF_TO_CSS_UNITS;
   const baseEdgeInsetV = stitchSettings.edgeInsets.vertical * PDF_TO_CSS_UNITS;
 
   return (
