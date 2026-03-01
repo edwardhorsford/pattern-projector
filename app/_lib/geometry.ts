@@ -215,16 +215,29 @@ export function transformPoint(p: Point, mm: Matrix): Point {
 }
 
 /**
- * Maps the four screen corners into PDF/pattern coordinate space.
+ * Maps the four screen corners into the CSS pixel coordinate space of the PDF
+ * grid container (i.e. the space in which the base canvas is laid out).
  *
- * Useful for determining which region of the PDF is currently visible —
+ * Coordinate space of the return value:
+ *   - Origin (0, 0) is the top-left corner of the PDF page at the current patternScale.
+ *   - A point at (x, y) corresponds to CSS `left: x px; top: y px` on an absolutely-
+ *     positioned child of the grid container.
+ *   - patternScale is already accounted for — do NOT multiply the returned values by
+ *     patternScale again.
+ *
+ * How it works:
+ *   1. `perspective` (= inverse(calibrationTransform)) maps screen pixels → CSS grid space.
+ *   2. `inverse(localTransform)` undoes the cumulative pan/rotate/flip so the result is
+ *      relative to the page origin rather than the current pan position.
+ *
+ * Useful for determining which region of the PDF is currently visible on screen —
  * e.g. for the mini map viewport indicator or a high-res sub-region render.
  *
- * @param perspective - Transforms from screen space to pattern space (inverse of calibrationTransform)
- * @param localTransform - Cumulative pan/zoom/rotate/flip transform in pattern space
+ * @param perspective - Transforms from screen space to the grid's CSS pixel space
+ * @param localTransform - Cumulative pan/rotate/flip transform in CSS grid space
  * @param screenWidth - Visible viewport width in CSS pixels
  * @param screenHeight - Visible viewport height in CSS pixels
- * @returns Four points (TL, TR, BR, BL) in PDF/pattern coordinate space
+ * @returns Four points (TL, TR, BR, BL) as CSS pixel coordinates within the grid container
  */
 export function getViewportQuad(
   perspective: Matrix,

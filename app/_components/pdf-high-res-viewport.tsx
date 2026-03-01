@@ -135,7 +135,9 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
     const screenHeight = window.innerHeight;
     const dpr = window.devicePixelRatio;
 
-    // Find which PDF region the screen corners map to in base pattern space.
+    // Find which region of the PDF grid's CSS coordinate space is currently
+    // visible on screen. getViewportQuad returns CSS pixels relative to the
+    // grid container's origin — patternScale is already incorporated.
     const quad = getViewportQuad(
       perspective,
       localTransform,
@@ -155,10 +157,10 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
     // Expand region by the padding factor so small pans don't trigger a re-render.
     const padW = (quadW * (PADDING_FACTOR - 1)) / 2;
     const padH = (quadH * (PADDING_FACTOR - 1)) / 2;
-    const regionX_pattern = tl.x - padW;
-    const regionY_pattern = tl.y - padH;
-    const regionW_pattern = quadW * PADDING_FACTOR;
-    const regionH_pattern = quadH * PADDING_FACTOR;
+    const regionX_css = tl.x - padW;
+    const regionY_css = tl.y - padH;
+    const regionW_css = quadW * PADDING_FACTOR;
+    const regionH_css = quadH * PADDING_FACTOR;
 
     const page = (await pdf.getPage(pageNumber)) as PDFPageProxy;
     const userUnit = page.userUnit || 1;
@@ -172,10 +174,10 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
     const pageH_css = pageView.height * PDF_TO_CSS_UNITS * userUnit * patternScale;
 
     // Clamp within page bounds (CSS px), then snap each edge to integer CSS px.
-    const rawLeft = Math.max(0, regionX_pattern);
-    const rawTop = Math.max(0, regionY_pattern);
-    const rawRight = Math.min(regionX_pattern + regionW_pattern, pageW_css);
-    const rawBottom = Math.min(regionY_pattern + regionH_pattern, pageH_css);
+    const rawLeft = Math.max(0, regionX_css);
+    const rawTop = Math.max(0, regionY_css);
+    const rawRight = Math.min(regionX_css + regionW_css, pageW_css);
+    const rawBottom = Math.min(regionY_css + regionH_css, pageH_css);
     const cssLeft = Math.round(rawLeft);
     const cssTop = Math.round(rawTop);
     const cssRight = Math.round(rawRight);

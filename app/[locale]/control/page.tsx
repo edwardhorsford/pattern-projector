@@ -1363,12 +1363,16 @@ export default function ControlPanelPage() {
 
   useEffect(() => {
     if ((state as Record<string, unknown>).showHighResOverlay !== undefined)
-      setShowHighResOverlay((state as Record<string, unknown>).showHighResOverlay as boolean);
+      setShowHighResOverlay(
+        (state as Record<string, unknown>).showHighResOverlay as boolean,
+      );
   }, [(state as Record<string, unknown>).showHighResOverlay]);
 
   useEffect(() => {
     if ((state as Record<string, unknown>).debugTintHighRes !== undefined)
-      setDebugTintHighRes((state as Record<string, unknown>).debugTintHighRes as boolean);
+      setDebugTintHighRes(
+        (state as Record<string, unknown>).debugTintHighRes as boolean,
+      );
   }, [(state as Record<string, unknown>).debugTintHighRes]);
 
   useEffect(() => {
