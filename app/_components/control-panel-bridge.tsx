@@ -166,6 +166,9 @@ interface ControlPanelBridgeProps {
   /** Dev toggle: tint the high-res overlay amber for alignment testing. */
   debugTintHighRes: boolean;
   setDebugTintHighRes: (value: boolean) => void;
+  /** Dev toggle: force very low-res base render so the high-res overlay effect is obvious. */
+  debugLowResBase: boolean;
+  setDebugLowResBase: (value: boolean) => void;
 }
 
 /**
@@ -243,6 +246,8 @@ export function ControlPanelBridge({
   setShowHighResOverlay,
   debugTintHighRes,
   setDebugTintHighRes,
+  debugLowResBase,
+  setDebugLowResBase,
 }: ControlPanelBridgeProps) {
   const transformer = useTransformerContext();
   const localTransform = useTransformContext();
@@ -1088,6 +1093,7 @@ export function ControlPanelBridge({
       // with the calibrate page state on initial load.
       showHighResOverlay,
       debugTintHighRes,
+      debugLowResBase,
     }),
     [
       isCalibrating,
@@ -1126,6 +1132,7 @@ export function ControlPanelBridge({
       selectedLine,
       showHighResOverlay,
       debugTintHighRes,
+      debugLowResBase,
     ],
   );
 
@@ -1278,6 +1285,9 @@ export function ControlPanelBridge({
             break;
           case "setDebugTintHighRes":
             setDebugTintHighRes(params as boolean);
+            break;
+          case "setDebugLowResBase":
+            setDebugLowResBase(params as boolean);
             break;
           case "clearAppData":
             clearAppData();

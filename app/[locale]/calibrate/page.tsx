@@ -179,6 +179,7 @@ export default function Page() {
   const [pdfRenderKey, setPdfRenderKey] = useState(0);
   const [showHighResOverlay, setShowHighResOverlay] = useState(true);
   const [debugTintHighRes, setDebugTintHighRes] = useState(false);
+  const [debugLowResBase, setDebugLowResBase] = useState(false);
   const { layers, dispatchLayersAction } = useLayers(file?.name ?? "default");
   const setLayers = useCallback(
     (l: Layers) => dispatchLayersAction({ type: "set-layers", layers: l }),
@@ -1150,6 +1151,8 @@ export default function Page() {
               setShowHighResOverlay={setShowHighResOverlay}
               debugTintHighRes={debugTintHighRes}
               setDebugTintHighRes={setDebugTintHighRes}
+              debugLowResBase={debugLowResBase}
+              setDebugLowResBase={setDebugLowResBase}
             />
             {!isCalibrating && (
               // Layer order (low -> high): image data (Draggable/PDF), overlays, markers, UI.
@@ -1234,6 +1237,7 @@ export default function Page() {
                       perspective={perspective}
                       showHighResOverlay={showHighResOverlay}
                       debugTintHighRes={debugTintHighRes}
+                      debugLowResBase={debugLowResBase}
                     />
                   ) : (
                     <SvgViewer

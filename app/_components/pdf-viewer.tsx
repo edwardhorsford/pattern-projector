@@ -3,6 +3,7 @@ import "react-pdf/dist/esm/Page/TextLayer.css";
 
 import {
   Dispatch,
+  Fragment,
   SetStateAction,
   memo,
   useCallback,
@@ -61,6 +62,7 @@ function PdfViewer({
   perspective,
   showHighResOverlay,
   debugTintHighRes,
+  debugLowResBase,
 }: {
   file: any;
   layers: Layers;
@@ -85,6 +87,7 @@ function PdfViewer({
   perspective: Matrix;
   showHighResOverlay?: boolean;
   debugTintHighRes?: boolean;
+  debugLowResBase?: boolean;
 }) {
   const [pageSizes, setPageSize] = useReducer(
     pageSizeReducer,
@@ -192,6 +195,7 @@ function PdfViewer({
       renderVersion,
       showHighResOverlay,
       debugTintHighRes,
+      debugLowResBase,
       // themeFilter is baked into each canvas draw call by CustomRenderer,
       // so the container div never needs a CSS filter. On Safari the worker
       // pixel path handles Dark theme inversion via recolour-to-white.
@@ -208,6 +212,7 @@ function PdfViewer({
       renderVersion,
       showHighResOverlay,
       debugTintHighRes,
+      debugLowResBase,
       filter,
     ],
   );
@@ -258,6 +263,17 @@ function PdfViewer({
   const insetWidth = `${tileWidth - cssEdgeInsets.horizontal}px`;
   const insetHeight = `${tileHeight - cssEdgeInsets.vertical}px`;
 
+  // For computing each page's offset within the grid container.
+  // lineDirection.Row → gridAutoFlow "column" (fills down columns first).
+  // lineDirection.Column → gridAutoFlow "row" (fills across rows first).
+  const isRowDirection = stitchSettings.lineDirection === LineDirection.Row;
+  // Base tile dimensions at patternScale=1 so PdfHighResViewport can derive
+  // CSS offsets for any patternScale without receiving them as props.
+  const tileBaseWidth = patternScale > 0 ? tileWidth / patternScale : 0;
+  const tileBaseHeight = patternScale > 0 ? tileHeight / patternScale : 0;
+  const baseEdgeInsetH = stitchSettings.edgeInsets.horizontal * PDF_TO_CSS_UNITS;
+  const baseEdgeInsetV = stitchSettings.edgeInsets.vertical * PDF_TO_CSS_UNITS;
+
   return (
     <Document
       file={file}
@@ -291,49 +307,66 @@ function PdfViewer({
           }}
         >
           {pages.map((value, index) => {
+            // Compute this slot's (row, col) position in the grid.
+            // Row direction → gridAutoFlow "column" → fills down columns first.
+            // Column direction → gridAutoFlow "row" → fills across rows first.
+            const colIdx = isRowDirection
+              ? Math.floor(index / rows)
+              : index % columns;
+            const rowIdx = isRowDirection
+              ? index % rows
+              : Math.floor(index / columns);
+            const pageOffsetXBase = colIdx * (tileBaseWidth - baseEdgeInsetH);
+            const pageOffsetYBase = rowIdx * (tileBaseHeight - baseEdgeInsetV);
             return (
-              <div
-                key={keys[index]}
-                style={{
-                  width: insetWidth,
-                  height: insetHeight,
-                  // Background shows through when canvas is hidden during a
-                  // cross-theme transition — must match the canvas background
-                  // colour so the page area looks correct before the new render.
-                  backgroundColor: canvasBackground ?? "#ffffff",
-                  mixBlendMode:
-                    cssEdgeInsets.horizontal == 0 && cssEdgeInsets.vertical == 0
-                      ? "normal"
-                      : "darken",
-                }}
-              >
-                {value != 0 && (
-                  <Page
-                    // Pass a fixed scale so react-pdf's internal page context
-                    // doesn't change when patternScale changes. Our CustomRenderer
-                    // reads patternScale from RenderContext and computes its own
-                    // viewport independently. Changing this prop causes react-pdf
-                    // to remount the custom renderer, resetting all refs/canvas.
-                    scale={PDF_TO_CSS_UNITS}
+              <Fragment key={keys[index]}>
+                <div
+                  style={{
+                    width: insetWidth,
+                    height: insetHeight,
+                    // Background shows through when canvas is hidden during a
+                    // cross-theme transition — must match the canvas background
+                    // colour so the page area looks correct before the new render.
+                    backgroundColor: canvasBackground ?? "#ffffff",
+                    mixBlendMode:
+                      cssEdgeInsets.horizontal == 0 &&
+                      cssEdgeInsets.vertical == 0
+                        ? "normal"
+                        : "darken",
+                  }}
+                >
+                  {value != 0 && (
+                    <Page
+                      // Pass a fixed scale so react-pdf's internal page context
+                      // doesn't change when patternScale changes. Our CustomRenderer
+                      // reads patternScale from RenderContext and computes its own
+                      // viewport independently. Changing this prop causes react-pdf
+                      // to remount the custom renderer, resetting all refs/canvas.
+                      scale={PDF_TO_CSS_UNITS}
+                      pageNumber={value}
+                      renderMode="custom"
+                      customRenderer={CustomRenderer}
+                      customTextRenderer={customTextRenderer}
+                      canvasBackground={canvasBackground}
+                      // We render our own canvas output; disabling extra react-pdf layers
+                      // avoids additional absolute/z-indexed sublayers.
+                      renderTextLayer={false}
+                      renderAnnotationLayer={false}
+                      onLoadSuccess={onPageLoadSuccess}
+                    />
+                  )}
+                </div>
+                {value != 0 && (index === 0 || tileBaseWidth > 0) && (
+                  <PdfHighResViewport
+                    perspective={perspective}
                     pageNumber={value}
-                    renderMode="custom"
-                    customRenderer={CustomRenderer}
-                    customTextRenderer={customTextRenderer}
-                    canvasBackground={canvasBackground}
-                    // We render our own canvas output; disabling extra react-pdf layers
-                    // avoids additional absolute/z-indexed sublayers.
-                    renderTextLayer={false}
-                    renderAnnotationLayer={false}
-                    onLoadSuccess={onPageLoadSuccess}
+                    pageOffsetXBase={pageOffsetXBase}
+                    pageOffsetYBase={pageOffsetYBase}
                   />
                 )}
-              </div>
+              </Fragment>
             );
           })}
-          <PdfHighResViewport
-            perspective={perspective}
-            pageNumber={pages[0] ?? 1}
-          />
         </div>
       </RenderContext.Provider>
     </Document>

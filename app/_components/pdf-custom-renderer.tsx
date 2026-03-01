@@ -70,6 +70,7 @@ export default function CustomRenderer() {
     recolourHex,
     renderVersion,
     themeFilter,
+    debugLowResBase,
   } = useRenderContext();
   const pageContext = usePageContext();
 
@@ -223,9 +224,15 @@ export default function CustomRenderer() {
   const renderViewport = useMemo(
     () =>
       page.getViewport({
-        scale: getScale(viewport.width, viewport.height, userUnit, isSafari),
+        scale: getScale(
+          viewport.width,
+          viewport.height,
+          userUnit,
+          isSafari,
+          debugLowResBase ?? false,
+        ),
       }),
-    [page, viewport, userUnit, isSafari],
+    [page, viewport, userUnit, isSafari, debugLowResBase],
   );
 
   const renderWidth = Math.floor(renderViewport.width);
@@ -283,7 +290,7 @@ export default function CustomRenderer() {
     // - cssFilter: CSS filter applied on Chrome (encodes erosion + magnifying + theme filter)
     // - On Safari, safariEffectiveRecolourHex distinguishes Dark (#ffffff), Light (none),
     //   and colour themes, replacing the old recolourHex-only distinction.
-    const contentKey = `${pageNumber}-${renderErosions}-${cssFilter ?? ""}-${(isSafari ? safariEffectiveRecolourHex : recolourHex) ?? ""}-${renderVersion ?? 0}-${layersVersionRef.current}`;
+    const contentKey = `${pageNumber}-${renderErosions}-${cssFilter ?? ""}-${(isSafari ? safariEffectiveRecolourHex : recolourHex) ?? ""}-${renderVersion ?? 0}-${layersVersionRef.current}-${debugLowResBase ? 1 : 0}`;
 
     // When zooming out the existing canvas pixels remain valid — CSS width/height
     // already handles the visual downscale, so there is no need to re-render.
@@ -500,6 +507,7 @@ export default function CustomRenderer() {
     onPageRenderStart,
     onPageRenderSuccess,
     getWorker,
+    debugLowResBase,
     // renderViewport, renderWidth, renderHeight intentionally omitted — they are
     // read from refs inside the callback so they're always fresh without this
     // callback needing to be recreated on every zoom step. The effect below
@@ -540,18 +548,18 @@ function getScale(
   h: number,
   userUnit: number,
   isSafari: boolean,
+  debugLowResBase: boolean = false,
 ): number {
   const dpr = window.devicePixelRatio;
-  // Render at base DPI (1× zoom equivalent), ignoring patternScale.
-  // The canvas CSS dimensions grow with patternScale (see canvasStyle below), so the
-  // browser CSS-upscales the fixed-resolution pixels when zoomed in. This avoids
-  // exponentially expensive re-renders on zoom-in while still providing a full
-  // quality render at base resolution.
   const dpi = dpr * userUnit * PDF_TO_CSS_UNITS;
   const renderArea = dpi * w * dpi * h;
-  // iOS/Android limit is ~16M pixels; use a higher cap on desktop for sharper patterns.
-  // https://jhildenbiddle.github.io/canvas-size/#/?id=test-results
-  const maxArea = isSafari ? 16_777_216 : 67_108_864;
+  // When the debug flag is set, cap to 64×64 = 4096 px so the sharpness
+  // difference between the base and high-res overlay is obvious.
+  const maxArea = debugLowResBase
+    ? 262_144
+    : isSafari
+      ? 16_777_216
+      : 67_108_864;
   let scale = dpi;
   if (renderArea > maxArea) {
     // scale to fit max area.

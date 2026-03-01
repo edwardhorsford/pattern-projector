@@ -29,6 +29,14 @@ interface Props {
   perspective: Matrix;
   /** Number of the PDF page to render in high resolution. */
   pageNumber: number;
+  /**
+   * Horizontal offset of this page's top-left corner within the grid container,
+   * in CSS px at patternScale=1. Multiplied by patternScale internally to get
+   * the actual CSS offset. Defaults to 0 (first/only page).
+   */
+  pageOffsetXBase?: number;
+  /** Vertical offset of this page within the grid container, CSS px at patternScale=1. */
+  pageOffsetYBase?: number;
 }
 
 /**
@@ -39,7 +47,7 @@ interface Props {
  *
  * Must be rendered inside a react-pdf <Document> context and a RenderContext.Provider.
  */
-export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
+export default function PdfHighResViewport({ perspective, pageNumber, pageOffsetXBase = 0, pageOffsetYBase = 0 }: Props) {
   const docContext = useDocumentContext();
   invariant(
     docContext,
@@ -209,11 +217,15 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
     const pageW_css = pageView.width * PDF_TO_CSS_UNITS * userUnit * patternScale;
     const pageH_css = pageView.height * PDF_TO_CSS_UNITS * userUnit * patternScale;
 
-    // Clamp within page bounds (CSS px), then snap each edge to integer CSS px.
-    const rawLeft = Math.max(0, regionX_css);
-    const rawTop = Math.max(0, regionY_css);
-    const rawRight = Math.min(regionX_css + regionW_css, pageW_css);
-    const rawBottom = Math.min(regionY_css + regionH_css, pageH_css);
+    // Page origin in CSS px within the grid container at the current patternScale.
+    const pageOriginX = pageOffsetXBase * patternScale;
+    const pageOriginY = pageOffsetYBase * patternScale;
+
+    // Clamp within this page's bounds (CSS px), then snap each edge to integer CSS px.
+    const rawLeft = Math.max(pageOriginX, regionX_css);
+    const rawTop = Math.max(pageOriginY, regionY_css);
+    const rawRight = Math.min(regionX_css + regionW_css, pageOriginX + pageW_css);
+    const rawBottom = Math.min(regionY_css + regionH_css, pageOriginY + pageH_css);
     const cssLeft = Math.round(rawLeft);
     const cssTop = Math.round(rawTop);
     const cssRight = Math.round(rawRight);
@@ -224,9 +236,12 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
 
     // Derive PDF region from the snapped integer CSS positions so the render
     // origin matches the canvas placement exactly.
+    // Subtract the page origin before converting to PDF space — cssLeft/cssTop
+    // are absolute within the grid container, but PDF coordinates are relative
+    // to the page's own origin.
     const cssToPage = 1 / (PDF_TO_CSS_UNITS * userUnit);
-    const regionX_pdf = (cssLeft / patternScale) * cssToPage;
-    const regionY_pdf = (cssTop / patternScale) * cssToPage;
+    const regionX_pdf = ((cssLeft - pageOriginX) / patternScale) * cssToPage;
+    const regionY_pdf = ((cssTop - pageOriginY) / patternScale) * cssToPage;
     const regionW_pdf = (cssWidth / patternScale) * cssToPage;
 
     // Canvas pixel size: cssWidth CSS pixels × dpr device pixels each.

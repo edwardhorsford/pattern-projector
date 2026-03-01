@@ -16,8 +16,8 @@ export interface RenderContextType {
   /** When false, the high-res viewport overlay canvas is hidden (dev toggle). */
   showHighResOverlay?: boolean;
   /** When true, tints the high-res overlay amber so it’s visually distinct from the base render (dev alignment test). */
-  debugTintHighRes?: boolean;
-  /**
+  debugTintHighRes?: boolean;  /** When true, limits the base render to a very small pixel budget so the high-res overlay effect is clearly visible. */
+  debugLowResBase?: boolean;  /**
    * The CSS filter string representing the active theme transformation
    * (e.g. "invert(1)" for Dark). On non-Safari browsers this is baked
    * directly into the canvas draw call so the container div doesn't need
@@ -37,6 +37,7 @@ export const RenderContext = createContext<RenderContextType>({
   renderVersion: 0,
   showHighResOverlay: true,
   debugTintHighRes: false,
+  debugLowResBase: false,
   themeFilter: undefined,
 });
 
