@@ -160,6 +160,10 @@ interface ControlPanelBridgeProps {
   setSelectedLine: Dispatch<SetStateAction<number>>;
   // Forces the PDF renderer to re-render all pages from scratch
   forcePdfRerender: () => void;
+  /** Dev toggle: hide/show the high-res viewport overlay canvas. */
+  setShowHighResOverlay: (value: boolean) => void;
+  /** Dev toggle: tint the high-res overlay amber for alignment testing. */
+  setDebugTintHighRes: (value: boolean) => void;
 }
 
 /**
@@ -233,6 +237,8 @@ export function ControlPanelBridge({
   selectedLine,
   setSelectedLine,
   forcePdfRerender,
+  setShowHighResOverlay,
+  setDebugTintHighRes,
 }: ControlPanelBridgeProps) {
   const transformer = useTransformerContext();
   const localTransform = useTransformContext();
@@ -1256,6 +1262,12 @@ export function ControlPanelBridge({
           case "clearImageCache":
             clearRenderCache();
             forcePdfRerender();
+            break;
+          case "setShowHighResOverlay":
+            setShowHighResOverlay(params as boolean);
+            break;
+          case "setDebugTintHighRes":
+            setDebugTintHighRes(params as boolean);
             break;
           case "clearAppData":
             clearAppData();

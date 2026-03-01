@@ -1316,6 +1316,8 @@ export default function ControlPanelPage() {
   const [storageBytes, setStorageBytes] = useState(0);
   const [stateBytes, setStateBytes] = useState(0);
   const [debugMessages, setDebugMessages] = useState<string[]>([]);
+  const [showHighResOverlay, setShowHighResOverlay] = useState(true);
+  const [debugTintHighRes, setDebugTintHighRes] = useState(false);
   const controlKeyDownRef = useRef(false);
   const metaKeyDownRef = useRef(false);
   const gestureScaleRef = useRef(1);
@@ -3445,6 +3447,32 @@ export default function ControlPanelPage() {
               >
                 Clear image cache
               </Button>
+
+              <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showHighResOverlay}
+                  onChange={(e) => {
+                    setShowHighResOverlay(e.target.checked);
+                    handleAction("setShowHighResOverlay", e.target.checked);
+                  }}
+                  className="accent-purple-600"
+                />
+                High-res overlay
+              </label>
+
+              <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={debugTintHighRes}
+                  onChange={(e) => {
+                    setDebugTintHighRes(e.target.checked);
+                    handleAction("setDebugTintHighRes", e.target.checked);
+                  }}
+                  className="accent-purple-600"
+                />
+                Debug: tint overlay amber
+              </label>
 
               <div className="flex flex-wrap items-center gap-2 rounded border dark:border-gray-700 px-2 py-1 w-full">
                 <label

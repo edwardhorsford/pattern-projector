@@ -13,6 +13,10 @@ export interface RenderContextType {
   recolourHex?: string;
   /** Incremented to bust the render cache and force all pages to re-render from scratch. */
   renderVersion: number;
+  /** When false, the high-res viewport overlay canvas is hidden (dev toggle). */
+  showHighResOverlay?: boolean;
+  /** When true, tints the high-res overlay amber so it’s visually distinct from the base render (dev alignment test). */
+  debugTintHighRes?: boolean;
   /**
    * The CSS filter string representing the active theme transformation
    * (e.g. "invert(1)" for Dark). On non-Safari browsers this is baked
@@ -31,6 +35,8 @@ export const RenderContext = createContext<RenderContextType>({
   patternScale: 1,
   recolourHex: undefined,
   renderVersion: 0,
+  showHighResOverlay: true,
+  debugTintHighRes: false,
   themeFilter: undefined,
 });
 

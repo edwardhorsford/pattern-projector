@@ -19,6 +19,8 @@ import { getPageNumbers, getRowsColumns } from "@/_lib/get-page-numbers";
 import { PDF_TO_CSS_UNITS } from "@/_lib/pixels-per-inch";
 import { RenderContext } from "@/_hooks/use-render-context";
 import { useTransformerContext } from "@/_hooks/use-transform-context";
+import { Matrix } from "ml-matrix";
+import PdfHighResViewport from "@/_components/pdf-high-res-viewport";
 import {
   LineDirection,
   StitchSettings,
@@ -56,6 +58,9 @@ function PdfViewer({
   patternScale,
   setMenuStates,
   renderVersion,
+  perspective,
+  showHighResOverlay,
+  debugTintHighRes,
 }: {
   file: any;
   layers: Layers;
@@ -77,6 +82,9 @@ function PdfViewer({
   patternScale: number;
   setMenuStates: Dispatch<SetStateAction<MenuStates>>;
   renderVersion: number;
+  perspective: Matrix;
+  showHighResOverlay?: boolean;
+  debugTintHighRes?: boolean;
 }) {
   const [pageSizes, setPageSize] = useReducer(
     pageSizeReducer,
@@ -182,6 +190,8 @@ function PdfViewer({
       patternScale,
       recolourHex,
       renderVersion,
+      showHighResOverlay,
+      debugTintHighRes,
       // themeFilter is baked into each canvas draw call by CustomRenderer,
       // so the container div never needs a CSS filter. On Safari the worker
       // pixel path handles Dark theme inversion via recolour-to-white.
@@ -196,6 +206,8 @@ function PdfViewer({
       patternScale,
       recolourHex,
       renderVersion,
+      showHighResOverlay,
+      debugTintHighRes,
       filter,
     ],
   );
@@ -254,6 +266,7 @@ function PdfViewer({
       error={null}
       onLoadError={() => setFileLoadStatus(LoadStatusEnum.FAILED)}
     >
+      <RenderContext.Provider value={renderContextValue}>
       <div
         style={{
           display: "grid",
@@ -295,9 +308,6 @@ function PdfViewer({
               }}
             >
               {value != 0 && (
-                <RenderContext.Provider
-                  value={renderContextValue}
-                >
                   <Page
                     // Pass a fixed scale so react-pdf's internal page context
                     // doesn't change when patternScale changes. Our CustomRenderer
@@ -316,12 +326,16 @@ function PdfViewer({
                     renderAnnotationLayer={false}
                     onLoadSuccess={onPageLoadSuccess}
                   />
-                </RenderContext.Provider>
               )}
             </div>
           );
         })}
+        <PdfHighResViewport
+          perspective={perspective}
+          pageNumber={pages[0] ?? 1}
+        />
       </div>
+      </RenderContext.Provider>
     </Document>
   );
 }
