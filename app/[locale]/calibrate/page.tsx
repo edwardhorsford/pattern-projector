@@ -176,9 +176,9 @@ export default function Page() {
   const [lines, dispatchLines] = useReducer(linesReducer, []);
   const [selectedLine, setSelectedLine] = useState<number>(-1);
   // Incremented to force PdfViewer to remount and re-render all pages from scratch
-  const [pdfRenderKey, setPdfRenderKey] = useState(0)
-  const [showHighResOverlay, setShowHighResOverlay] = useState(true)
-  const [debugTintHighRes, setDebugTintHighRes] = useState(false)
+  const [pdfRenderKey, setPdfRenderKey] = useState(0);
+  const [showHighResOverlay, setShowHighResOverlay] = useState(true);
+  const [debugTintHighRes, setDebugTintHighRes] = useState(false);
   const { layers, dispatchLayersAction } = useLayers(file?.name ?? "default");
   const setLayers = useCallback(
     (l: Layers) => dispatchLayersAction({ type: "set-layers", layers: l }),
@@ -1146,7 +1146,9 @@ export default function Page() {
               selectedLine={selectedLine}
               setSelectedLine={setSelectedLine}
               forcePdfRerender={() => setPdfRenderKey((k) => k + 1)}
+              showHighResOverlay={showHighResOverlay}
               setShowHighResOverlay={setShowHighResOverlay}
+              debugTintHighRes={debugTintHighRes}
               setDebugTintHighRes={setDebugTintHighRes}
             />
             {!isCalibrating && (

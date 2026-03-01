@@ -267,47 +267,47 @@ function PdfViewer({
       onLoadError={() => setFileLoadStatus(LoadStatusEnum.FAILED)}
     >
       <RenderContext.Provider value={renderContextValue}>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: `repeat(${columns}, max-content)`,
-          gridTemplateRows: `repeat(${rows}, max-content)`,
-          gridAutoFlow:
-            stitchSettings.lineDirection == LineDirection.Row
-              ? "column"
-              : "row",
-          marginRight: cssEdgeInsets.horizontal,
-          marginBottom: cssEdgeInsets.vertical,
-          // The theme filter is baked into each canvas draw call by
-          // CustomRenderer (Chrome: appended to cssFilter; Safari: Dark theme
-          // handled as pixel-level inversion in the worker). The container
-          // never needs a CSS filter — this prevents the split-ownership
-          // flash that occurred when the container filter committed
-          // synchronously while canvas pixels were still from the old theme.
-          filter: "none",
-          // Keep page blending and stacking scoped to this container.
-          isolation: "isolate",
-          position: "relative",
-        }}
-      >
-        {pages.map((value, index) => {
-          return (
-            <div
-              key={keys[index]}
-              style={{
-                width: insetWidth,
-                height: insetHeight,
-                // Background shows through when canvas is hidden during a
-                // cross-theme transition — must match the canvas background
-                // colour so the page area looks correct before the new render.
-                backgroundColor: canvasBackground ?? "#ffffff",
-                mixBlendMode:
-                  cssEdgeInsets.horizontal == 0 && cssEdgeInsets.vertical == 0
-                    ? "normal"
-                    : "darken",
-              }}
-            >
-              {value != 0 && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${columns}, max-content)`,
+            gridTemplateRows: `repeat(${rows}, max-content)`,
+            gridAutoFlow:
+              stitchSettings.lineDirection == LineDirection.Row
+                ? "column"
+                : "row",
+            marginRight: cssEdgeInsets.horizontal,
+            marginBottom: cssEdgeInsets.vertical,
+            // The theme filter is baked into each canvas draw call by
+            // CustomRenderer (Chrome: appended to cssFilter; Safari: Dark theme
+            // handled as pixel-level inversion in the worker). The container
+            // never needs a CSS filter — this prevents the split-ownership
+            // flash that occurred when the container filter committed
+            // synchronously while canvas pixels were still from the old theme.
+            filter: "none",
+            // Keep page blending and stacking scoped to this container.
+            isolation: "isolate",
+            position: "relative",
+          }}
+        >
+          {pages.map((value, index) => {
+            return (
+              <div
+                key={keys[index]}
+                style={{
+                  width: insetWidth,
+                  height: insetHeight,
+                  // Background shows through when canvas is hidden during a
+                  // cross-theme transition — must match the canvas background
+                  // colour so the page area looks correct before the new render.
+                  backgroundColor: canvasBackground ?? "#ffffff",
+                  mixBlendMode:
+                    cssEdgeInsets.horizontal == 0 && cssEdgeInsets.vertical == 0
+                      ? "normal"
+                      : "darken",
+                }}
+              >
+                {value != 0 && (
                   <Page
                     // Pass a fixed scale so react-pdf's internal page context
                     // doesn't change when patternScale changes. Our CustomRenderer
@@ -326,15 +326,15 @@ function PdfViewer({
                     renderAnnotationLayer={false}
                     onLoadSuccess={onPageLoadSuccess}
                   />
-              )}
-            </div>
-          );
-        })}
-        <PdfHighResViewport
-          perspective={perspective}
-          pageNumber={pages[0] ?? 1}
-        />
-      </div>
+                )}
+              </div>
+            );
+          })}
+          <PdfHighResViewport
+            perspective={perspective}
+            pageNumber={pages[0] ?? 1}
+          />
+        </div>
       </RenderContext.Provider>
     </Document>
   );

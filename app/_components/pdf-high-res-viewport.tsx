@@ -74,6 +74,11 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
   // Not using a ref here — when the tint is toggled we want a fresh render
   // so the new pixels are drawn with/without the tint applied.
 
+  // Track previous patternScale so we can detect a zoom change and immediately
+  // hide the overlay. The old high-res tile has wrong scale/position during
+  // zoom; hiding it avoids a visually jarring mis-scaled ghost image.
+  const prevPatternScaleRef = useRef(patternScale);
+
   const isSafari = useMemo(() => {
     const ua = navigator.userAgent.toLowerCase();
     return ua.indexOf("safari") !== -1 && ua.indexOf("chrome") === -1;
@@ -105,6 +110,17 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
       canvas.style.display = showHighResOverlayRef.current ? "" : "none";
   }, [showHighResOverlay]);
 
+  // Hide the overlay immediately when patternScale changes so the stale
+  // (wrongly-sized) tile is invisible during the zoom animation. The next
+  // renderHighRes call will re-show it once the correct tile is drawn.
+  useEffect(() => {
+    if (patternScale === prevPatternScaleRef.current) return;
+    prevPatternScaleRef.current = patternScale;
+    const canvas = canvasRef.current;
+    if (canvas && showHighResOverlayRef.current)
+      canvas.style.display = "none";
+  }, [patternScale]);
+
   const renderHighRes = useCallback(async () => {
     if (!pdf) return;
     if (!showHighResOverlayRef.current) return;
@@ -132,6 +148,10 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
     const quadH = br.y - tl.y;
     if (quadW <= 0 || quadH <= 0) return;
 
+    console.log("[high-res] quad tl:", tl, "br:", br,
+      "quadW:", quadW.toFixed(1), "quadH:", quadH.toFixed(1),
+      "patternScale:", patternScale);
+
     // Expand region by the padding factor so small pans don't trigger a re-render.
     const padW = (quadW * (PADDING_FACTOR - 1)) / 2;
     const padH = (quadH * (PADDING_FACTOR - 1)) / 2;
@@ -144,27 +164,18 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
     const userUnit = page.userUnit || 1;
 
     // --- Snap to integer CSS pixel grid ---
-    // The core alignment invariant: the canvas's left/top CSS position (an
-    // integer) and the PDF offsetX/offsetY must agree about where PDF position
-    // X=0 sits. If we computed cssLeft = Math.floor(patternX * patternScale)
-    // but rendered with offsetX derived from the unfloored patternX, the two
-    // would disagree by a sub-pixel amount that changes each pan, causing
-    // consecutive high-res tiles to drift relative to each other.
-    //
-    // Solution: decide the integer CSS pixel boundaries first, then derive all
-    // PDF coordinates from those integers. This guarantees the canvas left edge
-    // and the PDF rendering origin are identical by construction.
+    // getViewportQuad returns coordinates already in CSS space of the grid
+    // element (pattern-space × patternScale). So regionX/Y/W/H are CSS px —
+    // do NOT multiply by patternScale again. Page bounds must also be in CSS px.
     const pageView = page.getViewport({ scale: 1 });
-    const pageW_pattern = pageView.width * PDF_TO_CSS_UNITS * userUnit;
-    const pageH_pattern = pageView.height * PDF_TO_CSS_UNITS * userUnit;
+    const pageW_css = pageView.width * PDF_TO_CSS_UNITS * userUnit * patternScale;
+    const pageH_css = pageView.height * PDF_TO_CSS_UNITS * userUnit * patternScale;
 
-    // Clamp within page bounds (float), then snap each edge to integer CSS px.
-    const rawLeft = Math.max(0, regionX_pattern) * patternScale;
-    const rawTop = Math.max(0, regionY_pattern) * patternScale;
-    const rawRight =
-      Math.min(regionX_pattern + regionW_pattern, pageW_pattern) * patternScale;
-    const rawBottom =
-      Math.min(regionY_pattern + regionH_pattern, pageH_pattern) * patternScale;
+    // Clamp within page bounds (CSS px), then snap each edge to integer CSS px.
+    const rawLeft = Math.max(0, regionX_pattern);
+    const rawTop = Math.max(0, regionY_pattern);
+    const rawRight = Math.min(regionX_pattern + regionW_pattern, pageW_css);
+    const rawBottom = Math.min(regionY_pattern + regionH_pattern, pageH_css);
     const cssLeft = Math.round(rawLeft);
     const cssTop = Math.round(rawTop);
     const cssRight = Math.round(rawRight);
@@ -172,6 +183,13 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
     const cssWidth = cssRight - cssLeft;
     const cssHeight = cssBottom - cssTop;
     if (cssWidth <= 0 || cssHeight <= 0) return;
+
+    console.log("[high-res] page css size:",
+      pageW_css.toFixed(1), "x", pageH_css.toFixed(1),
+      "| region raw left:", rawLeft.toFixed(1), "top:", rawTop.toFixed(1),
+      "right:", rawRight.toFixed(1), "bottom:", rawBottom.toFixed(1),
+      "| css left:", cssLeft, "top:", cssTop,
+      "width:", cssWidth, "height:", cssHeight);
 
     // Derive PDF region from the snapped integer CSS positions so the render
     // origin matches the canvas placement exactly.
@@ -314,6 +332,14 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
         }
         bitmap.close();
         canvas.style.display = showHighResOverlayRef.current ? "" : "none";
+        requestAnimationFrame(() => {
+          const r = canvas.getBoundingClientRect();
+          console.log("[high-res] canvas screen rect (Safari):",
+            `left:${r.left.toFixed(0)} top:${r.top.toFixed(0)}`,
+            `right:${r.right.toFixed(0)} bottom:${r.bottom.toFixed(0)}`,
+            `w:${r.width.toFixed(0)} h:${r.height.toFixed(0)}`,
+            `| screen: ${window.innerWidth}×${window.innerHeight}`);
+        });
       };
       worker.postMessage(request, [request.buffer]);
     } else {
@@ -333,6 +359,14 @@ export default function PdfHighResViewport({ perspective, pageNumber }: Props) {
       dest.drawImage(tempCanvas, 0, 0);
       canvas.style.filter = debugFilter;
       canvas.style.display = showHighResOverlayRef.current ? "" : "none";
+      requestAnimationFrame(() => {
+        const r = canvas.getBoundingClientRect();
+        console.log("[high-res] canvas screen rect (Chrome):",
+          `left:${r.left.toFixed(0)} top:${r.top.toFixed(0)}`,
+          `right:${r.right.toFixed(0)} bottom:${r.bottom.toFixed(0)}`,
+          `w:${r.width.toFixed(0)} h:${r.height.toFixed(0)}`,
+          `| screen: ${window.innerWidth}×${window.innerHeight}`);
+      });
     }
   }, [
     pdf,

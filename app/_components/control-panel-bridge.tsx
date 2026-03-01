@@ -161,8 +161,10 @@ interface ControlPanelBridgeProps {
   // Forces the PDF renderer to re-render all pages from scratch
   forcePdfRerender: () => void;
   /** Dev toggle: hide/show the high-res viewport overlay canvas. */
+  showHighResOverlay: boolean;
   setShowHighResOverlay: (value: boolean) => void;
   /** Dev toggle: tint the high-res overlay amber for alignment testing. */
+  debugTintHighRes: boolean;
   setDebugTintHighRes: (value: boolean) => void;
 }
 
@@ -237,7 +239,9 @@ export function ControlPanelBridge({
   selectedLine,
   setSelectedLine,
   forcePdfRerender,
+  showHighResOverlay,
   setShowHighResOverlay,
+  debugTintHighRes,
   setDebugTintHighRes,
 }: ControlPanelBridgeProps) {
   const transformer = useTransformerContext();
@@ -1080,6 +1084,10 @@ export function ControlPanelBridge({
       // Lines for measure tool
       lines,
       selectedLine,
+      // Dev toggles — included so the control panel checkboxes stay in sync
+      // with the calibrate page state on initial load.
+      showHighResOverlay,
+      debugTintHighRes,
     }),
     [
       isCalibrating,
@@ -1116,6 +1124,8 @@ export function ControlPanelBridge({
       clearingMode,
       lines,
       selectedLine,
+      showHighResOverlay,
+      debugTintHighRes,
     ],
   );
 
