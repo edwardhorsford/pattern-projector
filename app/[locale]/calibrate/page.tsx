@@ -160,7 +160,7 @@ export default function Page() {
   const [mailOpen, setMailOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<null | string>(null);
 
-  // Markers for "mark complete" feature - positions in PDF coordinates
+  // Markers for "mark complete" feature - positions in pattern space
   const [markers, setMarkers] = useState<Marker[]>([]);
   const [markingMode, setMarkingMode] = useState<boolean>(false);
   const [clearingMode, setClearingMode] = useState<boolean>(false);
@@ -719,6 +719,22 @@ export default function Page() {
   useEffect(() => {
     calibrationCallback();
   }, [points, width, height, unitOfMeasure, calibrationCallback]);
+
+  // Clear markers when the file changes (same pattern as line tool in MeasureCanvas)
+  const previousFileKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const currentFileKey = file
+      ? `${file.name}:${file.size}:${file.lastModified}`
+      : null;
+    if (previousFileKeyRef.current === null) {
+      previousFileKeyRef.current = currentFileKey;
+      return;
+    }
+    if (previousFileKeyRef.current !== currentFileKey) {
+      setMarkers([]);
+    }
+    previousFileKeyRef.current = currentFileKey;
+  }, [file]);
 
   useEffect(() => {
     window.addEventListener("keydown", handleProjectZoomShortcut);
