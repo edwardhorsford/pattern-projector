@@ -6,6 +6,7 @@ import { Inter } from "next/font/google";
 import { GoogleAnalytics } from "@next/third-parties/google";
 
 import type { Metadata } from "next";
+import DevServerMonitor from "@/_components/dev-server-monitor";
 const inter = Inter({ subsets: ["latin"] });
 
 const APP_TITLE = "Pattern Projector";
@@ -68,6 +69,7 @@ export default function LocaleLayout({
         <NextIntlClientProvider locale={locale} messages={messages}>
           {children}
         </NextIntlClientProvider>
+        <DevServerMonitor />
       </body>
       <GoogleAnalytics gaId="G-JP1MLBQSKC" />
     </html>
