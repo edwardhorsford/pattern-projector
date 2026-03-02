@@ -94,7 +94,6 @@ export default function PdfHighResViewport({
     debugLowResBase,
     erosions,
     layers,
-    magnifying,
     patternScale,
     recolourHex,
     renderVersion,
@@ -425,10 +424,8 @@ export default function PdfHighResViewport({
     // We therefore use the raw user-set erosions value — this keeps individual
     // passes fast at the cost of some line-weight inconsistency vs the base.
     const scaleRatio = renderScale / normalBaseRenderScale;
-    const effectiveErosionsChrome = magnifying
-      ? 0
-      : Math.round(erosions * scaleRatio);
-    const effectiveErosionsSafari = magnifying ? 0 : erosions;
+    const effectiveErosionsChrome = Math.round(erosions * scaleRatio);
+    const effectiveErosionsSafari = erosions;
     const useRecolour = !!recolourHex && !isSafari;
     const renderErosions = isSafari ? effectiveErosionsSafari : 0;
     const safariEffectiveRecolourHex = isSafari
@@ -547,7 +544,6 @@ export default function PdfHighResViewport({
     patternScale,
     erosions,
     layers,
-    magnifying,
     recolourHex,
     renderVersion,
     // showHighResOverlay intentionally omitted — read via showHighResOverlayRef
