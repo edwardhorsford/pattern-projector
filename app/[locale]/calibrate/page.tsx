@@ -143,6 +143,7 @@ export default function Page() {
   const [lineThickness, setLineThickness] = useState<number>(0);
   const [measuring, setMeasuring] = useState<boolean>(false);
   const [magnifying, setMagnifying] = useState<boolean>(false);
+  const [magnifyTransform, setMagnifyTransform] = useState<Matrix | null>(null);
   const [zoomedOut, setZoomedOut] = useState<boolean>(false);
   const [menusHidden, setMenusHidden] = useState<boolean>(false);
   const [isIdle, setIsIdle] = useState(false);
@@ -238,16 +239,13 @@ export default function Page() {
 
   const svgStyle = {
     filter: filter(
-      magnifying,
       lineThickness,
       displaySettings.theme,
       isRecolour,
     ),
   };
 
-  // Set erosions when not magnifying so the user can see text/lines more clearly when magnifying
   function filter(
-    magnifying: boolean,
     lineThickness: number,
     theme: Theme,
     useRecolour: boolean = false,
@@ -255,7 +253,7 @@ export default function Page() {
     // When recolouring, the container theme filter is "none" — the recolour
     // SVG filter applied on the canvas/element handles inversion + colouring.
     const t = useRecolour ? "none" : themeRecolourFilter(theme);
-    const thicken = erosionFilter(magnifying ? 0 : lineThickness, useRecolour);
+    const thicken = erosionFilter(lineThickness, useRecolour);
     // Add contrast after erosion to clean up grey anti-aliased edges before inverting
     const contrastBoost =
       isDarkTheme(theme) && thicken !== "none" ? "contrast(2)" : "";
@@ -1064,6 +1062,8 @@ export default function Page() {
               setZoomedOut={setZoomedOut}
               magnifying={magnifying}
               setMagnifying={setMagnifying}
+              magnifyTransform={magnifyTransform}
+              setMagnifyTransform={setMagnifyTransform}
               measuring={measuring}
               setMeasuring={setMeasuring}
               file={file}
@@ -1187,6 +1187,8 @@ export default function Page() {
                   setPerspective={setPerspective}
                   magnifying={magnifying}
                   setMagnifying={setMagnifying}
+                  magnifyTransform={magnifyTransform}
+                  setMagnifyTransform={setMagnifyTransform}
                   setRestoreTransforms={setRestoreTransforms}
                   restoreTransforms={restoreTransforms}
                   zoomedOut={zoomedOut}
@@ -1265,6 +1267,7 @@ export default function Page() {
                   calibrationTransform={calibrationTransform}
                   zoomedOut={zoomedOut}
                   magnifying={magnifying}
+                  magnifyTransform={magnifyTransform}
                   restoreTransforms={restoreTransforms}
                   patternScale={String(patternScaleFactor)}
                 />

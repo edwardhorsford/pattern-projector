@@ -22,6 +22,7 @@ export default function OverlayCanvas({
   calibrationTransform,
   zoomedOut,
   magnifying,
+  magnifyTransform,
   restoreTransforms,
   patternScale,
 }: {
@@ -34,6 +35,7 @@ export default function OverlayCanvas({
   calibrationTransform: Matrix;
   zoomedOut: boolean;
   magnifying: boolean;
+  magnifyTransform: Matrix | null;
   restoreTransforms: RestoreTransforms | null;
   patternScale: string;
 }) {
@@ -73,6 +75,7 @@ export default function OverlayCanvas({
           calibrationTransform,
           zoomedOut,
           magnifying,
+          magnifyTransform,
           restoreTransforms,
           t,
           patternScale,
@@ -90,6 +93,7 @@ export default function OverlayCanvas({
     calibrationTransform,
     zoomedOut,
     magnifying,
+    magnifyTransform,
     restoreTransforms,
     t,
     patternScale,

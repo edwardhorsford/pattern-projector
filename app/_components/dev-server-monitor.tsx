@@ -1,62 +1,62 @@
 // app/_components/dev-server-monitor.tsx
 // Shows a warning overlay in development when the Next.js dev server stops responding.
 
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
+import { useEffect, useState } from "react";
 
-const POLL_INTERVAL_MS = 3000
-const FAILURE_THRESHOLD = 2
+const POLL_INTERVAL_MS = 3000;
+const FAILURE_THRESHOLD = 2;
 
 /**
  * Polls /api/ping in development mode and shows a full-screen warning when
  * the dev server stops responding. Has no effect in production builds.
  */
 export default function DevServerMonitor() {
-  if (process.env.NODE_ENV !== "development") return null
-  return <DevServerMonitorInner />
+  if (process.env.NODE_ENV !== "development") return null;
+  return <DevServerMonitorInner />;
 }
 
 function DevServerMonitorInner() {
-  const [serverDown, setServerDown] = useState(false)
+  const [serverDown, setServerDown] = useState(false);
 
   useEffect(() => {
-    let failureCount = 0
-    let cancelled = false
+    let failureCount = 0;
+    let cancelled = false;
 
     async function ping() {
-      if (cancelled) return
+      if (cancelled) return;
 
       try {
-        const response = await fetch("/api/ping", { cache: "no-store" })
-        if (response.ok || response.status === 204) {
-          failureCount = 0
-          setServerDown(false)
-        } else {
-          failureCount++
-        }
+        // Any HTTP response means the server is up — only a network error means it's gone.
+        await fetch(window.location.origin + "/", {
+          method: "HEAD",
+          cache: "no-store",
+        })
+        failureCount = 0
+        setServerDown(false)
       } catch {
-        failureCount++
+        failureCount++;
       }
 
       if (failureCount >= FAILURE_THRESHOLD) {
-        setServerDown(true)
+        setServerDown(true);
       }
 
       if (!cancelled) {
-        setTimeout(ping, POLL_INTERVAL_MS)
+        setTimeout(ping, POLL_INTERVAL_MS);
       }
     }
 
-    const timerId = setTimeout(ping, POLL_INTERVAL_MS)
+    const timerId = setTimeout(ping, POLL_INTERVAL_MS);
 
     return () => {
-      cancelled = true
-      clearTimeout(timerId)
-    }
-  }, [])
+      cancelled = true;
+      clearTimeout(timerId);
+    };
+  }, []);
 
-  if (!serverDown) return null
+  if (!serverDown) return null;
 
   return (
     <div
@@ -109,5 +109,5 @@ function DevServerMonitorInner() {
         </p>
       </div>
     </div>
-  )
+  );
 }

@@ -85,6 +85,9 @@ interface ControlPanelBridgeProps {
   setZoomedOut: (value: boolean) => void;
   magnifying: boolean;
   setMagnifying: (value: boolean) => void;
+  /** CSS-only scale transform applied when magnified, null when not. */
+  magnifyTransform: Matrix | null;
+  setMagnifyTransform: (value: Matrix | null) => void;
   measuring: boolean;
   setMeasuring: (value: boolean) => void;
   file: File | null;
@@ -186,6 +189,8 @@ export function ControlPanelBridge({
   setZoomedOut,
   magnifying,
   setMagnifying,
+  magnifyTransform,
+  setMagnifyTransform,
   measuring,
   setMeasuring,
   file,
@@ -337,11 +342,12 @@ export function ControlPanelBridge({
     }
   }, [isPreviewLoading]);
 
-  // When zoomed out or magnifying, use the saved transform for preview display
+  // When zoomed out, use the saved transform for preview display.
   // This preserves the rotation/flip state in the preview even though the actual
-  // localTransform is reset to identity during zoom out
+  // localTransform is reset to identity during zoom out.
+  // Magnify no longer modifies localTransform, so no special handling needed.
   const effectiveTransform =
-    (zoomedOut || magnifying) && restoreTransforms
+    zoomedOut && restoreTransforms
       ? restoreTransforms.localTransform
       : localTransform;
 
@@ -1021,8 +1027,8 @@ export function ControlPanelBridge({
       displaySettings,
       zoomedOut,
       magnifying,
-      // Whether we're actively zoomed in (magnify mode + already magnified)
-      isMagnified: magnifying && restoreTransforms !== null,
+      // Whether we're actively zoomed in (magnify mode + transform applied)
+      isMagnified: magnifying && magnifyTransform !== null,
       measuring,
       file: file ? { name: file.name, type: file.type } : null,
       lineThickness,
@@ -1480,30 +1486,18 @@ export function ControlPanelBridge({
               unitOfMeasure,
             );
 
-            if (magnifying && !restoreTransforms) {
-              // Not yet magnified - save transforms and magnify at the point
-              setRestoreTransforms({
-                localTransform: localTransform.clone(),
-                calibrationTransform: calibrationTransform.clone(),
-              });
-
-              // Transform the clicked point through localTransform
+            if (magnifying && magnifyTransform === null) {
+              // Not yet magnified — build a CSS-only magnify transform that
+              // centres the clicked point on screen then scales around centre.
               const current = transformPoint({ x, y }, localTransform);
-
-              // Create a new transform that centers on that point then scales
               const translateToCenter = translate({
                 x: center.x - current.x,
                 y: center.y - current.y,
               });
               const scaleAtCenter = scaleAboutPoint(MAGNIFY_SCALE, center);
-
-              // Apply: first translate to center, then scale around center
-              const newTransform = scaleAtCenter
-                .mmul(translateToCenter)
-                .mmul(localTransform);
-              transformer.setLocalTransform(newTransform);
-            } else if (magnifying && restoreTransforms) {
-              // Already magnified - exit magnify mode
+              setMagnifyTransform(scaleAtCenter.mmul(translateToCenter));
+            } else if (magnifying && magnifyTransform !== null) {
+              // Already magnified — exit magnify mode
               setMagnifying(false);
             }
             break;

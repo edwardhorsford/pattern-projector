@@ -19,6 +19,7 @@ import {
   getBounds,
   rectCorners,
 } from "@/_lib/geometry";
+import { useRef } from "react";
 import { Point } from "@/_lib/point";
 import { CSS_PIXELS_PER_INCH } from "@/_lib/pixels-per-inch";
 import { Unit } from "@/_lib/unit";
@@ -43,6 +44,8 @@ export default function Draggable({
   className,
   magnifying,
   setMagnifying,
+  magnifyTransform,
+  setMagnifyTransform,
   restoreTransforms,
   setRestoreTransforms,
   zoomedOut,
@@ -70,6 +73,8 @@ export default function Draggable({
   className: string;
   magnifying: boolean;
   setMagnifying: Dispatch<SetStateAction<boolean>>;
+  magnifyTransform: Matrix | null;
+  setMagnifyTransform: Dispatch<SetStateAction<Matrix | null>>;
   setRestoreTransforms: Dispatch<SetStateAction<RestoreTransforms | null>>;
   restoreTransforms: RestoreTransforms | null;
   zoomedOut: boolean;
@@ -89,6 +94,9 @@ export default function Draggable({
 }) {
   const [dragStart, setDragStart] = useState<Point | null>(null);
   const [transformStart, setTransformStart] = useState<Matrix | null>(null);
+  // Stores the magnifyTransform at the start of a magnify drag so panning
+  // during magnify updates magnifyTransform relative to its initial value.
+  const magnifyDragStartRef = useRef<Matrix | null>(null);
 
   const transform = useTransformContext();
   const transformer = useTransformerContext();
@@ -107,6 +115,7 @@ export default function Draggable({
   function handleOnEnd(): void {
     setDragStart(null);
     setTransformStart(null);
+    magnifyDragStartRef.current = null;
   }
 
   function handleMove(e: React.PointerEvent) {
@@ -122,6 +131,17 @@ export default function Draggable({
         handleOnEnd();
         return;
       }
+    }
+
+    // Dragging while magnified — update magnifyTransform, not localTransform.
+    if (magnifyDragStartRef.current !== null && dragStart !== null) {
+      const dest = transformPoint(p, perspective);
+      const tx = dest.x - dragStart.x;
+      const ty = dest.y - dragStart.y;
+      setMagnifyTransform(
+        translate({ x: tx, y: ty }).mmul(magnifyDragStartRef.current),
+      );
+      return;
     }
 
     if (transformStart !== null && dragStart !== null) {
@@ -177,15 +197,16 @@ export default function Draggable({
     }
 
     if (magnifying) {
-      if (restoreTransforms === null) {
-        setRestoreTransforms({
-          localTransform: transform.clone(),
-          calibrationTransform: calibrationTransform.clone(),
-        });
-        transformer.magnify(MAGNIFY_SCALE, pt);
+      if (magnifyTransform === null) {
+        // First click: apply magnify as a separate CSS-only transform.
+        // localTransform stays unchanged so the high-res overlay is not disrupted.
+        const mt = scaleAboutPoint(MAGNIFY_SCALE, pt);
+        setMagnifyTransform(mt);
         setDragStart(pt);
-        setTransformStart(scaleAboutPoint(MAGNIFY_SCALE, pt).mmul(transform));
+        magnifyDragStartRef.current = mt;
       } else {
+        // Second click: exit magnify.
+        setMagnifyTransform(null);
         setMagnifying(false);
       }
     } else if (restoreTransforms !== null) {
@@ -265,15 +286,25 @@ export default function Draggable({
     transformer.setLocalTransform(Matrix.identity(3));
   }, [file]);
 
+  // Clear magnifyTransform when magnify mode is toggled off (e.g. via header
+  // button or control panel) so the view returns to normal even if the user
+  // didn't click to exit.
   useEffect(() => {
-    if (!magnifying && !zoomedOut && restoreTransforms !== null) {
+    if (!magnifying) {
+      setMagnifyTransform(null);
+    }
+  }, [magnifying, setMagnifyTransform]);
+
+  // Restore localTransform and calibrationTransform when exiting zoom-out.
+  // Magnify no longer uses restoreTransforms — it has its own magnifyTransform.
+  useEffect(() => {
+    if (!zoomedOut && restoreTransforms !== null) {
       transformer.setLocalTransform(restoreTransforms.localTransform);
       setCalibrationTransform(restoreTransforms.calibrationTransform);
       setPerspective(inverse(restoreTransforms.calibrationTransform));
       setRestoreTransforms(null);
     }
   }, [
-    magnifying,
     zoomedOut,
     restoreTransforms,
     setRestoreTransforms,
@@ -291,7 +322,7 @@ export default function Draggable({
   } else if (zoomedOut || magnifying) {
     cursorMode = "cursor-zoom-in";
   }
-  if (magnifying && restoreTransforms !== null) {
+  if (magnifying && magnifyTransform !== null) {
     cursorMode = "cursor-zoom-out";
   }
   if (dragStart !== null) {
@@ -311,7 +342,11 @@ export default function Draggable({
       <div
         className={"absolute z-0"}
         style={{
-          transform: `${toMatrix3d(calibrationTransform.mmul(transform))}`,
+          transform: `${toMatrix3d(
+            magnifyTransform
+              ? calibrationTransform.mmul(magnifyTransform).mmul(transform)
+              : calibrationTransform.mmul(transform),
+          )}`,
           transformOrigin: "0 0",
           // contain/backface hints reduce compositor artefacts under extreme perspective.
           contain: "paint",

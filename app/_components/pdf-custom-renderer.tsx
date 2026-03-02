@@ -101,14 +101,14 @@ export default function CustomRenderer() {
   const cssFilter = isSafari
     ? undefined // Safari: all processing done via pixels (no CSS filter on canvas)
     : [
-        erosionFilter(magnifying ? 0 : erosions, useRecolour),
+        erosionFilter(erosions, useRecolour),
         themeFilter && themeFilter !== "none" ? themeFilter : undefined,
       ]
         .filter(Boolean)
         .join(" ");
 
   // Safari does erosion and enhancement via pixel manipulation
-  const renderErosions = isSafari ? (magnifying ? 0 : erosions) : 0;
+  const renderErosions = isSafari ? erosions : 0;
 
   // Effective recolour target for the Safari pixel-processing path.
   // Colour themes: use recolourHex directly (green, cyan, amber, magenta).
