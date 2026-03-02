@@ -53,6 +53,7 @@ function PdfViewer({
   canvasBackground,
   recolourHex,
   magnifying,
+  magnifyTransform,
   setFileLoadStatus,
   setLineThicknessStatus,
   gridCenter,
@@ -78,6 +79,7 @@ function PdfViewer({
   canvasBackground?: string;
   recolourHex?: string;
   magnifying: boolean;
+  magnifyTransform?: Matrix | null;
   setFileLoadStatus: Dispatch<SetStateAction<LoadStatusEnum>>;
   setLineThicknessStatus: Dispatch<SetStateAction<LoadStatusEnum>>;
   gridCenter: Point;
@@ -363,6 +365,7 @@ function PdfViewer({
                     pageNumber={value}
                     pageOffsetXBase={pageOffsetXBase}
                     pageOffsetYBase={pageOffsetYBase}
+                    magnifyTransform={magnifyTransform}
                   />
                 )}
               </Fragment>

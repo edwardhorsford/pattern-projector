@@ -1232,6 +1232,7 @@ export default function Page() {
                       setLineThicknessStatus={setLineThicknessStatus}
                       setFileLoadStatus={setFileLoadStatus}
                       magnifying={magnifying}
+                      magnifyTransform={magnifyTransform}
                       gridCenter={calibrationCenter}
                       patternScale={patternScaleFactor}
                       setMenuStates={setMenuStates}

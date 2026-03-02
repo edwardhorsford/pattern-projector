@@ -265,7 +265,7 @@ export function scale(s: number, sy: null | number = null): Matrix {
 }
 
 /** Scale factor applied by the magnify tool. */
-export const MAGNIFY_SCALE = 3;
+export const MAGNIFY_SCALE = 10;
 
 export function scaleAboutPoint(s: number, point: Point): Matrix {
   return translate(point)

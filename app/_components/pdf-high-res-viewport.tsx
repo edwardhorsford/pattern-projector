@@ -2,6 +2,12 @@
 // High-resolution overlay for the visible viewport area. Debounces after pan/zoom,
 // renders the visible PDF sub-region at full device resolution, and composites it
 // on top of the base render so the projected area stays sharp when zoomed in.
+//
+// Normal mode: canvas positioned inside the grid container (grid-space CSS).
+// Magnify mode: a SEPARATE canvas appended to document.body in screen space,
+// bypassing all CSS transform chains so the compositor preserves the full
+// backing-store resolution. The PDF content is drawn at the correct screen
+// position using ctx.setTransform() with the accumulated cal × mag × local matrix.
 
 import {
   useCallback,
@@ -9,21 +15,21 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
-} from "react";
-import { useDocumentContext } from "react-pdf";
-import invariant from "tiny-invariant";
-import type { PDFPageProxy } from "pdfjs-dist";
-import { Matrix } from "ml-matrix";
-import { getBounds, getViewportQuad } from "@/_lib/geometry";
-import { PDF_TO_CSS_UNITS } from "@/_lib/pixels-per-inch";
-import { erosionFilter } from "@/_lib/erode";
-import useRenderContext from "@/_hooks/use-render-context";
-import { getScale } from "@/_components/pdf-custom-renderer";
-import { useTransformContext } from "@/_hooks/use-transform-context";
+} from "react"
+import { useDocumentContext } from "react-pdf"
+import invariant from "tiny-invariant"
+import type { PDFPageProxy } from "pdfjs-dist"
+import { inverse, Matrix } from "ml-matrix"
+import { getBounds, getViewportQuad } from "@/_lib/geometry"
+import { PDF_TO_CSS_UNITS } from "@/_lib/pixels-per-inch"
+import { erosionFilter } from "@/_lib/erode"
+import useRenderContext from "@/_hooks/use-render-context"
+import { getScale } from "@/_components/pdf-custom-renderer"
+import { useTransformContext } from "@/_hooks/use-transform-context"
 import type {
   PixelProcessRequest,
   PixelProcessResponse,
-} from "@/_lib/pixel-processor.worker";
+} from "@/_lib/pixel-processor.worker"
 
 /**
  * How much wider/taller than the visible quad to render, for panning headroom.
@@ -31,8 +37,8 @@ import type {
  * Safari renders slowly via the CPU pixel worker — keep the tile small so each
  * render completes quickly.
  */
-const CHROME_PADDING_FACTOR = 3;
-const SAFARI_PADDING_FACTOR = 1.5;
+const CHROME_PADDING_FACTOR = 3
+const SAFARI_PADDING_FACTOR = 1.5
 
 /**
  * When checking whether to skip a re-render because the viewport is still within
@@ -40,31 +46,35 @@ const SAFARI_PADDING_FACTOR = 1.5;
  * clearance on every side. Ensures a new tile is queued before the user reaches
  * the edge of the current one.
  */
-const MIN_TILE_MARGIN_FRACTION = 0.15;
+const MIN_TILE_MARGIN_FRACTION = 0.15
 
 /** Milliseconds to wait after a pan/zoom change before triggering a re-render. */
-const DEBOUNCE_MS = 300;
+const DEBOUNCE_MS = 300
 
-/**
- * Milliseconds after which a safety re-render is triggered even if the viewport
- * appears to be within the existing tile. Guards against stale tiles persisting
- * indefinitely (e.g. after a content change that didn't trigger a pan/zoom).
- */
-const STALE_TILE_MS = 2000;
+// NOTE: the previous STALE_TILE_MS safety timer was removed. It forced a full
+// re-render every 2 s even when the tile was valid, which hammered the Safari
+// pixel worker (2–10 s per render). The tile-skip check already verifies
+// renderVersion, so content changes are already captured.
 
 interface Props {
   /** Perspective matrix: maps screen space → pattern space. */
-  perspective: Matrix;
+  perspective: Matrix
   /** Number of the PDF page to render in high resolution. */
-  pageNumber: number;
+  pageNumber: number
   /**
    * Horizontal offset of this page's top-left corner within the grid container,
    * in CSS px at patternScale=1. Multiplied by patternScale internally to get
    * the actual CSS offset. Defaults to 0 (first/only page).
    */
-  pageOffsetXBase?: number;
+  pageOffsetXBase?: number
   /** Vertical offset of this page within the grid container, CSS px at patternScale=1. */
-  pageOffsetYBase?: number;
+  pageOffsetYBase?: number
+  /**
+   * CSS-only magnify transform (scaleAboutPoint). When present, the overlay
+   * switches to a body-level canvas positioned in screen space so the
+   * compositor preserves the full backing-store resolution.
+   */
+  magnifyTransform?: Matrix | null
 }
 
 /**
@@ -73,6 +83,11 @@ interface Props {
  * grid container (which already has position:relative), so its coordinates are in
  * the same "pattern × patternScale" CSS space as the base canvases.
  *
+ * When magnified, a second canvas is appended directly to document.body and
+ * positioned in screen space to bypass the CSS magnify transform chain. This
+ * prevents the browser compositor from down-sampling the backing store into the
+ * parent layer's texture at the small pre-magnify CSS box size.
+ *
  * Must be rendered inside a react-pdf <Document> context and a RenderContext.Provider.
  */
 export default function PdfHighResViewport({
@@ -80,15 +95,16 @@ export default function PdfHighResViewport({
   pageNumber,
   pageOffsetXBase = 0,
   pageOffsetYBase = 0,
+  magnifyTransform = null,
 }: Props) {
-  const docContext = useDocumentContext();
+  const docContext = useDocumentContext()
   invariant(
     docContext,
     "PdfHighResViewport must be rendered inside a react-pdf Document context",
-  );
-  const { pdf } = docContext;
+  )
+  const { pdf } = docContext
 
-  const localTransform = useTransformContext();
+  const localTransform = useTransformContext()
 
   const {
     debugLowResBase,
@@ -100,69 +116,139 @@ export default function PdfHighResViewport({
     showHighResOverlay,
     debugTintHighRes,
     themeFilter,
-  } = useRenderContext();
+  } = useRenderContext()
 
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const renderTaskRef = useRef<ReturnType<PDFPageProxy["render"]> | null>(null);
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const staleTileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const workerRef = useRef<Worker | null>(null);
+  // Grid-space canvas (used when NOT magnified).
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  // Body-level canvas (used when magnified). Created/destroyed imperatively.
+  const magnifyCanvasRef = useRef<HTMLCanvasElement | null>(null)
+
+  const renderTaskRef = useRef<ReturnType<PDFPageProxy["render"]> | null>(null)
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // staleTileTimerRef removed — stale timer was causing redundant expensive
+  // re-renders on Safari. The tile-skip check + renderVersion is sufficient.
+  const workerRef = useRef<Worker | null>(null)
   /** Monotonically increasing ID so stale Safari worker responses can be discarded. */
-  const renderIdRef = useRef(0);
+  const renderIdRef = useRef(0)
   // Ref so renderHighRes can read the current flag without it being in its dep
   // array. That way toggling the overlay does not recreate the callback and
   // does not re-trigger the debounce (which would cause a 300 ms flash).
-  const showHighResOverlayRef = useRef(showHighResOverlay ?? true);
-  // Not using a ref here — when the tint is toggled we want a fresh render
-  // so the new pixels are drawn with/without the tint applied.
+  const showHighResOverlayRef = useRef(showHighResOverlay ?? true)
 
   // Track the patternScale and CSS position of the last committed tile so we
   // can apply a compensating CSS transform when patternScale changes. This keeps
   // the overlay pixel-for-pixel aligned with the base canvas during a zoom
   // animation, without needing a full re-render. renderHighRes clears the
   // transform once it writes the correct CSS values for the new scale.
-  const renderedPatternScaleRef = useRef<number | null>(null);
-  const renderedCssLeftRef = useRef(0);
-  const renderedCssTopRef = useRef(0);
-  const renderedRenderVersionRef = useRef<number | null>(null);
+  const renderedPatternScaleRef = useRef<number | null>(null)
+  const renderedCssLeftRef = useRef(0)
+  const renderedCssTopRef = useRef(0)
+  const renderedRenderVersionRef = useRef<number | null>(null)
+  // Tile dimensions in grid-container CSS space for the tile-skip check.
+  const renderedTileWidthRef = useRef(0)
+  const renderedTileHeightRef = useRef(0)
+  // Tracks whether the previous render was magnified so we can detect
+  // transitions (null↔non-null) and invalidate the stale tile.
+  const wasMagnifiedRef = useRef(false)
   // Always reflects the latest patternScale so async render completions can
   // check whether their scale is still current before committing CSS values.
-  const currentPatternScaleRef = useRef(patternScale);
+  const currentPatternScaleRef = useRef(patternScale)
   // Assign during render (not in a useEffect) so the ref is updated before any
   // async callbacks can run — closing the window where a stale render sees an
   // outdated value.
-  currentPatternScaleRef.current = patternScale;
+  currentPatternScaleRef.current = patternScale
+
+  // --- Magnify compositing cache ---
+  // The rendered tile (sourceCanvas) and its grid-space bounds are cached here
+  // so that panning only requires a cheap drawImage + setTransform, not a full
+  // pdf.js re-render. renderHighRes updates this; the compositing effect reads it.
+  const cachedTileRef = useRef<{
+    canvas: HTMLCanvasElement
+    cssLeft: number
+    cssTop: number
+    cssWidth: number
+    cssHeight: number
+    cssFilter: string | undefined
+    debugFilter: string
+    screenCanvasW: number
+    screenCanvasH: number
+    screenWidth: number
+    screenHeight: number
+    dpr: number
+  } | null>(null)
+
+  // Always-current refs for values that the compositing effect needs to read
+  // without being in its dependency array (to avoid recreating it every frame).
+  const localTransformRef = useRef(localTransform)
+  localTransformRef.current = localTransform
+  const magnifyTransformRef = useRef(magnifyTransform)
+  magnifyTransformRef.current = magnifyTransform
+  const perspectiveRef = useRef(perspective)
+  perspectiveRef.current = perspective
 
   const isSafari = useMemo(() => {
-    const ua = navigator.userAgent.toLowerCase();
-    return ua.indexOf("safari") !== -1 && ua.indexOf("chrome") === -1;
-  }, []);
+    const ua = navigator.userAgent.toLowerCase()
+    return ua.indexOf("safari") !== -1 && ua.indexOf("chrome") === -1
+  }, [])
 
   const getWorker = useCallback((): Worker => {
     if (!workerRef.current) {
       workerRef.current = new Worker(
         new URL("../_lib/pixel-processor.worker", import.meta.url),
-      );
+      )
     }
-    return workerRef.current;
-  }, []);
+    return workerRef.current
+  }, [])
 
-  // Terminate the pixel worker when unmounting.
+  /**
+   * Returns (or creates) the body-level magnify canvas. Appended to
+   * document.body so it sits outside all CSS transform chains.
+   */
+  const getOrCreateMagnifyCanvas = useCallback((): HTMLCanvasElement => {
+    if (!magnifyCanvasRef.current) {
+      const c = document.createElement("canvas")
+      c.style.position = "fixed"
+      c.style.left = "0"
+      c.style.top = "0"
+      c.style.pointerEvents = "none"
+      c.style.imageRendering = "pixelated"
+      // z-index high enough to sit above the Draggable content but below
+      // interactive UI (menus are z-40+).
+      c.style.zIndex = "35"
+      document.body.appendChild(c)
+      magnifyCanvasRef.current = c
+    }
+    return magnifyCanvasRef.current
+  }, [])
+
+  /** Hides and detaches the body-level magnify canvas if it exists. */
+  const removeMagnifyCanvas = useCallback(() => {
+    if (magnifyCanvasRef.current) {
+      magnifyCanvasRef.current.remove()
+      magnifyCanvasRef.current = null
+    }
+  }, [])
+
+  // Terminate the pixel worker and remove body canvas when unmounting.
   useEffect(() => {
     return () => {
-      workerRef.current?.terminate();
-      workerRef.current = null;
-    };
-  }, []);
+      workerRef.current?.terminate()
+      workerRef.current = null
+      removeMagnifyCanvas()
+      cachedTileRef.current = null
+    }
+  }, [removeMagnifyCanvas])
 
   // Apply display toggle immediately when the visibility flag changes,
   // without waiting for the next debounced render.
   useEffect(() => {
-    showHighResOverlayRef.current = showHighResOverlay ?? true;
-    const canvas = canvasRef.current;
+    showHighResOverlayRef.current = showHighResOverlay ?? true
+    const canvas = canvasRef.current
     if (canvas)
-      canvas.style.display = showHighResOverlayRef.current ? "" : "none";
-  }, [showHighResOverlay]);
+      canvas.style.display = showHighResOverlayRef.current ? "" : "none"
+    if (magnifyCanvasRef.current)
+      magnifyCanvasRef.current.style.display = showHighResOverlayRef.current ? "" : "none"
+  }, [showHighResOverlay])
 
   // useLayoutEffect (not useEffect) so the transform is applied synchronously
   // after DOM commit and before the browser paints — prevents a flash frame
@@ -170,229 +256,357 @@ export default function PdfHighResViewport({
   useLayoutEffect(() => {
     // Bump the render ID so any in-flight async render (Safari worker or Chrome
     // await) that started at the old patternScale is treated as stale and its
-    // commit is discarded. This prevents the race where the worker finishes
-    // between dispatchPatternScaleAction and the next React render (before
-    // currentPatternScaleRef has been updated), causing both sides of the stale
-    // check to equal the old scale and the commit to slip through.
-    renderIdRef.current += 1;
+    // commit is discarded.
+    renderIdRef.current += 1
 
-    const canvas = canvasRef.current;
-    if (!canvas || !showHighResOverlayRef.current) return;
+    const canvas = canvasRef.current
+    if (!canvas || !showHighResOverlayRef.current) return
     // No tile committed yet — nothing to transform.
-    if (renderedPatternScaleRef.current === null) return;
-    const ratio = patternScale / renderedPatternScaleRef.current;
+    if (renderedPatternScaleRef.current === null) return
+    const ratio = patternScale / renderedPatternScaleRef.current
     if (Math.abs(ratio - 1) < 0.0001) {
-      // Back to the scale we rendered at — clear any leftover transform from a
-      // previous zoom step (e.g. 1 → 0.95 → 1 leaves scale(0.95) without this).
-      canvas.style.transform = "";
-      return;
+      canvas.style.transform = ""
+      canvas.style.transformOrigin = "0 0"
+      return
     }
-    // Canvas left/top are in natural CSS space where PDF coordinates scale
-    // directly with patternScale. So the correct new position for a canvas
-    // rendered at L,T with scale renderedScale is simply L*ratio, T*ratio.
-    // applyPatternScale also translates localTransform, but that affects the
-    // grid container's CSS transform — not the relationship between canvas
-    // left/top and PDF coordinates.
-    const L = renderedCssLeftRef.current;
-    const T = renderedCssTopRef.current;
-    const transform = `translate(${(L * (ratio - 1)).toFixed(1)}px, ${(T * (ratio - 1)).toFixed(1)}px) scale(${ratio.toFixed(4)})`;
-    canvas.style.transformOrigin = "0 0";
-    canvas.style.transform = transform;
-  }, [patternScale]);
+    const L = renderedCssLeftRef.current
+    const T = renderedCssTopRef.current
+    canvas.style.transformOrigin = "0 0"
+    canvas.style.transform = `translate(${(L * (ratio - 1)).toFixed(1)}px, ${(T * (ratio - 1)).toFixed(1)}px) scale(${ratio.toFixed(4)})`
+  }, [patternScale])
 
+  // When entering or exiting magnify, hide the stale tile (it covers the wrong
+  // region) and invalidate so the debounce fires an immediate re-render.
+  useLayoutEffect(() => {
+    const isMagnified = magnifyTransform !== null
+    if (wasMagnifiedRef.current === isMagnified) return
+    console.log("[HiRes] magnify transition: %s → %s",
+      wasMagnifiedRef.current ? "magnified" : "normal",
+      isMagnified ? "magnified" : "normal")
+    wasMagnifiedRef.current = isMagnified
+    renderIdRef.current += 1
+    // Hide the grid-space canvas.
+    const canvas = canvasRef.current
+    if (canvas) {
+      canvas.style.display = "none"
+    }
+    // When leaving magnify, remove the body-level canvas and clear the cache.
+    if (!isMagnified) {
+      removeMagnifyCanvas()
+      cachedTileRef.current = null
+    }
+    renderedPatternScaleRef.current = null
+  }, [magnifyTransform, removeMagnifyCanvas])
+
+  // ===================================================================
+  // compositeMagnifyTile — cheap re-draw of the cached tile onto the
+  // body canvas with the current grid-to-screen transform. No pdf.js
+  // render, no pixel worker — just a single drawImage + setTransform.
+  // ===================================================================
+  const compositeMagnifyTile = useCallback(() => {
+    const tile = cachedTileRef.current
+    if (!tile) return
+    const mag = magnifyTransformRef.current
+    if (!mag) return
+    const bodyCanvas = magnifyCanvasRef.current
+    if (!bodyCanvas) return
+    if (!showHighResOverlayRef.current) return
+
+    const cal = inverse(perspectiveRef.current)
+    const gridToScreen = cal.mmul(mag).mmul(localTransformRef.current)
+
+    // Ensure body canvas is correctly sized (no-op if already set).
+    if (bodyCanvas.width !== tile.screenCanvasW || bodyCanvas.height !== tile.screenCanvasH) {
+      bodyCanvas.width = tile.screenCanvasW
+      bodyCanvas.height = tile.screenCanvasH
+      bodyCanvas.style.width = `${tile.screenWidth}px`
+      bodyCanvas.style.height = `${tile.screenHeight}px`
+    }
+
+    const dest = bodyCanvas.getContext("2d")
+    if (!dest) return
+
+    // Clear previous frame.
+    dest.setTransform(1, 0, 0, 1, 0, 0)
+    dest.clearRect(0, 0, tile.screenCanvasW, tile.screenCanvasH)
+
+    // Affine approximation of the projective matrix.
+    const m = gridToScreen
+    const w = m.get(2, 2)
+    const a = m.get(0, 0) / w
+    const c = m.get(0, 1) / w
+    const e = m.get(0, 2) / w
+    const b = m.get(1, 0) / w
+    const d = m.get(1, 1) / w
+    const f = m.get(1, 2) / w
+
+    dest.setTransform(
+      a * tile.dpr, b * tile.dpr,
+      c * tile.dpr, d * tile.dpr,
+      e * tile.dpr, f * tile.dpr,
+    )
+
+    if (tile.cssFilter) {
+      dest.filter = tile.cssFilter
+    }
+    dest.imageSmoothingEnabled = true
+    dest.imageSmoothingQuality = "high"
+    dest.drawImage(tile.canvas, tile.cssLeft, tile.cssTop, tile.cssWidth, tile.cssHeight)
+    dest.setTransform(1, 0, 0, 1, 0, 0)
+    dest.filter = "none"
+
+    bodyCanvas.style.filter = tile.debugFilter
+    bodyCanvas.style.display = ""
+  }, [])
+
+  // Recomposite the cached magnify tile on every localTransform or
+  // magnifyTransform change. useLayoutEffect so it paints before the
+  // browser's next frame — keeps panning smooth.
+  useLayoutEffect(() => {
+    if (magnifyTransform === null) return
+    compositeMagnifyTile()
+  }, [localTransform, magnifyTransform, compositeMagnifyTile])
+
+  // ===================================================================
+  // renderHighRes
+  // ===================================================================
   const renderHighRes = useCallback(async () => {
-    if (!pdf) return;
-    if (!showHighResOverlayRef.current) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    // Capture our render ID immediately, before any awaits, so any subsequent
-    // patternScale change (which bumps renderIdRef in useLayoutEffect) or new
-    // render invocation will invalidate this one.
-    const thisRenderId = ++renderIdRef.current;
-    // Do NOT hide the canvas here. Keeping the old pixels visible during the
-    // async render means the user always sees something sharp (or blurry-base)
-    // rather than a black flash. After the await below, all canvas mutations
-    // run synchronously so the browser never paints a cleared (black) canvas.
+    if (!pdf) return
+    if (!showHighResOverlayRef.current) return
 
-    const screenWidth = window.innerWidth;
-    const screenHeight = window.innerHeight;
-    // On Safari, cap the effective DPR to limit pixel budget. The pixel worker
-    // runs erosion in a CPU loop — full 2× DPR on a 16M px canvas makes renders
-    // slow even after the maxArea cap. 1.5× still exceeds the base render resolution
-    // while reducing canvas area by ~44% on retina screens.
-    const rawDpr = window.devicePixelRatio;
-    const dpr = isSafari ? Math.min(rawDpr, 1.5) : rawDpr;
+    const isMagnified = magnifyTransform !== null
+
+    // Choose the target canvas based on magnify state.
+    // When magnified, use a canvas appended to document.body so it's outside
+    // the CSS transform chain. When not magnified, use the grid-space canvas.
+    const canvas = isMagnified
+      ? getOrCreateMagnifyCanvas()
+      : canvasRef.current
+    if (!canvas) return
+
+    // Capture our render ID immediately, before any awaits.
+    const thisRenderId = ++renderIdRef.current
+
+    const screenWidth = window.innerWidth
+    const screenHeight = window.innerHeight
+    const rawDpr = window.devicePixelRatio
+    const dpr = isSafari ? Math.min(rawDpr, 1.5) : rawDpr
+
+    // When magnified, account for the magnify transform when computing which
+    // grid-container region is visible on screen.
+    const magnifyScale = magnifyTransform
+      ? Math.max(1, magnifyTransform.get(0, 0))
+      : 1
+    const effectiveTransform = magnifyTransform
+      ? magnifyTransform.mmul(localTransform)
+      : localTransform
 
     // Find which region of the PDF grid's CSS coordinate space is currently
-    // visible on screen. getViewportQuad returns CSS pixels relative to the
-    // grid container's origin — patternScale is already incorporated.
+    // visible on screen.
     const quad = getViewportQuad(
       perspective,
-      localTransform,
+      effectiveTransform,
       screenWidth,
       screenHeight,
-    );
-    const [tl, br] = getBounds(quad);
+    )
+    const [tl, br] = getBounds(quad)
 
-    const quadW = br.x - tl.x;
-    const quadH = br.y - tl.y;
-    if (quadW <= 0 || quadH <= 0) return;
+    const quadW = br.x - tl.x
+    const quadH = br.y - tl.y
+    if (quadW <= 0 || quadH <= 0) return
 
-    // If a tile has already been rendered at the current scale, check whether the
-    // viewport still fits comfortably within it. "Comfortably" means each edge of
-    // the viewport has at least MIN_TILE_MARGIN_FRACTION of the tile's dimension
-    // as clearance — so a new tile will be queued before the user pans far enough
-    // to expose the base canvas. Saves a full re-render on every small pan.
-    const paddingFactor = isSafari
-      ? SAFARI_PADDING_FACTOR
-      : CHROME_PADDING_FACTOR;
+    // Padding factor for headroom. During magnify, Chrome can afford a larger
+    // tile (pdf.js is fast); Safari needs a smaller tile to keep the pixel
+    // worker time down.
+    const paddingFactor = magnifyScale > 1
+      ? (isSafari ? 1.3 : 1.8)
+      : isSafari
+        ? SAFARI_PADDING_FACTOR
+        : CHROME_PADDING_FACTOR
     if (
       renderedPatternScaleRef.current !== null &&
       patternScale === renderedPatternScaleRef.current &&
       renderedRenderVersionRef.current === renderVersion
     ) {
-      const tileLeft = renderedCssLeftRef.current;
-      const tileTop = renderedCssTopRef.current;
-      const tileW = parseFloat(canvas.style.width) || 0;
-      const tileH = parseFloat(canvas.style.height) || 0;
-      const marginX = tileW * MIN_TILE_MARGIN_FRACTION;
-      const marginY = tileH * MIN_TILE_MARGIN_FRACTION;
+      const tileLeft = renderedCssLeftRef.current
+      const tileTop = renderedCssTopRef.current
+      const tileW = renderedTileWidthRef.current
+      const tileH = renderedTileHeightRef.current
+      const marginX = tileW * MIN_TILE_MARGIN_FRACTION
+      const marginY = tileH * MIN_TILE_MARGIN_FRACTION
       if (
         tl.x >= tileLeft + marginX &&
         br.x <= tileLeft + tileW - marginX &&
         tl.y >= tileTop + marginY &&
         br.y <= tileTop + tileH - marginY
       ) {
-        return;
+        return
       }
     }
 
-    // Expand region by the padding factor so small pans don't trigger a re-render.
-    const padW = (quadW * (paddingFactor - 1)) / 2;
-    const padH = (quadH * (paddingFactor - 1)) / 2;
-    const regionX_css = tl.x - padW;
-    const regionY_css = tl.y - padH;
-    const regionW_css = quadW * paddingFactor;
-    const regionH_css = quadH * paddingFactor;
+    // Expand region by the padding factor.
+    const padW = (quadW * (paddingFactor - 1)) / 2
+    const padH = (quadH * (paddingFactor - 1)) / 2
+    const regionX_css = tl.x - padW
+    const regionY_css = tl.y - padH
+    const regionW_css = quadW * paddingFactor
+    const regionH_css = quadH * paddingFactor
 
-    const page = (await pdf.getPage(pageNumber)) as PDFPageProxy;
-    const userUnit = page.userUnit || 1;
+    const page = (await pdf.getPage(pageNumber)) as PDFPageProxy
+    const userUnit = page.userUnit || 1
 
-    // --- Snap to integer CSS pixel grid ---
-    // getViewportQuad returns coordinates already in CSS space of the grid
-    // element (pattern-space × patternScale). So regionX/Y/W/H are CSS px —
-    // do NOT multiply by patternScale again. Page bounds must also be in CSS px.
-    const pageView = page.getViewport({ scale: 1 });
+    const pageView = page.getViewport({ scale: 1 })
     const pageW_css =
-      pageView.width * PDF_TO_CSS_UNITS * userUnit * patternScale;
+      pageView.width * PDF_TO_CSS_UNITS * userUnit * patternScale
     const pageH_css =
-      pageView.height * PDF_TO_CSS_UNITS * userUnit * patternScale;
+      pageView.height * PDF_TO_CSS_UNITS * userUnit * patternScale
 
-    // Page origin in CSS px within the grid container at the current patternScale.
-    const pageOriginX = pageOffsetXBase * patternScale;
-    const pageOriginY = pageOffsetYBase * patternScale;
+    const pageOriginX = pageOffsetXBase * patternScale
+    const pageOriginY = pageOffsetYBase * patternScale
 
-    // Clamp within this page's bounds (CSS px), then snap each edge to integer CSS px.
-    const rawLeft = Math.max(pageOriginX, regionX_css);
-    const rawTop = Math.max(pageOriginY, regionY_css);
+    const rawLeft = Math.max(pageOriginX, regionX_css)
+    const rawTop = Math.max(pageOriginY, regionY_css)
     const rawRight = Math.min(
       regionX_css + regionW_css,
       pageOriginX + pageW_css,
-    );
+    )
     const rawBottom = Math.min(
       regionY_css + regionH_css,
       pageOriginY + pageH_css,
-    );
-    const cssLeft = Math.round(rawLeft);
-    const cssTop = Math.round(rawTop);
-    const cssRight = Math.round(rawRight);
-    const cssBottom = Math.round(rawBottom);
-    const cssWidth = cssRight - cssLeft;
-    const cssHeight = cssBottom - cssTop;
-    if (cssWidth <= 0 || cssHeight <= 0) return;
+    )
+    const cssLeft = Math.round(rawLeft)
+    const cssTop = Math.round(rawTop)
+    const cssRight = Math.round(rawRight)
+    const cssBottom = Math.round(rawBottom)
+    const cssWidth = cssRight - cssLeft
+    const cssHeight = cssBottom - cssTop
+    if (cssWidth <= 0 || cssHeight <= 0) return
 
-    // Derive PDF region from the snapped integer CSS positions so the render
-    // origin matches the canvas placement exactly.
-    // Subtract the page origin before converting to PDF space — cssLeft/cssTop
-    // are absolute within the grid container, but PDF coordinates are relative
-    // to the page's own origin.
-    const cssToPage = 1 / (PDF_TO_CSS_UNITS * userUnit);
-    const regionX_pdf = ((cssLeft - pageOriginX) / patternScale) * cssToPage;
-    const regionY_pdf = ((cssTop - pageOriginY) / patternScale) * cssToPage;
-    const regionW_pdf = (cssWidth / patternScale) * cssToPage;
+    const cssToPage = 1 / (PDF_TO_CSS_UNITS * userUnit)
+    const regionX_pdf = ((cssLeft - pageOriginX) / patternScale) * cssToPage
+    const regionY_pdf = ((cssTop - pageOriginY) / patternScale) * cssToPage
+    const regionW_pdf = (cssWidth / patternScale) * cssToPage
 
-    // Canvas pixel size: cssWidth CSS pixels × dpr device pixels each.
-    // Math.round handles non-integer dpr (e.g. 1.5× on some devices).
-    let pixelW = Math.round(cssWidth * dpr);
-    let pixelH = Math.round(cssHeight * dpr);
+    // -----------------------------------------------------------------
+    // Pixel budget
+    //
+    // When magnified, the body-canvas covers the entire screen, but the
+    // PDF tile only fills part of it. We size the PDF tile (tempCanvas)
+    // to match the screen extent of the tile in device pixels, so the
+    // rasterised content is 1:1 with screen pixels.
+    // -----------------------------------------------------------------
 
-    // Scale that exactly maps this pixel budget onto regionW/H_pdf.
-    // Using pixelW/regionW_pdf (rather than the targetScale formula) ensures
-    // offsetX = -regionX_pdf * renderScale exactly places regionX_pdf at pixel 0.
-    const maxArea = isSafari ? 16_777_216 : 67_108_864;
-    if (pixelW * pixelH > maxArea) {
-      const factor = Math.sqrt(maxArea / (pixelW * pixelH));
-      pixelW = Math.floor(pixelW * factor);
-      pixelH = Math.floor(pixelH * factor);
+    let tilePixelW: number
+    let tilePixelH: number
+    let screenCanvasW: number
+    let screenCanvasH: number
+
+    if (isMagnified) {
+      // Compute grid-to-screen matrix: calibration × magnify × local.
+      // perspective = inverse(calibrationTransform), so cal = inverse(perspective).
+      const cal = inverse(perspective)
+      const gridToScreen = cal.mmul(magnifyTransform!).mmul(localTransform)
+
+      // Transform the tile's four corners to screen coordinates.
+      const corners = [
+        { x: cssLeft, y: cssTop },
+        { x: cssRight, y: cssTop },
+        { x: cssRight, y: cssBottom },
+        { x: cssLeft, y: cssBottom },
+      ]
+      const screenCorners = corners.map((p) => {
+        const v = gridToScreen.mmul(Matrix.columnVector([p.x, p.y, 1]))
+        const w = v.get(2, 0)
+        return { x: v.get(0, 0) / w, y: v.get(1, 0) / w }
+      })
+      const sxs = screenCorners.map((c) => c.x)
+      const sys = screenCorners.map((c) => c.y)
+      const screenTileW = Math.max(...sxs) - Math.min(...sxs)
+      const screenTileH = Math.max(...sys) - Math.min(...sys)
+
+      // pdf.js tile pixels = screen tile extent × DPR.
+      tilePixelW = Math.round(screenTileW * dpr)
+      tilePixelH = Math.round(screenTileH * dpr)
+
+      // The body canvas covers the full screen.
+      screenCanvasW = Math.round(screenWidth * dpr)
+      screenCanvasH = Math.round(screenHeight * dpr)
+    } else {
+      tilePixelW = Math.round(cssWidth * dpr)
+      tilePixelH = Math.round(cssHeight * dpr)
+      screenCanvasW = tilePixelW
+      screenCanvasH = tilePixelH
     }
-    if (pixelW <= 0 || pixelH <= 0) return;
 
-    const renderScale = pixelW / regionW_pdf;
+    // Cap tile pixel budget per browser limits.
+    const maxArea = isSafari ? 16_777_216 : 67_108_864
+    if (tilePixelW * tilePixelH > maxArea) {
+      const factor = Math.sqrt(maxArea / (tilePixelW * tilePixelH))
+      tilePixelW = Math.floor(tilePixelW * factor)
+      tilePixelH = Math.floor(tilePixelH * factor)
+    }
+    if (tilePixelW <= 0 || tilePixelH <= 0) return
+
+    const renderScale = tilePixelW / regionW_pdf
+
     // Compare against the base render's scale. If the overlay wouldn't be
-    // sharper than the base, hide it and bail — a lower-res overlay degrades
-    // quality and produces incorrectly thick eroded lines rather than helping.
+    // sharper than the base, hide it and bail.
     const baseRenderScale = getScale(
       pageView.width,
       pageView.height,
       userUnit,
       isSafari,
       debugLowResBase ?? false,
-    );
+    )
+
+    // --- DIAGNOSTIC LOGGING ---
+    console.log("[HiRes] mode=%s, magnifyScale=%s, dpr=%s, patternScale=%s, screen=%sx%s",
+      isMagnified ? "MAGNIFY-BODY" : "GRID", magnifyScale, dpr, patternScale,
+      screenWidth, screenHeight)
+    console.log("[HiRes] gridRegion: %sx%s at (%s,%s), tilePixels: %sx%s",
+      cssWidth, cssHeight, cssLeft, cssTop,
+      tilePixelW, tilePixelH)
+    console.log("[HiRes] renderScale=%s, baseRenderScale=%s, ratio=%s",
+      renderScale.toFixed(1), baseRenderScale.toFixed(1),
+      (renderScale / baseRenderScale).toFixed(2))
+
     if (renderScale <= baseRenderScale) {
-      canvas.style.display = "none";
-      // Reset so the zoom-alignment useLayoutEffect doesn't apply a stale
-      // CSS transform when the overlay is brought back on the next zoom-in.
-      renderedPatternScaleRef.current = null;
-      return;
+      console.log("[HiRes] SKIPPED: renderScale <= baseRenderScale — overlay hidden")
+      canvas.style.display = "none"
+      renderedPatternScaleRef.current = null
+      return
     }
-    // The erosion ratio must be calibrated against the normal (non-debug) base
-    // scale. debugLowResBase artificially lowers baseRenderScale, which would
-    // inflate the ratio and produce excessively thick lines in the overlay.
+
     const normalBaseRenderScale = debugLowResBase
       ? getScale(pageView.width, pageView.height, userUnit, isSafari, false)
-      : baseRenderScale;
-    // pdf.js sub-region render: offsetX/offsetY shift the content so
-    // regionX_pdf lands at canvas pixel 0, matching the canvas's cssLeft position.
+      : baseRenderScale
+
     const viewport = page.getViewport({
       scale: renderScale,
       offsetX: -regionX_pdf * renderScale,
       offsetY: -regionY_pdf * renderScale,
-    });
+    })
 
-    // Cancel any in-flight render before starting a new one.
-    // renderVersion is read here so changes to it (file reload, line weight
-    // change) cause the useCallback to be recreated and the debounce effect
-    // to fire a fresh render.
-    void renderVersion;
+    // Cancel any in-flight render.
+    void renderVersion
     if (renderTaskRef.current) {
-      renderTaskRef.current.cancel();
+      renderTaskRef.current.cancel()
     }
-    page.cleanup();
+    page.cleanup()
 
-    const tempCanvas = document.createElement("canvas");
-    tempCanvas.width = pixelW;
-    tempCanvas.height = pixelH;
+    const tempCanvas = document.createElement("canvas")
+    tempCanvas.width = tilePixelW
+    tempCanvas.height = tilePixelH
     const ctx = tempCanvas.getContext("2d", {
       alpha: false,
       willReadFrequently: isSafari,
-    });
-    if (!ctx) return;
+    })
+    if (!ctx) return
 
-    // Respect optional content layer visibility.
-    const optionalContentConfig = await pdf.getOptionalContentConfig();
+    const optionalContentConfig = await pdf.getOptionalContentConfig()
     for (const layer of Object.values(layers)) {
       for (const id of layer.ids) {
-        optionalContentConfig.setVisibility(id, layer.visible);
+        optionalContentConfig.setVisibility(id, layer.visible)
       }
     }
 
@@ -400,37 +614,24 @@ export default function PdfHighResViewport({
       canvasContext: ctx as any,
       viewport,
       optionalContentConfigPromise: Promise.resolve(optionalContentConfig),
-    });
-    renderTaskRef.current = renderTask;
+    })
+    renderTaskRef.current = renderTask
 
     try {
-      await renderTask.promise;
+      await renderTask.promise
     } catch (_e) {
-      // Render was cancelled or an error occurred — leave the existing canvas in place.
-      return;
+      return
     }
 
-    // Build the same post-processing config as CustomRenderer uses.
-    //
-    // Chrome (CSS filter path): scale erosion proportionally to the overlay's
-    // render resolution — more pixels of erosion are needed at higher scales
-    // to produce the same physical line-width on screen as the base render.
-    // This is GPU-accelerated (just extends the filter string) so scaling by a
-    // large factor has negligible cost.
-    //
-    // Safari (pixel worker path): the worker calls erodeImageData in a loop,
-    // O(width × height) per pass. Scaling proportionally at high zoom would give
-    // e.g. 15+ passes on a 16M px canvas, making renders take 8+ seconds.
-    // We therefore use the raw user-set erosions value — this keeps individual
-    // passes fast at the cost of some line-weight inconsistency vs the base.
-    const scaleRatio = renderScale / normalBaseRenderScale;
-    const effectiveErosionsChrome = Math.round(erosions * scaleRatio);
-    const effectiveErosionsSafari = erosions;
-    const useRecolour = !!recolourHex && !isSafari;
-    const renderErosions = isSafari ? effectiveErosionsSafari : 0;
+    // Post-processing (erosion, recolouring, theme filter).
+    const scaleRatio = renderScale / normalBaseRenderScale
+    const effectiveErosionsChrome = Math.round(erosions * scaleRatio)
+    const effectiveErosionsSafari = erosions
+    const useRecolour = !!recolourHex && !isSafari
+    const renderErosions = isSafari ? effectiveErosionsSafari : 0
     const safariEffectiveRecolourHex = isSafari
       ? recolourHex ?? (themeFilter === "invert(1)" ? "#ffffff" : undefined)
-      : undefined;
+      : undefined
     const cssFilter = isSafari
       ? undefined
       : [
@@ -438,160 +639,193 @@ export default function PdfHighResViewport({
           themeFilter && themeFilter !== "none" ? themeFilter : undefined,
         ]
           .filter(Boolean)
-          .join(" ");
+          .join(" ")
 
-    // CSS filter for the debug amber tint (applied to the canvas element itself,
-    // not to the pixel data).
-    // invert(1): white bg → black, black lines → white.
-    // brightness(0.5): bring white lines to mid-grey so sepia has room to colourise
-    //   (sepia on near-white saturates immediately to the ceiling, losing hue).
-    // sepia(1) → saturate(10) → hue-rotate(15deg): push mid-grey warm tones to
-    //   vivid amber (~H53, S100%), close to the amber theme primary colour.
     const debugFilter = debugTintHighRes
-      ? // ? "brightness(1.0) sepia(1) saturate(10) hue-rotate(15deg)"
-        "invert(1) brightness(1.0) sepia(1) saturate(10) hue-rotate(15deg)"
-      : "";
+      ? "invert(1) brightness(1.0) sepia(1) saturate(10) hue-rotate(15deg)"
+      : ""
 
-    // cssLeft/Top/Width/Height are integer CSS pixels derived from snapped
-    // region boundaries — computed earlier in the coordinate section.
+    // =================================================================
+    // COMMIT: write pixels to the visible canvas.
+    // =================================================================
 
-    if (isSafari) {
-      // Safari: pixel worker is async. Do NOT touch canvas.width/height here —
-      // assigning them clears the canvas to black and there would be a visible
-      // blank gap until the worker callback fires. Instead, pass all the values
-      // as captured locals and resize+draw atomically inside the callback.
-      // thisRenderId was captured at the start of this renderHighRes call.
-      const rawImageData = ctx.getImageData(0, 0, pixelW, pixelH);
-      const request: PixelProcessRequest = {
-        id: thisRenderId,
-        buffer: rawImageData.data.buffer,
-        width: pixelW,
-        height: pixelH,
-        erosions: renderErosions,
-        recolourHex: safariEffectiveRecolourHex ?? undefined,
-      };
-      const worker = getWorker();
-      worker.onmessage = (e: MessageEvent<PixelProcessResponse>) => {
-        const { id, bitmap } = e.data;
-        // Reject if renderIdRef was bumped (patternScale changed or newer render started).
-        if (id !== renderIdRef.current) {
-          bitmap.close();
-          return;
+    if (isMagnified) {
+      // ------ MAGNIFY PATH: body-level screen-space canvas ------
+      // Cache the rendered tile and its metadata. The heavy work (pdf.js render)
+      // is done; from here on, panning just calls compositeMagnifyTile() which
+      // does a cheap drawImage + setTransform.
+      const commitMagnify = (sourceCanvas: HTMLCanvasElement) => {
+        if (thisRenderId !== renderIdRef.current) return
+        if (patternScale !== currentPatternScaleRef.current) return
+
+        cachedTileRef.current = {
+          canvas: sourceCanvas,
+          cssLeft,
+          cssTop,
+          cssWidth,
+          cssHeight,
+          cssFilter: (!isSafari && cssFilter) ? cssFilter : undefined,
+          debugFilter,
+          screenCanvasW,
+          screenCanvasH,
+          screenWidth,
+          screenHeight,
+          dpr,
         }
-        // Secondary guard: patternScale closure vs latest React render value.
-        if (patternScale !== currentPatternScaleRef.current) {
-          bitmap.close();
-          return;
+
+        renderedPatternScaleRef.current = patternScale
+        renderedRenderVersionRef.current = renderVersion
+        renderedCssLeftRef.current = cssLeft
+        renderedCssTopRef.current = cssTop
+        renderedTileWidthRef.current = cssWidth
+        renderedTileHeightRef.current = cssHeight
+
+        // Draw the tile immediately via the compositing function.
+        compositeMagnifyTile()
+
+        console.log("[HiRes] MAGNIFY committed: tile %sx%s at (%s,%s) grid-space",
+          cssWidth, cssHeight, cssLeft, cssTop)
+      }
+
+      if (isSafari) {
+        const rawImageData = ctx.getImageData(0, 0, tilePixelW, tilePixelH)
+        const request: PixelProcessRequest = {
+          id: thisRenderId,
+          buffer: rawImageData.data.buffer,
+          width: tilePixelW,
+          height: tilePixelH,
+          erosions: renderErosions,
+          recolourHex: safariEffectiveRecolourHex ?? undefined,
         }
-        // Resize, position and draw in one synchronous block so the browser
-        // never paints a cleared (blank) canvas between resize and drawImage.
-        canvas.width = pixelW;
-        canvas.height = pixelH;
-        canvas.style.width = `${cssWidth}px`;
-        canvas.style.height = `${cssHeight}px`;
-        canvas.style.left = `${cssLeft}px`;
-        canvas.style.top = `${cssTop}px`;
-        canvas.style.filter = debugFilter;
-        canvas.style.transform = "";
-        renderedPatternScaleRef.current = patternScale;
-        renderedRenderVersionRef.current = renderVersion;
-        renderedCssLeftRef.current = cssLeft;
-        renderedCssTopRef.current = cssTop;
-        const dest = canvas.getContext("2d", { alpha: false });
-        if (dest) {
-          dest.drawImage(bitmap, 0, 0);
+        const worker = getWorker()
+        worker.onmessage = (e: MessageEvent<PixelProcessResponse>) => {
+          const { id, bitmap } = e.data
+          if (id !== renderIdRef.current) { bitmap.close(); return }
+          if (patternScale !== currentPatternScaleRef.current) { bitmap.close(); return }
+          // Draw bitmap into a temp canvas so commitMagnify can use drawImage.
+          const tmp = document.createElement("canvas")
+          tmp.width = tilePixelW
+          tmp.height = tilePixelH
+          const tmpCtx = tmp.getContext("2d", { alpha: false })
+          if (tmpCtx) tmpCtx.drawImage(bitmap, 0, 0)
+          bitmap.close()
+          commitMagnify(tmp)
         }
-        bitmap.close();
-        canvas.style.display = showHighResOverlayRef.current ? "" : "none";
-      };
-      worker.postMessage(request, [request.buffer]);
+        worker.postMessage(request, [request.buffer])
+      } else {
+        commitMagnify(tempCanvas)
+      }
     } else {
-      // Chrome/Firefox: resize, draw and show in one synchronous block.
-      // canvas.width clears the canvas, but drawImage follows immediately
-      // so the browser never paints the cleared state.
-      //
-      // Check for a stale render before touching the canvas. renderIdRef is
-      // bumped on every patternScale change (useLayoutEffect) and on every new
-      // render start, so thisRenderId !== renderIdRef.current means either the
-      // scale changed or a newer render superseded this one.
-      if (thisRenderId !== renderIdRef.current) return;
-      // Secondary guard: patternScale closure vs latest React render value.
-      if (patternScale !== currentPatternScaleRef.current) return;
-      canvas.width = pixelW;
-      canvas.height = pixelH;
-      canvas.style.width = `${cssWidth}px`;
-      canvas.style.height = `${cssHeight}px`;
-      canvas.style.left = `${cssLeft}px`;
-      canvas.style.top = `${cssTop}px`;
-      const dest = canvas.getContext("2d");
-      if (!dest) return;
-      dest.imageSmoothingEnabled = false;
-      dest.filter = cssFilter ?? "none";
-      dest.drawImage(tempCanvas, 0, 0);
-      canvas.style.filter = debugFilter;
-      canvas.style.transform = "";
-      renderedPatternScaleRef.current = patternScale;
-      renderedRenderVersionRef.current = renderVersion;
-      renderedCssLeftRef.current = cssLeft;
-      renderedCssTopRef.current = cssTop;
-      canvas.style.display = showHighResOverlayRef.current ? "" : "none";
+      // ------ NORMAL PATH: grid-space canvas (unchanged) ------
+      if (isSafari) {
+        const rawImageData = ctx.getImageData(0, 0, tilePixelW, tilePixelH)
+        const request: PixelProcessRequest = {
+          id: thisRenderId,
+          buffer: rawImageData.data.buffer,
+          width: tilePixelW,
+          height: tilePixelH,
+          erosions: renderErosions,
+          recolourHex: safariEffectiveRecolourHex ?? undefined,
+        }
+        const worker = getWorker()
+        worker.onmessage = (e: MessageEvent<PixelProcessResponse>) => {
+          const { id, bitmap } = e.data
+          if (id !== renderIdRef.current) { bitmap.close(); return }
+          if (patternScale !== currentPatternScaleRef.current) { bitmap.close(); return }
+          canvas.width = tilePixelW
+          canvas.height = tilePixelH
+          canvas.style.width = `${cssWidth}px`
+          canvas.style.height = `${cssHeight}px`
+          canvas.style.left = `${cssLeft}px`
+          canvas.style.top = `${cssTop}px`
+          canvas.style.filter = debugFilter
+          canvas.style.transform = ""
+          canvas.style.transformOrigin = "0 0"
+          renderedPatternScaleRef.current = patternScale
+          renderedRenderVersionRef.current = renderVersion
+          renderedCssLeftRef.current = cssLeft
+          renderedCssTopRef.current = cssTop
+          renderedTileWidthRef.current = cssWidth
+          renderedTileHeightRef.current = cssHeight
+          const dest = canvas.getContext("2d", { alpha: false })
+          if (dest) {
+            dest.drawImage(bitmap, 0, 0)
+          }
+          bitmap.close()
+          canvas.style.display = showHighResOverlayRef.current ? "" : "none"
+        }
+        worker.postMessage(request, [request.buffer])
+      } else {
+        if (thisRenderId !== renderIdRef.current) return
+        if (patternScale !== currentPatternScaleRef.current) return
+        canvas.width = tilePixelW
+        canvas.height = tilePixelH
+        canvas.style.width = `${cssWidth}px`
+        canvas.style.height = `${cssHeight}px`
+        canvas.style.left = `${cssLeft}px`
+        canvas.style.top = `${cssTop}px`
+        const dest = canvas.getContext("2d")
+        if (!dest) return
+        dest.imageSmoothingEnabled = false
+        dest.filter = cssFilter ?? "none"
+        dest.drawImage(tempCanvas, 0, 0)
+        canvas.style.filter = debugFilter
+        canvas.style.transform = ""
+        canvas.style.transformOrigin = "0 0"
+        renderedPatternScaleRef.current = patternScale
+        renderedRenderVersionRef.current = renderVersion
+        renderedCssLeftRef.current = cssLeft
+        renderedCssTopRef.current = cssTop
+        renderedTileWidthRef.current = cssWidth
+        renderedTileHeightRef.current = cssHeight
+        canvas.style.display = showHighResOverlayRef.current ? "" : "none"
+      }
     }
   }, [
     pdf,
     perspective,
     localTransform,
+    magnifyTransform,
     pageNumber,
     patternScale,
     erosions,
     layers,
     recolourHex,
     renderVersion,
-    // showHighResOverlay intentionally omitted — read via showHighResOverlayRef
-    // so toggling visibility does not recreate this callback or trigger a render.
     debugTintHighRes,
     debugLowResBase,
     themeFilter,
     isSafari,
     getWorker,
+    getOrCreateMagnifyCanvas,
+    compositeMagnifyTile,
     pageOffsetXBase,
     pageOffsetYBase,
-  ]);
+  ])
 
-  // Debounce render triggers so fast pan/zoom sequences don't queue up many renders.
+  // Debounce render triggers.
   useEffect(() => {
     if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-    if (staleTileTimerRef.current) {
-      clearTimeout(staleTileTimerRef.current);
+      clearTimeout(debounceTimerRef.current)
     }
     // Fire immediately when no tile has been committed yet — avoids a 300 ms
     // wait before the high-res overlay appears after the initial file load.
     if (renderedPatternScaleRef.current === null) {
-      renderHighRes();
-      return;
+      renderHighRes()
+      return
     }
     debounceTimerRef.current = setTimeout(() => {
-      renderHighRes();
-    }, DEBOUNCE_MS);
-    // Safety re-render: even if the viewport stays within the tile (causing
-    // renderHighRes to return early via the skip check), re-render after a
-    // longer delay to ensure no stale tile lingers indefinitely.
-    staleTileTimerRef.current = setTimeout(() => {
-      renderedPatternScaleRef.current = null;
-      renderHighRes();
-    }, STALE_TILE_MS);
+      renderHighRes()
+    }, DEBOUNCE_MS)
 
     return () => {
       if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
+        clearTimeout(debounceTimerRef.current)
       }
-      if (staleTileTimerRef.current) {
-        clearTimeout(staleTileTimerRef.current);
-      }
-    };
-  }, [renderHighRes]);
+    }
+  }, [renderHighRes])
 
+  // The grid-space canvas (normal mode). Hidden when magnified.
   return (
     <canvas
       ref={canvasRef}
@@ -601,5 +835,5 @@ export default function PdfHighResViewport({
         pointerEvents: "none",
       }}
     />
-  );
+  )
 }
