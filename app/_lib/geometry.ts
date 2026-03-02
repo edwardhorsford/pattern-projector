@@ -264,6 +264,9 @@ export function scale(s: number, sy: null | number = null): Matrix {
   return Matrix.from1DArray(3, 3, [s, 0, 0, 0, sy, 0, 0, 0, 1]);
 }
 
+/** Scale factor applied by the magnify tool. */
+export const MAGNIFY_SCALE = 3;
+
 export function scaleAboutPoint(s: number, point: Point): Matrix {
   return translate(point)
     .mmul(scale(s))

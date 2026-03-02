@@ -13,6 +13,7 @@ import {
   transformPoint,
   translate,
   scale,
+  MAGNIFY_SCALE,
   scaleAboutPoint,
   transformPoints,
   getBounds,
@@ -181,9 +182,9 @@ export default function Draggable({
           localTransform: transform.clone(),
           calibrationTransform: calibrationTransform.clone(),
         });
-        transformer.magnify(5, pt);
+        transformer.magnify(MAGNIFY_SCALE, pt);
         setDragStart(pt);
-        setTransformStart(scaleAboutPoint(5, pt).mmul(transform));
+        setTransformStart(scaleAboutPoint(MAGNIFY_SCALE, pt).mmul(transform));
       } else {
         setMagnifying(false);
       }

@@ -45,6 +45,7 @@ import {
   RestoreTransforms,
   translate,
   scale,
+  MAGNIFY_SCALE,
   scaleAboutPoint,
 } from "@/_lib/geometry";
 import { inverse } from "ml-matrix";
@@ -1494,7 +1495,7 @@ export function ControlPanelBridge({
                 x: center.x - current.x,
                 y: center.y - current.y,
               });
-              const scaleAtCenter = scaleAboutPoint(5, center);
+              const scaleAtCenter = scaleAboutPoint(MAGNIFY_SCALE, center);
 
               // Apply: first translate to center, then scale around center
               const newTransform = scaleAtCenter
