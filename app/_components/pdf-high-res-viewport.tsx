@@ -168,6 +168,15 @@ export default function PdfHighResViewport({
   // outdated value.
   currentPatternScaleRef.current = patternScale;
 
+  // Track layers object identity so we can include it in the content key
+  // without serialising the whole object on every render call.
+  const layersRef = useRef(layers);
+  const layersVersionRef = useRef(0);
+  if (layersRef.current !== layers) {
+    layersRef.current = layers;
+    layersVersionRef.current++;
+  }
+
   // --- Magnify compositing cache ---
   // The rendered tile (sourceCanvas) and its grid-space bounds are cached here
   // so that panning only requires a cheap drawImage + setTransform, not a full
@@ -292,11 +301,6 @@ export default function PdfHighResViewport({
   useLayoutEffect(() => {
     const isMagnified = magnifyTransform !== null;
     if (wasMagnifiedRef.current === isMagnified) return;
-    console.log(
-      "[HiRes] magnify transition: %s → %s",
-      wasMagnifiedRef.current ? "magnified" : "normal",
-      isMagnified ? "magnified" : "normal",
-    );
     wasMagnifiedRef.current = isMagnified;
     renderIdRef.current += 1;
     // Hide the grid-space canvas.
@@ -406,9 +410,6 @@ export default function PdfHighResViewport({
     isRenderingRef.current = false;
     if (needsRenderRef.current) {
       needsRenderRef.current = false;
-      console.log(
-        "[HiRes] finishRender: deferred render pending, scheduling retry",
-      );
       // Short delay to coalesce any further rapid changes.
       setTimeout(() => {
         renderHighResRef.current?.();
@@ -438,9 +439,6 @@ export default function PdfHighResViewport({
     // and schedule a retry — so the request is never silently dropped.
     if (isRenderingRef.current) {
       needsRenderRef.current = true;
-      console.log(
-        "[HiRes] DEFERRED: render already in-flight, will retry after completion",
-      );
       return;
     }
 
@@ -486,7 +484,7 @@ export default function PdfHighResViewport({
           : CHROME_PADDING_FACTOR;
     // Content key so the tile-skip check detects visual parameter changes
     // (erosions, recolour, theme, layers, etc.) — not just position/scale.
-    const contentKey = `${renderVersion}-${erosions}-${recolourHex ?? ""}-${themeFilter ?? ""}-${debugTintHighRes ? 1 : 0}-${debugLowResBase ? 1 : 0}-${JSON.stringify(layers)}`;
+    const contentKey = `${renderVersion}-${erosions}-${recolourHex ?? ""}-${themeFilter ?? ""}-${debugTintHighRes ? 1 : 0}-${debugLowResBase ? 1 : 0}-${layersVersionRef.current}`;
 
     if (
       renderedPatternScaleRef.current !== null &&
@@ -634,36 +632,7 @@ export default function PdfHighResViewport({
       debugLowResBase ?? false,
     );
 
-    // --- DIAGNOSTIC LOGGING ---
-    console.log(
-      "[HiRes] mode=%s, magnifyScale=%s, dpr=%s, patternScale=%s, screen=%sx%s",
-      isMagnified ? "MAGNIFY-BODY" : "GRID",
-      magnifyScale,
-      dpr,
-      patternScale,
-      screenWidth,
-      screenHeight,
-    );
-    console.log(
-      "[HiRes] gridRegion: %sx%s at (%s,%s), tilePixels: %sx%s",
-      cssWidth,
-      cssHeight,
-      cssLeft,
-      cssTop,
-      tilePixelW,
-      tilePixelH,
-    );
-    console.log(
-      "[HiRes] renderScale=%s, baseRenderScale=%s, ratio=%s",
-      renderScale.toFixed(1),
-      baseRenderScale.toFixed(1),
-      (renderScale / baseRenderScale).toFixed(2),
-    );
-
     if (renderScale <= baseRenderScale) {
-      console.log(
-        "[HiRes] SKIPPED: renderScale <= baseRenderScale — overlay hidden",
-      );
       canvas.style.display = "none";
       renderedPatternScaleRef.current = null;
       finishRender();
@@ -681,7 +650,6 @@ export default function PdfHighResViewport({
     });
 
     // Cancel any in-flight render.
-    void renderVersion;
     if (renderTaskRef.current) {
       renderTaskRef.current.cancel();
     }
@@ -779,14 +747,6 @@ export default function PdfHighResViewport({
 
         // Draw the tile immediately via the compositing function.
         compositeMagnifyTile();
-
-        console.log(
-          "[HiRes] MAGNIFY committed: tile %sx%s at (%s,%s) grid-space",
-          cssWidth,
-          cssHeight,
-          cssLeft,
-          cssTop,
-        );
       };
 
       if (isSafari) {
