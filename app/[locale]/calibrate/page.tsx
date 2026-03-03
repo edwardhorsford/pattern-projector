@@ -238,11 +238,7 @@ export default function Page() {
   );
 
   const svgStyle = {
-    filter: filter(
-      lineThickness,
-      displaySettings.theme,
-      isRecolour,
-    ),
+    filter: filter(lineThickness, displaySettings.theme, isRecolour),
   };
 
   function filter(
