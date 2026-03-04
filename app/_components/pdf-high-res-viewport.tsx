@@ -51,11 +51,6 @@ const MIN_TILE_MARGIN_FRACTION = 0.15;
 /** Milliseconds to wait after a pan/zoom change before triggering a re-render. */
 const DEBOUNCE_MS = 300;
 
-// NOTE: the previous STALE_TILE_MS safety timer was removed. It forced a full
-// re-render every 2 s even when the tile was valid, which hammered the Safari
-// pixel worker (2–10 s per render). The tile-skip check already verifies
-// renderVersion, so content changes are already captured.
-
 interface Props {
   /** Perspective matrix: maps screen space → pattern space. */
   perspective: Matrix;
@@ -125,8 +120,6 @@ export default function PdfHighResViewport({
 
   const renderTaskRef = useRef<ReturnType<PDFPageProxy["render"]> | null>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // staleTileTimerRef removed — stale timer was causing redundant expensive
-  // re-renders on Safari. The tile-skip check + renderVersion is sufficient.
   const workerRef = useRef<Worker | null>(null);
   /** Monotonically increasing ID so stale Safari worker responses can be discarded. */
   const renderIdRef = useRef(0);
@@ -445,7 +438,7 @@ export default function PdfHighResViewport({
     const screenWidth = window.innerWidth;
     const screenHeight = window.innerHeight;
     const rawDpr = window.devicePixelRatio;
-    // Clamp Safari's DPR to 1 to prevent it from trying to render an enormous tile and improve rendering speed. In practice we'll be displayed on projectors where the DPR is effectively 1 anyway.
+    // Clamp Safari's DPR to 1 to prevent it from trying to render an enormous tile and improve rendering speed. In practice we'll be displayed on projectors where the DPR is effectively 1 anyway. Chrome renders quickly so we can use the full DPR for a sharper image.
     const dpr = isSafari ? Math.min(rawDpr, 1) : rawDpr;
 
     // When magnified, account for the magnify transform when computing which
