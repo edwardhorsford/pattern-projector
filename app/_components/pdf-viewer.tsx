@@ -61,6 +61,7 @@ function PdfViewer({
   setMenuStates,
   renderVersion,
   perspective,
+  calibrationTransform,
   showHighResOverlay,
   debugTintHighRes,
   debugLowResBase,
@@ -87,6 +88,7 @@ function PdfViewer({
   setMenuStates: Dispatch<SetStateAction<MenuStates>>;
   renderVersion: number;
   perspective: Matrix;
+  calibrationTransform?: Matrix;
   showHighResOverlay?: boolean;
   debugTintHighRes?: boolean;
   debugLowResBase?: boolean;
@@ -362,6 +364,7 @@ function PdfViewer({
                 {value != 0 && (index === 0 || tileBaseWidth > 0) && (
                   <PdfHighResViewport
                     perspective={perspective}
+                    calibrationTransform={calibrationTransform}
                     pageNumber={value}
                     pageOffsetXBase={pageOffsetXBase}
                     pageOffsetYBase={pageOffsetYBase}

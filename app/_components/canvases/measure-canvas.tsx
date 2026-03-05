@@ -377,7 +377,7 @@ export default function MeasureCanvas({
   }, [zoomedOut, magnifying, setMeasuring, setSelectedLine]);
 
   return (
-    <div className={`relative z-0 ${className ?? ""}`}>
+    <div className={`relative z-0 ${className ?? ""}`} data-magnify-container>
       <div
         onPointerDownCapture={handlePointerDown}
         onPointerMoveCapture={handlePointerMove}

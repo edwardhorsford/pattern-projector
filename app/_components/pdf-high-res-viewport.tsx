@@ -4,10 +4,9 @@
 // on top of the base render so the projected area stays sharp when zoomed in.
 //
 // Normal mode: canvas positioned inside the grid container (grid-space CSS).
-// Magnify mode: a SEPARATE canvas appended to document.body in screen space,
-// bypassing all CSS transform chains so the compositor preserves the full
-// backing-store resolution. The PDF content is drawn at the correct screen
-// position using ctx.setTransform() with the accumulated cal × mag × local matrix.
+// Magnify mode: a SEPARATE canvas inserted into the MeasureCanvas container
+// (outside the CSS transform chain) positioned via CSS matrix3d() so the
+// compositor preserves the full backing-store resolution through magnification.
 
 import {
   useCallback,
@@ -19,8 +18,8 @@ import {
 import { useDocumentContext } from "react-pdf";
 import invariant from "tiny-invariant";
 import type { PDFPageProxy } from "pdfjs-dist";
-import { inverse, Matrix } from "ml-matrix";
-import { getBounds, getViewportQuad } from "@/_lib/geometry";
+import { Matrix } from "ml-matrix";
+import { getBounds, getViewportQuad, toMatrix3d } from "@/_lib/geometry";
 import { PDF_TO_CSS_UNITS } from "@/_lib/pixels-per-inch";
 import { erosionFilter } from "@/_lib/erode";
 import useRenderContext from "@/_hooks/use-render-context";
@@ -54,6 +53,8 @@ const DEBOUNCE_MS = 300;
 interface Props {
   /** Perspective matrix: maps screen space → pattern space. */
   perspective: Matrix;
+  /** Calibration transform: maps grid space → screen space (inverse of perspective). */
+  calibrationTransform?: Matrix;
   /** Number of the PDF page to render in high resolution. */
   pageNumber: number;
   /**
@@ -87,6 +88,7 @@ interface Props {
  */
 export default function PdfHighResViewport({
   perspective,
+  calibrationTransform,
   pageNumber,
   pageOffsetXBase = 0,
   pageOffsetYBase = 0,
@@ -115,7 +117,7 @@ export default function PdfHighResViewport({
 
   // Grid-space canvas (used when NOT magnified).
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  // Body-level canvas (used when magnified). Created/destroyed imperatively.
+  // Magnify canvas (created imperatively, inserted into MeasureCanvas container).
   const magnifyCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const renderTaskRef = useRef<ReturnType<PDFPageProxy["render"]> | null>(null);
@@ -171,32 +173,25 @@ export default function PdfHighResViewport({
   }
 
   // --- Magnify compositing cache ---
-  // The rendered tile (sourceCanvas) and its grid-space bounds are cached here
-  // so that panning only requires a cheap drawImage + setTransform, not a full
-  // pdf.js re-render. renderHighRes updates this; the compositing effect reads it.
+  // Grid-space tile bounds and canvas CSS dimensions cached so that
+  // panning only requires a CSS transform update — no canvas 2D ops.
   const cachedTileRef = useRef<{
-    canvas: HTMLCanvasElement;
     cssLeft: number;
     cssTop: number;
     cssWidth: number;
     cssHeight: number;
-    cssFilter: string | undefined;
-    debugFilter: string;
-    screenCanvasW: number;
-    screenCanvasH: number;
-    screenWidth: number;
-    screenHeight: number;
-    dpr: number;
+    canvasCssW: number;
+    canvasCssH: number;
   } | null>(null);
 
-  // Always-current refs for values that the compositing effect needs to read
-  // without being in its dependency array (to avoid recreating it every frame).
+  // Always-current refs for values the compositing effect needs without
+  // being in its dependency array.
   const localTransformRef = useRef(localTransform);
   localTransformRef.current = localTransform;
   const magnifyTransformRef = useRef(magnifyTransform);
   magnifyTransformRef.current = magnifyTransform;
-  const perspectiveRef = useRef(perspective);
-  perspectiveRef.current = perspective;
+  const calibrationTransformRef = useRef(calibrationTransform);
+  calibrationTransformRef.current = calibrationTransform;
 
   const isSafari = useMemo(() => {
     const ua = navigator.userAgent.toLowerCase();
@@ -213,27 +208,32 @@ export default function PdfHighResViewport({
   }, []);
 
   /**
-   * Returns (or creates) the body-level magnify canvas. Appended to
-   * document.body so it sits outside all CSS transform chains.
+   * Returns (or creates) the magnify canvas. Inserted into the
+   * MeasureCanvas container (found via data-magnify-container) so it
+   * shares the same stacking context as OverlayCanvas — z-index 10
+   * puts it above the Draggable (z-0) but below the overlay (z-20).
    */
   const getOrCreateMagnifyCanvas = useCallback((): HTMLCanvasElement => {
     if (!magnifyCanvasRef.current) {
       const c = document.createElement("canvas");
-      c.style.position = "fixed";
+      c.style.position = "absolute";
       c.style.left = "0";
       c.style.top = "0";
       c.style.pointerEvents = "none";
-      c.style.imageRendering = "pixelated";
-      // z-index high enough to sit above the Draggable content but below
-      // interactive UI (menus are z-40+).
-      c.style.zIndex = "35";
-      document.body.appendChild(c);
+      c.style.imageRendering = "auto";
+      c.style.transformOrigin = "0 0";
+      c.style.zIndex = "10";
+      // Find the MeasureCanvas container and insert the canvas there.
+      const container =
+        canvasRef.current?.closest("[data-magnify-container]") ??
+        document.body;
+      container.appendChild(c);
       magnifyCanvasRef.current = c;
     }
     return magnifyCanvasRef.current;
   }, []);
 
-  /** Hides and detaches the body-level magnify canvas if it exists. */
+  /** Hides and detaches the magnify canvas if it exists. */
   const removeMagnifyCanvas = useCallback(() => {
     if (magnifyCanvasRef.current) {
       magnifyCanvasRef.current.remove();
@@ -241,7 +241,7 @@ export default function PdfHighResViewport({
     }
   }, []);
 
-  // Terminate the pixel worker and remove body canvas when unmounting.
+  // Terminate the pixel worker and remove magnify canvas when unmounting.
   useEffect(() => {
     return () => {
       workerRef.current?.terminate();
@@ -301,7 +301,7 @@ export default function PdfHighResViewport({
     if (canvas) {
       canvas.style.display = "none";
     }
-    // When leaving magnify, remove the body-level canvas and clear the cache.
+    // When leaving magnify, remove the magnify canvas and clear the cache.
     if (!isMagnified) {
       removeMagnifyCanvas();
       cachedTileRef.current = null;
@@ -310,75 +310,40 @@ export default function PdfHighResViewport({
   }, [magnifyTransform, removeMagnifyCanvas]);
 
   // ===================================================================
-  // compositeMagnifyTile — cheap re-draw of the cached tile onto the
-  // body canvas with the current grid-to-screen transform. No pdf.js
-  // render, no pixel worker — just a single drawImage + setTransform.
+  // compositeMagnifyTile — update the CSS matrix3d on the magnify canvas.
+  // Uses calibrationTransform directly (same as Draggable) to avoid the
+  // double-inverse error from inverse(perspective).
   // ===================================================================
   const compositeMagnifyTile = useCallback(() => {
     const tile = cachedTileRef.current;
     if (!tile) return;
     const mag = magnifyTransformRef.current;
     if (!mag) return;
+    const cal = calibrationTransformRef.current;
     const bodyCanvas = magnifyCanvasRef.current;
     if (!bodyCanvas) return;
     if (!showHighResOverlayRef.current) return;
 
-    const cal = inverse(perspectiveRef.current);
-    const gridToScreen = cal.mmul(mag).mmul(localTransformRef.current);
+    // gridToScreen: same chain as Draggable's CSS transform.
+    const gridToScreen = cal
+      ? cal.mmul(mag).mmul(localTransformRef.current)
+      : mag.mmul(localTransformRef.current);
 
-    // Ensure body canvas is correctly sized (no-op if already set).
-    if (
-      bodyCanvas.width !== tile.screenCanvasW ||
-      bodyCanvas.height !== tile.screenCanvasH
-    ) {
-      bodyCanvas.width = tile.screenCanvasW;
-      bodyCanvas.height = tile.screenCanvasH;
-      bodyCanvas.style.width = `${tile.screenWidth}px`;
-      bodyCanvas.style.height = `${tile.screenHeight}px`;
-    }
+    // Canvas-CSS → grid-space transform.
+    // Canvas CSS (0,0)→(canvasCssW,canvasCssH) maps to
+    // grid (cssLeft,cssTop)→(cssLeft+cssWidth,cssTop+cssHeight).
+    const sx = tile.cssWidth / tile.canvasCssW;
+    const sy = tile.cssHeight / tile.canvasCssH;
+    const T = Matrix.from1DArray(3, 3, [
+      sx, 0, tile.cssLeft,
+      0, sy, tile.cssTop,
+      0, 0, 1,
+    ]);
 
-    const dest = bodyCanvas.getContext("2d");
-    if (!dest) return;
+    // Full projective: canvas CSS → grid → screen.
+    const canvasToScreen = gridToScreen.mmul(T);
 
-    // Clear previous frame.
-    dest.setTransform(1, 0, 0, 1, 0, 0);
-    dest.clearRect(0, 0, tile.screenCanvasW, tile.screenCanvasH);
-
-    // Affine approximation of the projective matrix.
-    const m = gridToScreen;
-    const w = m.get(2, 2);
-    const a = m.get(0, 0) / w;
-    const c = m.get(0, 1) / w;
-    const e = m.get(0, 2) / w;
-    const b = m.get(1, 0) / w;
-    const d = m.get(1, 1) / w;
-    const f = m.get(1, 2) / w;
-
-    dest.setTransform(
-      a * tile.dpr,
-      b * tile.dpr,
-      c * tile.dpr,
-      d * tile.dpr,
-      e * tile.dpr,
-      f * tile.dpr,
-    );
-
-    if (tile.cssFilter) {
-      dest.filter = tile.cssFilter;
-    }
-    dest.imageSmoothingEnabled = true;
-    dest.imageSmoothingQuality = "high";
-    dest.drawImage(
-      tile.canvas,
-      tile.cssLeft,
-      tile.cssTop,
-      tile.cssWidth,
-      tile.cssHeight,
-    );
-    dest.setTransform(1, 0, 0, 1, 0, 0);
-    dest.filter = "none";
-
-    bodyCanvas.style.filter = tile.debugFilter;
+    bodyCanvas.style.transform = toMatrix3d(canvasToScreen);
     bodyCanvas.style.display = "";
   }, []);
 
@@ -421,10 +386,10 @@ export default function PdfHighResViewport({
 
     const isMagnified = magnifyTransform !== null;
 
-    // Choose the target canvas based on magnify state.
-    // When magnified, use a canvas appended to document.body so it's outside
-    // the CSS transform chain. When not magnified, use the grid-space canvas.
-    const canvas = isMagnified ? getOrCreateMagnifyCanvas() : canvasRef.current;
+    // Choose the target canvas. Both modes use the same grid-space canvas
+    // inside the CSS transform chain — the parent div's matrix3d handles
+    // calibration + magnify + local transforms automatically.
+    const canvas = canvasRef.current;
     if (!canvas) return;
 
     // If a render is already in-flight, mark that we need another one and
@@ -553,21 +518,20 @@ export default function PdfHighResViewport({
     // -----------------------------------------------------------------
     // Pixel budget
     //
-    // When magnified, the body-canvas covers the entire screen, but the
-    // PDF tile only fills part of it. We size the PDF tile (tempCanvas)
-    // to match the screen extent of the tile in device pixels, so the
-    // rasterised content is 1:1 with screen pixels.
+    // When magnified, the canvas CSS box is in grid space but the
+    // backing store is sized for the screen extent of the tile (in
+    // device pixels) so the GPU compositor has enough resolution to
+    // display it 1:1 after the CSS transform magnifies it.
     // -----------------------------------------------------------------
 
     let tilePixelW: number;
     let tilePixelH: number;
-    let screenCanvasW: number;
-    let screenCanvasH: number;
 
     if (isMagnified) {
       // Compute grid-to-screen matrix: calibration × magnify × local.
-      // perspective = inverse(calibrationTransform), so cal = inverse(perspective).
-      const cal = inverse(perspective);
+      // Use calibrationTransformRef directly (not inverse(perspective)) to
+      // avoid double-inverse numerical error with extreme distortion.
+      const cal = calibrationTransformRef.current ?? Matrix.eye(3);
       const gridToScreen = cal.mmul(magnifyTransform!).mmul(localTransform);
 
       // Transform the tile's four corners to screen coordinates.
@@ -585,20 +549,19 @@ export default function PdfHighResViewport({
       const sxs = screenCorners.map((c) => c.x);
       const sys = screenCorners.map((c) => c.y);
       const screenTileW = Math.max(...sxs) - Math.min(...sxs);
-      const screenTileH = Math.max(...sys) - Math.min(...sys);
 
-      // pdf.js tile pixels = screen tile extent × DPR.
+      // pdf.js tile pixels = screen tile extent × DPR for the width.
+      // Force the height to maintain the grid-space aspect ratio because
+      // pdf.js renders with an isotropic scale (renderScale = tilePixelW /
+      // regionW_pdf). Without this, projective distortion makes screenTileH /
+      // screenTileW differ from cssHeight / cssWidth — the T matrix in
+      // compositeMagnifyTile then uses the wrong Y scale, causing a
+      // position error that grows with the amount of distortion.
       tilePixelW = Math.round(screenTileW * dpr);
-      tilePixelH = Math.round(screenTileH * dpr);
-
-      // The body canvas covers the full screen.
-      screenCanvasW = Math.round(screenWidth * dpr);
-      screenCanvasH = Math.round(screenHeight * dpr);
+      tilePixelH = Math.round(tilePixelW * cssHeight / cssWidth);
     } else {
       tilePixelW = Math.round(cssWidth * dpr);
       tilePixelH = Math.round(cssHeight * dpr);
-      screenCanvasW = tilePixelW;
-      screenCanvasH = tilePixelH;
     }
 
     // Cap tile pixel budget per browser limits.
@@ -627,6 +590,10 @@ export default function PdfHighResViewport({
 
     if (renderScale <= baseRenderScale) {
       canvas.style.display = "none";
+      if (isMagnified) {
+        removeMagnifyCanvas();
+        cachedTileRef.current = null;
+      }
       renderedPatternScaleRef.current = null;
       finishRender();
       return;
@@ -704,135 +671,123 @@ export default function PdfHighResViewport({
       : "";
 
     // =================================================================
-    // COMMIT: write pixels to the visible canvas.
+    // COMMIT: write rendered pixels to the target canvas.
+    //
+    // Non-magnified: grid-space canvas inside the CSS transform chain.
+    // Magnified: body canvas (outside the CSS chain) positioned via a
+    // CSS matrix3d that matches Draggable's transform exactly. This
+    // preserves the full backing-store resolution — the compositor
+    // doesn't downsample it through the magnify upscale.
     // =================================================================
 
-    if (isMagnified) {
-      // ------ MAGNIFY PATH: body-level screen-space canvas ------
-      // Cache the rendered tile and its metadata. The heavy work (pdf.js render)
-      // is done; from here on, panning just calls compositeMagnifyTile() which
-      // does a cheap drawImage + setTransform.
-      const commitMagnify = (sourceCanvas: HTMLCanvasElement) => {
-        if (thisRenderId !== renderIdRef.current) return;
-        if (patternScale !== currentPatternScaleRef.current) return;
+    // CSS box dimensions. For magnified the box matches the backing
+    // store / DPR so the compositor texture is 1:1 with the rendered
+    // pixels. For non-magnified the box is the grid-space tile extent.
+    const canvasCssW = isMagnified ? tilePixelW / dpr : cssWidth;
+    const canvasCssH = isMagnified ? tilePixelH / dpr : cssHeight;
 
-        cachedTileRef.current = {
-          canvas: sourceCanvas,
-          cssLeft,
-          cssTop,
-          cssWidth,
-          cssHeight,
-          cssFilter: !isSafari && cssFilter ? cssFilter : undefined,
-          debugFilter,
-          screenCanvasW,
-          screenCanvasH,
-          screenWidth,
-          screenHeight,
-          dpr,
-        };
+    /** Helper: update shared refs after a successful commit. */
+    const commitRefs = () => {
+      renderedPatternScaleRef.current = patternScale;
+      renderedContentKeyRef.current = contentKey;
+      renderedCssLeftRef.current = cssLeft;
+      renderedCssTopRef.current = cssTop;
+      renderedTileWidthRef.current = cssWidth;
+      renderedTileHeightRef.current = cssHeight;
+    };
 
-        renderedPatternScaleRef.current = patternScale;
-        renderedContentKeyRef.current = contentKey;
-        renderedCssLeftRef.current = cssLeft;
-        renderedCssTopRef.current = cssTop;
-        renderedTileWidthRef.current = cssWidth;
-        renderedTileHeightRef.current = cssHeight;
-
-        // Draw the tile immediately via the compositing function.
-        compositeMagnifyTile();
+    if (isSafari) {
+      const rawImageData = ctx.getImageData(0, 0, tilePixelW, tilePixelH);
+      const request: PixelProcessRequest = {
+        id: thisRenderId,
+        buffer: rawImageData.data.buffer,
+        width: tilePixelW,
+        height: tilePixelH,
+        erosions: renderErosions,
+        recolourHex: safariEffectiveRecolourHex ?? undefined,
       };
-
-      if (isSafari) {
-        const rawImageData = ctx.getImageData(0, 0, tilePixelW, tilePixelH);
-        const request: PixelProcessRequest = {
-          id: thisRenderId,
-          buffer: rawImageData.data.buffer,
-          width: tilePixelW,
-          height: tilePixelH,
-          erosions: renderErosions,
-          recolourHex: safariEffectiveRecolourHex ?? undefined,
-        };
-        const worker = getWorker();
-        worker.onmessage = (e: MessageEvent<PixelProcessResponse>) => {
-          finishRender();
-          const { id, bitmap } = e.data;
-          if (id !== renderIdRef.current) {
-            bitmap.close();
-            return;
-          }
-          if (patternScale !== currentPatternScaleRef.current) {
-            bitmap.close();
-            return;
-          }
-          // Draw bitmap into a temp canvas so commitMagnify can use drawImage.
-          const tmp = document.createElement("canvas");
-          tmp.width = tilePixelW;
-          tmp.height = tilePixelH;
-          const tmpCtx = tmp.getContext("2d", { alpha: false });
-          if (tmpCtx) tmpCtx.drawImage(bitmap, 0, 0);
-          bitmap.close();
-          commitMagnify(tmp);
-        };
-        worker.postMessage(request, [request.buffer]);
-      } else {
+      const worker = getWorker();
+      worker.onmessage = (e: MessageEvent<PixelProcessResponse>) => {
         finishRender();
-        commitMagnify(tempCanvas);
-      }
-    } else {
-      // ------ NORMAL PATH: grid-space canvas (unchanged) ------
-      if (isSafari) {
-        const rawImageData = ctx.getImageData(0, 0, tilePixelW, tilePixelH);
-        const request: PixelProcessRequest = {
-          id: thisRenderId,
-          buffer: rawImageData.data.buffer,
-          width: tilePixelW,
-          height: tilePixelH,
-          erosions: renderErosions,
-          recolourHex: safariEffectiveRecolourHex ?? undefined,
-        };
-        const worker = getWorker();
-        worker.onmessage = (e: MessageEvent<PixelProcessResponse>) => {
-          finishRender();
-          const { id, bitmap } = e.data;
-          if (id !== renderIdRef.current) {
-            bitmap.close();
-            return;
+        const { id, bitmap } = e.data;
+        if (id !== renderIdRef.current) {
+          bitmap.close();
+          return;
+        }
+        if (patternScale !== currentPatternScaleRef.current) {
+          bitmap.close();
+          return;
+        }
+        if (isMagnified) {
+          // --- Magnified: write to the body canvas ---
+          const bodyCanvas = getOrCreateMagnifyCanvas();
+          bodyCanvas.width = tilePixelW;
+          bodyCanvas.height = tilePixelH;
+          bodyCanvas.style.width = `${canvasCssW}px`;
+          bodyCanvas.style.height = `${canvasCssH}px`;
+          bodyCanvas.style.filter = debugFilter;
+          const dest = bodyCanvas.getContext("2d", { alpha: false });
+          if (dest) {
+            dest.drawImage(bitmap, 0, 0);
           }
-          if (patternScale !== currentPatternScaleRef.current) {
-            bitmap.close();
-            return;
-          }
+          bitmap.close();
+          cachedTileRef.current = {
+            cssLeft, cssTop, cssWidth, cssHeight,
+            canvasCssW, canvasCssH,
+          };
+          compositeMagnifyTile();
+          canvas.style.display = "none";
+        } else {
+          // --- Non-magnified: write to the grid-space canvas ---
           canvas.width = tilePixelW;
           canvas.height = tilePixelH;
-          canvas.style.width = `${cssWidth}px`;
-          canvas.style.height = `${cssHeight}px`;
+          canvas.style.width = `${canvasCssW}px`;
+          canvas.style.height = `${canvasCssH}px`;
           canvas.style.left = `${cssLeft}px`;
           canvas.style.top = `${cssTop}px`;
           canvas.style.filter = debugFilter;
-          canvas.style.transform = "";
           canvas.style.transformOrigin = "0 0";
-          renderedPatternScaleRef.current = patternScale;
-          renderedContentKeyRef.current = contentKey;
-          renderedCssLeftRef.current = cssLeft;
-          renderedCssTopRef.current = cssTop;
-          renderedTileWidthRef.current = cssWidth;
-          renderedTileHeightRef.current = cssHeight;
+          canvas.style.transform = "";
           const dest = canvas.getContext("2d", { alpha: false });
           if (dest) {
             dest.drawImage(bitmap, 0, 0);
           }
           bitmap.close();
           canvas.style.display = showHighResOverlayRef.current ? "" : "none";
+        }
+        commitRefs();
+      };
+      worker.postMessage(request, [request.buffer]);
+    } else {
+      finishRender();
+      if (thisRenderId !== renderIdRef.current) return;
+      if (patternScale !== currentPatternScaleRef.current) return;
+
+      if (isMagnified) {
+        // --- Magnified: write to the body canvas ---
+        const bodyCanvas = getOrCreateMagnifyCanvas();
+        bodyCanvas.width = tilePixelW;
+        bodyCanvas.height = tilePixelH;
+        bodyCanvas.style.width = `${canvasCssW}px`;
+        bodyCanvas.style.height = `${canvasCssH}px`;
+        const dest = bodyCanvas.getContext("2d");
+        if (!dest) return;
+        dest.imageSmoothingEnabled = false;
+        dest.filter = cssFilter ?? "none";
+        dest.drawImage(tempCanvas, 0, 0);
+        bodyCanvas.style.filter = debugFilter;
+        cachedTileRef.current = {
+          cssLeft, cssTop, cssWidth, cssHeight,
+          canvasCssW, canvasCssH,
         };
-        worker.postMessage(request, [request.buffer]);
+        compositeMagnifyTile();
+        canvas.style.display = "none";
       } else {
-        finishRender();
-        if (thisRenderId !== renderIdRef.current) return;
-        if (patternScale !== currentPatternScaleRef.current) return;
+        // --- Non-magnified: write to the grid-space canvas ---
         canvas.width = tilePixelW;
         canvas.height = tilePixelH;
-        canvas.style.width = `${cssWidth}px`;
-        canvas.style.height = `${cssHeight}px`;
+        canvas.style.width = `${canvasCssW}px`;
+        canvas.style.height = `${canvasCssH}px`;
         canvas.style.left = `${cssLeft}px`;
         canvas.style.top = `${cssTop}px`;
         const dest = canvas.getContext("2d");
@@ -841,16 +796,11 @@ export default function PdfHighResViewport({
         dest.filter = cssFilter ?? "none";
         dest.drawImage(tempCanvas, 0, 0);
         canvas.style.filter = debugFilter;
-        canvas.style.transform = "";
         canvas.style.transformOrigin = "0 0";
-        renderedPatternScaleRef.current = patternScale;
-        renderedContentKeyRef.current = contentKey;
-        renderedCssLeftRef.current = cssLeft;
-        renderedCssTopRef.current = cssTop;
-        renderedTileWidthRef.current = cssWidth;
-        renderedTileHeightRef.current = cssHeight;
+        canvas.style.transform = "";
         canvas.style.display = showHighResOverlayRef.current ? "" : "none";
       }
+      commitRefs();
     }
   }, [
     pdf,
@@ -870,6 +820,7 @@ export default function PdfHighResViewport({
     getWorker,
     getOrCreateMagnifyCanvas,
     compositeMagnifyTile,
+    removeMagnifyCanvas,
     pageOffsetXBase,
     pageOffsetYBase,
     finishRender,
