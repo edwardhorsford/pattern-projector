@@ -1271,7 +1271,7 @@ export default function Page() {
                     )}
                   </Draggable>
                   <OverlayCanvas
-                    className={`absolute top-0 z-20 pointer-events-none`}
+                    className={`absolute top-0 z-[35] pointer-events-none`}
                     points={points}
                     width={width}
                     height={height}
