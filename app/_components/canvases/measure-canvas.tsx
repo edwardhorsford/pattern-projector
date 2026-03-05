@@ -86,10 +86,11 @@ export default function MeasureCanvas({
   const [axisConstrained, setAxisConstrained] = useState<boolean>(false);
   const [hoveredEnd, setHoveredEnd] = useState<{ lineIndex: number; endIndex: 0 | 1 } | null>(null);
   const [hoveredLineIndex, setHoveredLineIndex] = useState<number>(-1);
+  const [isDraggingWholeLine, setIsDraggingWholeLine] = useState<boolean>(false);
 
   const transform = useTransformContext();
 
-  const disablePointer = measuring || dragOffset.current;
+  const disablePointer = measuring || dragOffset.current !== null || hoveredEnd !== null || hoveredLineIndex >= 0;
 
   // Use a consistent physical size for the touch area (1/2 inch).
   const TOUCH_AREA_INCHES = 0.5;
@@ -154,6 +155,7 @@ export default function MeasureCanvas({
       setHoveredLineIndex(lineToSelect);
       dragOffset.current = { x: 0, y: 0 };
       draggingWholeLine.current = true;
+      setIsDraggingWholeLine(true);
       lineDragPatternStart.current = pattern;
       lineDragInitialPoints.current = [{ ...patternLine.points[0] }, { ...patternLine.points[1] }];
       e.stopPropagation();
@@ -189,6 +191,7 @@ export default function MeasureCanvas({
       // If the mouse button is released, end the drag.
       dragOffset.current = null;
       draggingWholeLine.current = false;
+      setIsDraggingWholeLine(false);
       lineDragPatternStart.current = null;
       lineDragInitialPoints.current = null;
       return;
@@ -199,15 +202,11 @@ export default function MeasureCanvas({
       const client = { x: e.clientX, y: e.clientY };
       const patternToCalibrated = transform.mmul(scale(patternScale));
       const patternToClient = calibrationTransform.mmul(patternToCalibrated);
-      const transformScale = Math.sqrt(
-        transform.get(0, 0) ** 2 + transform.get(0, 1) ** 2,
-      );
-      const scaledEndCircleRadiusHover = END_CIRCLE_RADIUS / transformScale;
       let newHoveredEnd: { lineIndex: number; endIndex: 0 | 1 } | null = null;
       for (let i = 0; i < lines.length; i++) {
         const clientLine = transformLine(lines[i], patternToClient);
         for (const endIndex of [0, 1] as const) {
-          if (dist(clientLine.points[endIndex], client) < scaledEndCircleRadiusHover) {
+          if (dist(clientLine.points[endIndex], client) < END_CIRCLE_RADIUS) {
             newHoveredEnd = { lineIndex: i, endIndex };
             break;
           }
@@ -219,10 +218,9 @@ export default function MeasureCanvas({
       // Check for line body hover (not near an endpoint).
       let newHoveredLine = -1;
       if (!newHoveredEnd) {
-        const scaledLineTouchRadiusHover = LINE_TOUCH_RADIUS / transformScale;
         for (let i = 0; i < lines.length; i++) {
           const clientLine = transformLine(lines[i], patternToClient);
-          if (distToLine(clientLine.points, client) < scaledLineTouchRadiusHover) {
+          if (distToLine(clientLine.points, client) < LINE_TOUCH_RADIUS) {
             newHoveredLine = i;
             break;
           }
@@ -300,6 +298,7 @@ export default function MeasureCanvas({
         newP1: { x: lineDragInitialPoints.current[1].x + dx, y: lineDragInitialPoints.current[1].y + dy },
       });
       draggingWholeLine.current = false;
+      setIsDraggingWholeLine(false);
       lineDragPatternStart.current = null;
       lineDragInitialPoints.current = null;
       dragOffset.current = null;
@@ -535,7 +534,7 @@ export default function MeasureCanvas({
         onPointerMoveCapture={handlePointerMove}
         onPointerUpCapture={handlePointerUp}
         onPointerLeave={() => { setHoveredEnd(null); setHoveredLineIndex(-1); }}
-        className={`${draggingWholeLine.current ? "cursor-grabbing" : hoveredLineIndex >= 0 ? "cursor-grab" : measuring ? "cursor-crosshair" : ""} h-screen w-screen`}
+        className={`${isDraggingWholeLine ? "cursor-grabbing" : hoveredEnd !== null ? "cursor-crosshair" : hoveredLineIndex >= 0 ? "cursor-grab" : measuring ? "cursor-crosshair" : ""} h-screen w-screen`}
       >
         <div className={`${disablePointer ? "pointer-events-none" : ""}`}>
           {children}
