@@ -15,7 +15,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { drawLine, drawArrow } from "@/_lib/drawing";
+import { drawLine, drawArrow, drawCircle } from "@/_lib/drawing";
 import { useTransformContext } from "@/_hooks/use-transform-context";
 
 import { KeyCode } from "@/_lib/key-code";
@@ -81,6 +81,7 @@ export default function MeasureCanvas({
   const previousFileKey = useRef<string | null>(null);
 
   const [axisConstrained, setAxisConstrained] = useState<boolean>(false);
+  const [hoveredEnd, setHoveredEnd] = useState<{ lineIndex: number; endIndex: 0 | 1 } | null>(null);
 
   const transform = useTransformContext();
 
@@ -128,6 +129,7 @@ export default function MeasureCanvas({
             });
           }
           e.stopPropagation();
+          setHoveredEnd({ lineIndex: i, endIndex: 1 });
           return;
         }
       }
@@ -174,6 +176,29 @@ export default function MeasureCanvas({
       // If the mouse button is released, end the drag.
       dragOffset.current = null;
       return;
+    }
+
+    // Not dragging — update endpoint hover state.
+    if (!dragOffset.current) {
+      const client = { x: e.clientX, y: e.clientY };
+      const patternToCalibrated = transform.mmul(scale(patternScale));
+      const patternToClient = calibrationTransform.mmul(patternToCalibrated);
+      const transformScale = Math.sqrt(
+        transform.get(0, 0) ** 2 + transform.get(0, 1) ** 2,
+      );
+      const scaledEndCircleRadiusHover = END_CIRCLE_RADIUS / transformScale;
+      let newHoveredEnd: { lineIndex: number; endIndex: 0 | 1 } | null = null;
+      for (let i = 0; i < lines.length; i++) {
+        const clientLine = transformLine(lines[i], patternToClient);
+        for (const endIndex of [0, 1] as const) {
+          if (dist(clientLine.points[endIndex], client) < scaledEndCircleRadiusHover) {
+            newHoveredEnd = { lineIndex: i, endIndex };
+            break;
+          }
+        }
+        if (newHoveredEnd) break;
+      }
+      setHoveredEnd(newHoveredEnd);
     }
 
     // Dragging an end of a line?
@@ -301,6 +326,7 @@ export default function MeasureCanvas({
             drawLine(ctx, transformLine(lines[i], patternToClient).points);
           }
         }
+
         if (lines.length > 0 && selectedLine >= 0) {
           // Style selected line differently.
           ctx.strokeStyle = accentColor;
@@ -325,8 +351,35 @@ export default function MeasureCanvas({
             scaledMatLine,
             calMag,
           ).points;
-          drawArrow(ctx, clientLine);
+          drawArrow(ctx, clientLine, hoveredEnd?.lineIndex === selectedLine
+            ? { start: hoveredEnd.endIndex === 0, end: hoveredEnd.endIndex === 1 }
+            : undefined);
           drawMeasurementsAt(ctx, matLine, clientLine[1]);
+        }
+
+        // Draw dashed end cap on hovered endpoint — rendered last so it sits on top.
+        if (hoveredEnd !== null && hoveredEnd.lineIndex < lines.length) {
+          const hClientLine = transformLine(lines[hoveredEnd.lineIndex], patternToClient);
+          const p0 = hClientLine.points[0];
+          const p1 = hClientLine.points[1];
+          const hPoint = hClientLine.points[hoveredEnd.endIndex];
+          const angle = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+          const whisker = 16;
+          ctx.save();
+          ctx.strokeStyle = hoveredEnd.lineIndex === selectedLine ? accentColor : "#FF4500";
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(
+            hPoint.x + Math.cos(angle + Math.PI / 2) * whisker,
+            hPoint.y + Math.sin(angle + Math.PI / 2) * whisker,
+          );
+          ctx.lineTo(
+            hPoint.x + Math.cos(angle - Math.PI / 2) * whisker,
+            hPoint.y + Math.sin(angle - Math.PI / 2) * whisker,
+          );
+          ctx.stroke();
+          drawCircle(ctx, hPoint, 30);
+          ctx.restore();
         }
       }
     }
@@ -356,6 +409,7 @@ export default function MeasureCanvas({
     lines,
     transform,
     selectedLine,
+    hoveredEnd,
     measuring,
     isDarkTheme,
     patternScale,
@@ -392,6 +446,7 @@ export default function MeasureCanvas({
         onPointerDownCapture={handlePointerDown}
         onPointerMoveCapture={handlePointerMove}
         onPointerUpCapture={handlePointerUp}
+        onPointerLeave={() => setHoveredEnd(null)}
         className={`${measuring ? "cursor-crosshair" : ""} h-screen w-screen`}
       >
         <div className={`${disablePointer ? "pointer-events-none" : ""}`}>

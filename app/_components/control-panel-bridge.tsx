@@ -976,6 +976,14 @@ export function ControlPanelBridge({
     setClearingMode(false);
   }, [KeyCode.Escape]);
 
+  // Keyboard shortcut Backspace to delete the selected line
+  useKeyDown(() => {
+    if (selectedLine >= 0 && selectedLine < lines.length) {
+      dispatchLines({ type: "remove", index: selectedLine });
+      setSelectedLine(-1);
+    }
+  }, [KeyCode.Backspace]);
+
   // Keyboard shortcut Cmd/Ctrl+Z for undo last marker placement
   useEffect(() => {
     const handleUndo = (e: KeyboardEvent) => {

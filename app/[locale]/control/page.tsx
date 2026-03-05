@@ -1448,6 +1448,13 @@ export default function ControlPanelPage() {
     handleAction("cancelAllTools");
   }, [KeyCode.Escape]);
 
+  // Keyboard shortcut Backspace to delete the selected line
+  useKeyDown(() => {
+    if (state.selectedLine >= 0) {
+      handleAction("deleteLine");
+    }
+  }, [KeyCode.Backspace]);
+
   // Keyboard shortcut Cmd/Ctrl+Z for undo last marker placement
   useEffect(() => {
     const handleUndo = (e: KeyboardEvent) => {
