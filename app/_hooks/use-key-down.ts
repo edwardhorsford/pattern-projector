@@ -10,7 +10,10 @@ export const useKeyDown = (
       const keyDown = keyCodes.some((keyCode) => e.key === keyCode);
 
       // Don't intercept keydown events when an input or textarea element is focused
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
         return;
       }
 
