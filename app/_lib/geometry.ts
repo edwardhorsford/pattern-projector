@@ -346,10 +346,10 @@ export function flipAlong(line: SimpleLine): Matrix {
 }
 
 /**
- * Converts 3x3 matrix returned from getPerspectiveTransform(src, dst) to a 4x4 matrix as per https://stackoverflow.com/a/4833408/3376039
- * @param src - Coordinates of quadrangle vertices in the source image starting from top left clockwise.
- * @param dst - Coordinates of the corresponding quadrangle vertices in the destination image starting from top left clockwise.
- * @returns A css transform string
+ * Converts a 3×3 homography matrix to a CSS matrix3d() string.
+ * Inserts a z column/row to produce a 4×4 matrix, then transposes
+ * to column-major order as CSS expects.
+ * See https://stackoverflow.com/a/4833408/3376039
  */
 export function toMatrix3d(m: Matrix): string {
   let r = m.clone();

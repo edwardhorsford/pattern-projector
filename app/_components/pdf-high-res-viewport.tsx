@@ -225,8 +225,7 @@ export default function PdfHighResViewport({
       c.style.zIndex = "10";
       // Find the MeasureCanvas container and insert the canvas there.
       const container =
-        canvasRef.current?.closest("[data-magnify-container]") ??
-        document.body;
+        canvasRef.current?.closest("[data-magnify-container]") ?? document.body;
       container.appendChild(c);
       magnifyCanvasRef.current = c;
     }
@@ -335,9 +334,15 @@ export default function PdfHighResViewport({
     const sx = tile.cssWidth / tile.canvasCssW;
     const sy = tile.cssHeight / tile.canvasCssH;
     const T = Matrix.from1DArray(3, 3, [
-      sx, 0, tile.cssLeft,
-      0, sy, tile.cssTop,
-      0, 0, 1,
+      sx,
+      0,
+      tile.cssLeft,
+      0,
+      sy,
+      tile.cssTop,
+      0,
+      0,
+      1,
     ]);
 
     // Full projective: canvas CSS → grid → screen.
@@ -386,9 +391,9 @@ export default function PdfHighResViewport({
 
     const isMagnified = magnifyTransform !== null;
 
-    // Choose the target canvas. Both modes use the same grid-space canvas
-    // inside the CSS transform chain — the parent div's matrix3d handles
-    // calibration + magnify + local transforms automatically.
+    // The grid-space canvas is always needed for position tracking and
+    // non-magnified commits. When magnified, the actual pixels go to
+    // a separate body canvas positioned via CSS matrix3d.
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -547,7 +552,6 @@ export default function PdfHighResViewport({
         return { x: v.get(0, 0) / w, y: v.get(1, 0) / w };
       });
       const sxs = screenCorners.map((c) => c.x);
-      const sys = screenCorners.map((c) => c.y);
       const screenTileW = Math.max(...sxs) - Math.min(...sxs);
 
       // pdf.js tile pixels = screen tile extent × DPR for the width.
@@ -558,7 +562,7 @@ export default function PdfHighResViewport({
       // compositeMagnifyTile then uses the wrong Y scale, causing a
       // position error that grows with the amount of distortion.
       tilePixelW = Math.round(screenTileW * dpr);
-      tilePixelH = Math.round(tilePixelW * cssHeight / cssWidth);
+      tilePixelH = Math.round((tilePixelW * cssHeight) / cssWidth);
     } else {
       tilePixelW = Math.round(cssWidth * dpr);
       tilePixelH = Math.round(cssHeight * dpr);
@@ -732,8 +736,12 @@ export default function PdfHighResViewport({
           }
           bitmap.close();
           cachedTileRef.current = {
-            cssLeft, cssTop, cssWidth, cssHeight,
-            canvasCssW, canvasCssH,
+            cssLeft,
+            cssTop,
+            cssWidth,
+            cssHeight,
+            canvasCssW,
+            canvasCssH,
           };
           compositeMagnifyTile();
           canvas.style.display = "none";
@@ -777,8 +785,12 @@ export default function PdfHighResViewport({
         dest.drawImage(tempCanvas, 0, 0);
         bodyCanvas.style.filter = debugFilter;
         cachedTileRef.current = {
-          cssLeft, cssTop, cssWidth, cssHeight,
-          canvasCssW, canvasCssH,
+          cssLeft,
+          cssTop,
+          cssWidth,
+          cssHeight,
+          canvasCssW,
+          canvasCssH,
         };
         compositeMagnifyTile();
         canvas.style.display = "none";
