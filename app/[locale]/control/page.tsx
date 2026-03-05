@@ -1443,6 +1443,11 @@ export default function ControlPanelPage() {
     }
   }, [KeyCode.KeyX]);
 
+  // Keyboard shortcut Escape to cancel any active tool
+  useKeyDown(() => {
+    handleAction("cancelAllTools");
+  }, [KeyCode.Escape]);
+
   // Keyboard shortcut Cmd/Ctrl+Z for undo last marker placement
   useEffect(() => {
     const handleUndo = (e: KeyboardEvent) => {

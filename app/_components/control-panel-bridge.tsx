@@ -967,6 +967,15 @@ export function ControlPanelBridge({
     }
   }, [KeyCode.KeyX]);
 
+  // Keyboard shortcut Escape to cancel any active tool
+  useKeyDown(() => {
+    setMagnifying(false);
+    setMeasuring(false);
+    setZoomedOut(false);
+    setMarkingMode(false);
+    setClearingMode(false);
+  }, [KeyCode.Escape]);
+
   // Keyboard shortcut Cmd/Ctrl+Z for undo last marker placement
   useEffect(() => {
     const handleUndo = (e: KeyboardEvent) => {
@@ -1617,6 +1626,13 @@ export function ControlPanelBridge({
           }
           case "clearMarkers":
             setMarkers([]);
+            setClearingMode(false);
+            break;
+          case "cancelAllTools":
+            setMagnifying(false);
+            setMeasuring(false);
+            setZoomedOut(false);
+            setMarkingMode(false);
             setClearingMode(false);
             break;
           case "undoMarker":
