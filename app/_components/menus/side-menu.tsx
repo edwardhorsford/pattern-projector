@@ -31,6 +31,7 @@ export default function SideMenu({
   patternScale,
   dispatchPatternScaleAction,
   onStepScale,
+  onSetScale,
 }: {
   menuStates: MenuStates;
   setMenuStates: Dispatch<SetStateAction<MenuStates>>;
@@ -43,6 +44,7 @@ export default function SideMenu({
   patternScale: string;
   dispatchPatternScaleAction: Dispatch<PatternScaleAction>;
   onStepScale?: (delta: number) => void;
+  onSetScale?: (scale: number) => void;
 }) {
   const sc = useTranslations("ScaleMenu");
   const h = useTranslations("Header");
@@ -149,6 +151,7 @@ export default function SideMenu({
           patternScale={patternScale}
           dispatchPatternScaleAction={dispatchPatternScaleAction}
           onStepScale={onStepScale}
+          onSetScale={onSetScale}
           isMenuAtBottom={isMenuAtBottom}
         />
       )}

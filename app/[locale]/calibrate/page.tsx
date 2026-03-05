@@ -1393,6 +1393,17 @@ export default function Page() {
                       }),
                     );
                   }}
+                  onSetScale={(scale) => {
+                    window.dispatchEvent(
+                      new CustomEvent<ProjectScaleDetail>("project-scale", {
+                        detail: {
+                          type: "set",
+                          scale,
+                          anchor: getCalibrationCenterScreenAnchor(),
+                        },
+                      }),
+                    );
+                  }}
                 />
               )}
             </menu>

@@ -9,11 +9,13 @@ export default function ScaleMenu({
   patternScale,
   dispatchPatternScaleAction,
   onStepScale,
+  onSetScale,
   isMenuAtBottom = false,
 }: {
   patternScale: string;
   dispatchPatternScaleAction: Dispatch<PatternScaleAction>;
   onStepScale?: (delta: number) => void;
+  onSetScale?: (scale: number) => void;
   isMenuAtBottom?: boolean;
 }) {
   const t = useTranslations("ScaleMenu");
@@ -26,9 +28,13 @@ export default function ScaleMenu({
     <menu className={menuStyles}>
       <div className="flex justify-end w-full">
         <Button
-          onClick={() =>
-            dispatchPatternScaleAction({ type: "set", scale: "1.00" })
-          }
+          onClick={() => {
+            if (onSetScale) {
+              onSetScale(1)
+            } else {
+              dispatchPatternScaleAction({ type: "set", scale: "1.00" })
+            }
+          }}
           className="text-xs px-2 py-1"
         >
           {t("reset")}
@@ -36,12 +42,15 @@ export default function ScaleMenu({
       </div>
       <StepperInput
         inputClassName="w-20"
-        handleChange={(e) =>
-          dispatchPatternScaleAction({
-            type: "set",
-            scale: removeNonDigits(e.target.value, patternScale),
-          })
-        }
+        handleChange={(e) => {
+          const cleaned = removeNonDigits(e.target.value, patternScale)
+          const parsed = Number(cleaned)
+          if (onSetScale && cleaned.trim() !== "" && Number.isFinite(parsed)) {
+            onSetScale(parsed)
+          } else {
+            dispatchPatternScaleAction({ type: "set", scale: cleaned })
+          }
+        }}
         label={t("scale")}
         value={patternScale}
         onStep={(delta) => {
