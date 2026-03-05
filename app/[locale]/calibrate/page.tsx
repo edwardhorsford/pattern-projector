@@ -1166,147 +1166,147 @@ export default function Page() {
             {!isCalibrating && (
               // Layer order (low -> high): image data (Draggable/PDF), overlays, markers, UI.
               <div onPointerDown={() => setSelectedMarkerId(null)}>
-              <MeasureCanvas
-                className={`relative z-0 ${visible(!isCalibrating)}`}
-                perspective={perspective}
-                calibrationTransform={calibrationTransform}
-                unitOfMeasure={unitOfMeasure}
-                measuring={measuring}
-                setMeasuring={setMeasuring}
-                file={file}
-                gridCenter={calibrationCenter}
-                zoomedOut={zoomedOut}
-                magnifying={magnifying}
-                magnifyTransform={magnifyTransform}
-                menusHidden={menusHidden}
-                menuStates={menuStates}
-                isDarkTheme={isDarkTheme(displaySettings.theme)}
-                lines={lines}
-                dispatchLines={dispatchLines}
-                selectedLine={selectedLine}
-                setSelectedLine={setSelectedLine}
-                patternScale={patternScaleFactor}
-                accentColor={secondaryColor(displaySettings.theme)}
-              >
-                <Draggable
-                  className={`absolute ${menusHidden && "!cursor-none"} `}
+                <MeasureCanvas
+                  className={`relative z-0 ${visible(!isCalibrating)}`}
                   perspective={perspective}
-                  isCalibrating={isCalibrating}
-                  unitOfMeasure={unitOfMeasure}
                   calibrationTransform={calibrationTransform}
-                  setCalibrationTransform={setCalibrationTransform}
-                  setPerspective={setPerspective}
-                  magnifying={magnifying}
-                  setMagnifying={setMagnifying}
-                  magnifyTransform={magnifyTransform}
-                  setMagnifyTransform={setMagnifyTransform}
-                  setRestoreTransforms={setRestoreTransforms}
-                  restoreTransforms={restoreTransforms}
-                  zoomedOut={zoomedOut}
-                  setZoomedOut={setZoomedOut}
-                  layoutWidth={layoutWidth}
-                  layoutHeight={layoutHeight}
-                  calibrationCenter={calibrationCenter}
-                  patternScale={patternScaleFactor}
-                  menuStates={menuStates}
+                  unitOfMeasure={unitOfMeasure}
+                  measuring={measuring}
+                  setMeasuring={setMeasuring}
                   file={file}
-                  markingMode={markingMode}
-                  setMarkingMode={setMarkingMode}
-                  clearingMode={clearingMode}
-                  setClearingMode={setClearingMode}
-                  markers={markers}
-                  setMarkers={setMarkers}
-                >
-                  {file === null || file.type === "application/pdf" ? (
-                    <PdfViewer
-                      file={file}
-                      setPageCount={setPageCount}
-                      pageCount={pageCount}
-                      setLayers={setLayers}
-                      layers={layers}
-                      setLayoutWidth={setLayoutWidth}
-                      setLayoutHeight={setLayoutHeight}
-                      lineThickness={lineThickness}
-                      stitchSettings={stitchSettings}
-                      filter={
-                        isColourTheme(displaySettings.theme)
-                          ? "none"
-                          : themeRecolourFilter(displaySettings.theme)
-                      }
-                      canvasBackground={
-                        isDarkTheme(displaySettings.theme)
-                          ? "#000000"
-                          : "#ffffff"
-                      }
-                      recolourHex={recolourHex}
-                      dispatchStitchSettings={dispatchStitchSettings}
-                      setLineThicknessStatus={setLineThicknessStatus}
-                      setFileLoadStatus={setFileLoadStatus}
-                      magnifying={magnifying}
-                      magnifyTransform={magnifyTransform}
-                      gridCenter={calibrationCenter}
-                      patternScale={patternScaleFactor}
-                      setMenuStates={setMenuStates}
-                      renderVersion={pdfRenderKey}
-                      perspective={perspective}
-                      calibrationTransform={calibrationTransform}
-                      showHighResOverlay={showHighResOverlay}
-                      debugTintHighRes={debugTintHighRes}
-                      debugLowResBase={debugLowResBase}
-                    />
-                  ) : (
-                    <SvgViewer
-                      dataUrl={dataUrl ?? ""}
-                      setFileLoadStatus={setFileLoadStatus}
-                      setLayoutWidth={setLayoutWidth}
-                      setLayoutHeight={setLayoutHeight}
-                      setPageCount={setPageCount}
-                      layers={layers}
-                      setLayers={setLayers}
-                      svgStyle={svgStyle}
-                      patternScale={patternScaleFactor}
-                      setMenuStates={setMenuStates}
-                      patternScaleFactor={patternScaleFactor}
-                    />
-                  )}
-                </Draggable>
-                <OverlayCanvas
-                  className={`absolute top-0 z-20 pointer-events-none`}
-                  points={points}
-                  width={width}
-                  height={height}
-                  unitOfMeasure={unitOfMeasure}
-                  displaySettings={displaySettings}
-                  calibrationTransform={calibrationTransform}
+                  gridCenter={calibrationCenter}
                   zoomedOut={zoomedOut}
                   magnifying={magnifying}
                   magnifyTransform={magnifyTransform}
-                  restoreTransforms={restoreTransforms}
-                  patternScale={String(patternScaleFactor)}
-                />
-                <MarkerCanvas
-                  markers={markers}
-                  calibrationTransform={calibrationTransform}
-                  magnifyTransform={magnifyTransform}
+                  menusHidden={menusHidden}
+                  menuStates={menuStates}
+                  isDarkTheme={isDarkTheme(displaySettings.theme)}
+                  lines={lines}
+                  dispatchLines={dispatchLines}
+                  selectedLine={selectedLine}
+                  setSelectedLine={setSelectedLine}
                   patternScale={patternScaleFactor}
-                  unitOfMeasure={unitOfMeasure}
-                  theme={displaySettings.theme}
-                  className="z-30"
-                  selectedMarkerId={selectedMarkerId}
-                  onSelectMarker={setSelectedMarkerId}
-                  onMoveMarker={(id, newPosition) => {
-                    setMarkers(
-                      markers.map((m) =>
-                        m.id === id ? { ...m, position: newPosition } : m,
-                      ),
-                    );
-                  }}
-                  onDeleteMarker={(id) => {
-                    setMarkers(markers.filter((m) => m.id !== id));
-                    setSelectedMarkerId(null);
-                  }}
-                />
-              </MeasureCanvas>
+                  accentColor={secondaryColor(displaySettings.theme)}
+                >
+                  <Draggable
+                    className={`absolute ${menusHidden && "!cursor-none"} `}
+                    perspective={perspective}
+                    isCalibrating={isCalibrating}
+                    unitOfMeasure={unitOfMeasure}
+                    calibrationTransform={calibrationTransform}
+                    setCalibrationTransform={setCalibrationTransform}
+                    setPerspective={setPerspective}
+                    magnifying={magnifying}
+                    setMagnifying={setMagnifying}
+                    magnifyTransform={magnifyTransform}
+                    setMagnifyTransform={setMagnifyTransform}
+                    setRestoreTransforms={setRestoreTransforms}
+                    restoreTransforms={restoreTransforms}
+                    zoomedOut={zoomedOut}
+                    setZoomedOut={setZoomedOut}
+                    layoutWidth={layoutWidth}
+                    layoutHeight={layoutHeight}
+                    calibrationCenter={calibrationCenter}
+                    patternScale={patternScaleFactor}
+                    menuStates={menuStates}
+                    file={file}
+                    markingMode={markingMode}
+                    setMarkingMode={setMarkingMode}
+                    clearingMode={clearingMode}
+                    setClearingMode={setClearingMode}
+                    markers={markers}
+                    setMarkers={setMarkers}
+                  >
+                    {file === null || file.type === "application/pdf" ? (
+                      <PdfViewer
+                        file={file}
+                        setPageCount={setPageCount}
+                        pageCount={pageCount}
+                        setLayers={setLayers}
+                        layers={layers}
+                        setLayoutWidth={setLayoutWidth}
+                        setLayoutHeight={setLayoutHeight}
+                        lineThickness={lineThickness}
+                        stitchSettings={stitchSettings}
+                        filter={
+                          isColourTheme(displaySettings.theme)
+                            ? "none"
+                            : themeRecolourFilter(displaySettings.theme)
+                        }
+                        canvasBackground={
+                          isDarkTheme(displaySettings.theme)
+                            ? "#000000"
+                            : "#ffffff"
+                        }
+                        recolourHex={recolourHex}
+                        dispatchStitchSettings={dispatchStitchSettings}
+                        setLineThicknessStatus={setLineThicknessStatus}
+                        setFileLoadStatus={setFileLoadStatus}
+                        magnifying={magnifying}
+                        magnifyTransform={magnifyTransform}
+                        gridCenter={calibrationCenter}
+                        patternScale={patternScaleFactor}
+                        setMenuStates={setMenuStates}
+                        renderVersion={pdfRenderKey}
+                        perspective={perspective}
+                        calibrationTransform={calibrationTransform}
+                        showHighResOverlay={showHighResOverlay}
+                        debugTintHighRes={debugTintHighRes}
+                        debugLowResBase={debugLowResBase}
+                      />
+                    ) : (
+                      <SvgViewer
+                        dataUrl={dataUrl ?? ""}
+                        setFileLoadStatus={setFileLoadStatus}
+                        setLayoutWidth={setLayoutWidth}
+                        setLayoutHeight={setLayoutHeight}
+                        setPageCount={setPageCount}
+                        layers={layers}
+                        setLayers={setLayers}
+                        svgStyle={svgStyle}
+                        patternScale={patternScaleFactor}
+                        setMenuStates={setMenuStates}
+                        patternScaleFactor={patternScaleFactor}
+                      />
+                    )}
+                  </Draggable>
+                  <OverlayCanvas
+                    className={`absolute top-0 z-20 pointer-events-none`}
+                    points={points}
+                    width={width}
+                    height={height}
+                    unitOfMeasure={unitOfMeasure}
+                    displaySettings={displaySettings}
+                    calibrationTransform={calibrationTransform}
+                    zoomedOut={zoomedOut}
+                    magnifying={magnifying}
+                    magnifyTransform={magnifyTransform}
+                    restoreTransforms={restoreTransforms}
+                    patternScale={String(patternScaleFactor)}
+                  />
+                  <MarkerCanvas
+                    markers={markers}
+                    calibrationTransform={calibrationTransform}
+                    magnifyTransform={magnifyTransform}
+                    patternScale={patternScaleFactor}
+                    unitOfMeasure={unitOfMeasure}
+                    theme={displaySettings.theme}
+                    className="z-30"
+                    selectedMarkerId={selectedMarkerId}
+                    onSelectMarker={setSelectedMarkerId}
+                    onMoveMarker={(id, newPosition) => {
+                      setMarkers(
+                        markers.map((m) =>
+                          m.id === id ? { ...m, position: newPosition } : m,
+                        ),
+                      );
+                    }}
+                    onDeleteMarker={(id) => {
+                      setMarkers(markers.filter((m) => m.id !== id));
+                      setSelectedMarkerId(null);
+                    }}
+                  />
+                </MeasureCanvas>
               </div>
             )}
 

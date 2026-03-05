@@ -589,7 +589,6 @@ export default function RenderingTestPage() {
                     className={`overflow-auto ${themeStyles.bg}`}
                     style={{
                       height: "400px",
-                      maxHeight: "400px",
                       cursor: "grab",
                     }}
                   >

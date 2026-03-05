@@ -22,7 +22,7 @@
     "paths": {
       "@/*": ["./app/*"]
     },
-    "types": ["@serwist/next/typings"]
+    "types": ["@serwist/next/typings", "jest"]
   },
   "include": [
     "next-env.d.ts",
@@ -32,5 +32,5 @@
     "types/**/*.ts",
     "global.d.ts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "cypress", "cypress.config.ts"]
 }
