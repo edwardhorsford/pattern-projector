@@ -165,6 +165,8 @@ export default function Page() {
   const [markers, setMarkers] = useState<Marker[]>([]);
   const [markingMode, setMarkingMode] = useState<boolean>(false);
   const [clearingMode, setClearingMode] = useState<boolean>(false);
+  // Which marker is currently selected (for hover-select-drag-delete interaction)
+  const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
 
   // Ref for file input to allow control panel to trigger file open
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -729,9 +731,20 @@ export default function Page() {
     }
     if (previousFileKeyRef.current !== currentFileKey) {
       setMarkers([]);
+      setSelectedMarkerId(null);
     }
     previousFileKeyRef.current = currentFileKey;
   }, [file]);
+
+  // Clear selectedMarkerId if the selected marker no longer exists (e.g. after clearMarkers).
+  useEffect(() => {
+    if (
+      selectedMarkerId !== null &&
+      !markers.some((m) => m.id === selectedMarkerId)
+    ) {
+      setSelectedMarkerId(null);
+    }
+  }, [markers, selectedMarkerId]);
 
   useEffect(() => {
     window.addEventListener("keydown", handleProjectZoomShortcut);
@@ -1152,6 +1165,7 @@ export default function Page() {
             />
             {!isCalibrating && (
               // Layer order (low -> high): image data (Draggable/PDF), overlays, markers, UI.
+              <div onPointerDown={() => setSelectedMarkerId(null)}>
               <MeasureCanvas
                 className={`relative z-0 ${visible(!isCalibrating)}`}
                 perspective={perspective}
@@ -1278,8 +1292,22 @@ export default function Page() {
                   unitOfMeasure={unitOfMeasure}
                   theme={displaySettings.theme}
                   className="z-30"
+                  selectedMarkerId={selectedMarkerId}
+                  onSelectMarker={setSelectedMarkerId}
+                  onMoveMarker={(id, newPosition) => {
+                    setMarkers(
+                      markers.map((m) =>
+                        m.id === id ? { ...m, position: newPosition } : m,
+                      ),
+                    );
+                  }}
+                  onDeleteMarker={(id) => {
+                    setMarkers(markers.filter((m) => m.id !== id));
+                    setSelectedMarkerId(null);
+                  }}
                 />
               </MeasureCanvas>
+              </div>
             )}
 
             {/* Keep interactive UI above all transformed content and overlay layers. */}
