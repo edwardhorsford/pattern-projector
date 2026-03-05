@@ -42,6 +42,7 @@ export default function MeasureCanvas({
   gridCenter,
   zoomedOut,
   magnifying,
+  magnifyTransform = null,
   menusHidden,
   menuStates,
   isDarkTheme,
@@ -63,6 +64,7 @@ export default function MeasureCanvas({
   gridCenter: Point;
   zoomedOut: boolean;
   magnifying: boolean;
+  magnifyTransform?: Matrix | null;
   menusHidden: boolean;
   menuStates: MenuStates;
   isDarkTheme: boolean;
@@ -289,7 +291,11 @@ export default function MeasureCanvas({
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         const patternToCalibrated = transform.mmul(scale(patternScale));
-        const patternToClient = calibrationTransform.mmul(patternToCalibrated);
+        // When magnified, include magnifyTransform to match Draggable's
+        // CSS transform chain: cal × mag × local × scale.
+        const patternToClient = magnifyTransform
+          ? calibrationTransform.mmul(magnifyTransform).mmul(patternToCalibrated)
+          : calibrationTransform.mmul(patternToCalibrated);
         for (let i = 0; i < lines.length; i++) {
           if (i !== selectedLine) {
             drawLine(ctx, transformLine(lines[i], patternToClient).points);
@@ -312,9 +318,12 @@ export default function MeasureCanvas({
               scaledMatLine.points[0],
             );
           }
+          const calMag = magnifyTransform
+            ? calibrationTransform.mmul(magnifyTransform)
+            : calibrationTransform;
           const clientLine = transformLine(
             scaledMatLine,
-            calibrationTransform,
+            calMag,
           ).points;
           drawArrow(ctx, clientLine);
           drawMeasurementsAt(ctx, matLine, clientLine[1]);
@@ -343,6 +352,7 @@ export default function MeasureCanvas({
     unitOfMeasure,
     axisConstrained,
     calibrationTransform,
+    magnifyTransform,
     lines,
     transform,
     selectedLine,
@@ -377,7 +387,7 @@ export default function MeasureCanvas({
   }, [zoomedOut, magnifying, setMeasuring, setSelectedLine]);
 
   return (
-    <div className={`relative z-0 ${className ?? ""}`}>
+    <div className={`relative z-0 ${className ?? ""}`} data-magnify-container>
       <div
         onPointerDownCapture={handlePointerDown}
         onPointerMoveCapture={handlePointerMove}

@@ -1316,6 +1316,9 @@ export default function ControlPanelPage() {
   const [storageBytes, setStorageBytes] = useState(0);
   const [stateBytes, setStateBytes] = useState(0);
   const [debugMessages, setDebugMessages] = useState<string[]>([]);
+  const [showHighResOverlay, setShowHighResOverlay] = useState(true);
+  const [debugTintHighRes, setDebugTintHighRes] = useState(false);
+  const [debugLowResBase, setDebugLowResBase] = useState(false);
   const controlKeyDownRef = useRef(false);
   const metaKeyDownRef = useRef(false);
   const gestureScaleRef = useRef(1);
@@ -1358,6 +1361,39 @@ export default function ControlPanelPage() {
   useEffect(() => {
     setDevThemePreset(state.displaySettings.theme);
   }, [state.displaySettings.theme]);
+
+  useEffect(() => {
+    if (
+      (state as unknown as Record<string, unknown>).showHighResOverlay !==
+      undefined
+    )
+      setShowHighResOverlay(
+        (state as unknown as Record<string, unknown>)
+          .showHighResOverlay as boolean,
+      );
+  }, [(state as unknown as Record<string, unknown>).showHighResOverlay]);
+
+  useEffect(() => {
+    if (
+      (state as unknown as Record<string, unknown>).debugTintHighRes !==
+      undefined
+    )
+      setDebugTintHighRes(
+        (state as unknown as Record<string, unknown>)
+          .debugTintHighRes as boolean,
+      );
+  }, [(state as unknown as Record<string, unknown>).debugTintHighRes]);
+
+  useEffect(() => {
+    if (
+      (state as unknown as Record<string, unknown>).debugLowResBase !==
+      undefined
+    )
+      setDebugLowResBase(
+        (state as unknown as Record<string, unknown>)
+          .debugLowResBase as boolean,
+      );
+  }, [(state as unknown as Record<string, unknown>).debugLowResBase]);
 
   useEffect(() => {
     if (!isDevMode) {
@@ -3445,6 +3481,45 @@ export default function ControlPanelPage() {
               >
                 Clear image cache
               </Button>
+
+              <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showHighResOverlay}
+                  onChange={(e) => {
+                    setShowHighResOverlay(e.target.checked);
+                    handleAction("setShowHighResOverlay", e.target.checked);
+                  }}
+                  className="accent-purple-600"
+                />
+                High-res overlay
+              </label>
+
+              <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={debugTintHighRes}
+                  onChange={(e) => {
+                    setDebugTintHighRes(e.target.checked);
+                    handleAction("setDebugTintHighRes", e.target.checked);
+                  }}
+                  className="accent-purple-600"
+                />
+                Debug: tint overlay amber
+              </label>
+
+              <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={debugLowResBase}
+                  onChange={(e) => {
+                    setDebugLowResBase(e.target.checked);
+                    handleAction("setDebugLowResBase", e.target.checked);
+                  }}
+                  className="accent-purple-600"
+                />
+                Debug: low-res base render
+              </label>
 
               <div className="flex flex-wrap items-center gap-2 rounded border dark:border-gray-700 px-2 py-1 w-full">
                 <label

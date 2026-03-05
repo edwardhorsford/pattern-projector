@@ -143,6 +143,7 @@ export default function Page() {
   const [lineThickness, setLineThickness] = useState<number>(0);
   const [measuring, setMeasuring] = useState<boolean>(false);
   const [magnifying, setMagnifying] = useState<boolean>(false);
+  const [magnifyTransform, setMagnifyTransform] = useState<Matrix | null>(null);
   const [zoomedOut, setZoomedOut] = useState<boolean>(false);
   const [menusHidden, setMenusHidden] = useState<boolean>(false);
   const [isIdle, setIsIdle] = useState(false);
@@ -177,6 +178,9 @@ export default function Page() {
   const [selectedLine, setSelectedLine] = useState<number>(-1);
   // Incremented to force PdfViewer to remount and re-render all pages from scratch
   const [pdfRenderKey, setPdfRenderKey] = useState(0);
+  const [showHighResOverlay, setShowHighResOverlay] = useState(true);
+  const [debugTintHighRes, setDebugTintHighRes] = useState(false);
+  const [debugLowResBase, setDebugLowResBase] = useState(false);
   const { layers, dispatchLayersAction } = useLayers(file?.name ?? "default");
   const setLayers = useCallback(
     (l: Layers) => dispatchLayersAction({ type: "set-layers", layers: l }),
@@ -234,17 +238,10 @@ export default function Page() {
   );
 
   const svgStyle = {
-    filter: filter(
-      magnifying,
-      lineThickness,
-      displaySettings.theme,
-      isRecolour,
-    ),
+    filter: filter(lineThickness, displaySettings.theme, isRecolour),
   };
 
-  // Set erosions when not magnifying so the user can see text/lines more clearly when magnifying
   function filter(
-    magnifying: boolean,
     lineThickness: number,
     theme: Theme,
     useRecolour: boolean = false,
@@ -252,7 +249,7 @@ export default function Page() {
     // When recolouring, the container theme filter is "none" — the recolour
     // SVG filter applied on the canvas/element handles inversion + colouring.
     const t = useRecolour ? "none" : themeRecolourFilter(theme);
-    const thicken = erosionFilter(magnifying ? 0 : lineThickness, useRecolour);
+    const thicken = erosionFilter(lineThickness, useRecolour);
     // Add contrast after erosion to clean up grey anti-aliased edges before inverting
     const contrastBoost =
       isDarkTheme(theme) && thicken !== "none" ? "contrast(2)" : "";
@@ -1061,6 +1058,8 @@ export default function Page() {
               setZoomedOut={setZoomedOut}
               magnifying={magnifying}
               setMagnifying={setMagnifying}
+              magnifyTransform={magnifyTransform}
+              setMagnifyTransform={setMagnifyTransform}
               measuring={measuring}
               setMeasuring={setMeasuring}
               file={file}
@@ -1144,6 +1143,12 @@ export default function Page() {
               selectedLine={selectedLine}
               setSelectedLine={setSelectedLine}
               forcePdfRerender={() => setPdfRenderKey((k) => k + 1)}
+              showHighResOverlay={showHighResOverlay}
+              setShowHighResOverlay={setShowHighResOverlay}
+              debugTintHighRes={debugTintHighRes}
+              setDebugTintHighRes={setDebugTintHighRes}
+              debugLowResBase={debugLowResBase}
+              setDebugLowResBase={setDebugLowResBase}
             />
             {!isCalibrating && (
               // Layer order (low -> high): image data (Draggable/PDF), overlays, markers, UI.
@@ -1158,6 +1163,7 @@ export default function Page() {
                 gridCenter={calibrationCenter}
                 zoomedOut={zoomedOut}
                 magnifying={magnifying}
+                magnifyTransform={magnifyTransform}
                 menusHidden={menusHidden}
                 menuStates={menuStates}
                 isDarkTheme={isDarkTheme(displaySettings.theme)}
@@ -1178,6 +1184,8 @@ export default function Page() {
                   setPerspective={setPerspective}
                   magnifying={magnifying}
                   setMagnifying={setMagnifying}
+                  magnifyTransform={magnifyTransform}
+                  setMagnifyTransform={setMagnifyTransform}
                   setRestoreTransforms={setRestoreTransforms}
                   restoreTransforms={restoreTransforms}
                   zoomedOut={zoomedOut}
@@ -1221,10 +1229,16 @@ export default function Page() {
                       setLineThicknessStatus={setLineThicknessStatus}
                       setFileLoadStatus={setFileLoadStatus}
                       magnifying={magnifying}
+                      magnifyTransform={magnifyTransform}
                       gridCenter={calibrationCenter}
                       patternScale={patternScaleFactor}
                       setMenuStates={setMenuStates}
                       renderVersion={pdfRenderKey}
+                      perspective={perspective}
+                      calibrationTransform={calibrationTransform}
+                      showHighResOverlay={showHighResOverlay}
+                      debugTintHighRes={debugTintHighRes}
+                      debugLowResBase={debugLowResBase}
                     />
                   ) : (
                     <SvgViewer
@@ -1252,12 +1266,14 @@ export default function Page() {
                   calibrationTransform={calibrationTransform}
                   zoomedOut={zoomedOut}
                   magnifying={magnifying}
+                  magnifyTransform={magnifyTransform}
                   restoreTransforms={restoreTransforms}
                   patternScale={String(patternScaleFactor)}
                 />
                 <MarkerCanvas
                   markers={markers}
                   calibrationTransform={calibrationTransform}
+                  magnifyTransform={magnifyTransform}
                   patternScale={patternScaleFactor}
                   unitOfMeasure={unitOfMeasure}
                   theme={displaySettings.theme}

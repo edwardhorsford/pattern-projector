@@ -44,6 +44,7 @@ export class CanvasState {
     public calibrationTransform: Matrix,
     public zoomedOut: boolean,
     public magnifying: boolean,
+    public magnifyTransform: Matrix | null,
     public restoreTransforms: RestoreTransforms | null,
     public t: any,
     public patternScale: string | null,
@@ -129,7 +130,7 @@ export function drawOverlays(cs: CanvasState) {
     displaySettings,
     zoomedOut,
     t,
-    magnifying,
+    magnifyTransform,
     restoreTransforms,
     patternScale,
   } = cs;
@@ -145,7 +146,7 @@ export function drawOverlays(cs: CanvasState) {
   if (zoomedOut) {
     drawMessage(cs, t("zoomedOut"));
     drawViewportOutline(cs);
-  } else if (magnifying && restoreTransforms !== null) {
+  } else if (magnifyTransform !== null) {
     drawMessage(cs, t("magnifying"));
   } else {
     if (grid) {
