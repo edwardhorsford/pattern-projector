@@ -1163,6 +1163,7 @@ export default function Page() {
                 gridCenter={calibrationCenter}
                 zoomedOut={zoomedOut}
                 magnifying={magnifying}
+                magnifyTransform={magnifyTransform}
                 menusHidden={menusHidden}
                 menuStates={menuStates}
                 isDarkTheme={isDarkTheme(displaySettings.theme)}
@@ -1272,6 +1273,7 @@ export default function Page() {
                 <MarkerCanvas
                   markers={markers}
                   calibrationTransform={calibrationTransform}
+                  magnifyTransform={magnifyTransform}
                   patternScale={patternScaleFactor}
                   unitOfMeasure={unitOfMeasure}
                   theme={displaySettings.theme}

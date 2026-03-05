@@ -15,6 +15,7 @@ import { scale, transformPoint } from "@/_lib/geometry";
 interface MarkerCanvasProps {
   markers: Marker[];
   calibrationTransform: Matrix;
+  magnifyTransform?: Matrix | null;
   patternScale: number;
   unitOfMeasure: Unit;
   theme?: Theme;
@@ -29,6 +30,7 @@ interface MarkerCanvasProps {
 export default function MarkerCanvas({
   markers,
   calibrationTransform,
+  magnifyTransform = null,
   patternScale,
   unitOfMeasure,
   theme = Theme.Light,
@@ -42,10 +44,13 @@ export default function MarkerCanvas({
   const ptDensity = getPtDensity(unitOfMeasure);
   const markerSizePts = MARKER_SIZE_INCHES * ptDensity;
 
-  // Combined transform for positioning markers
-  const combinedTransform = calibrationTransform.mmul(
-    localTransform.mmul(scale(patternScale)),
-  );
+  // Combined transform for positioning markers.
+  // When magnified, include magnifyTransform in the chain to match
+  // Draggable's CSS transform: cal × mag × local × scale.
+  const patternToCalibrated = localTransform.mmul(scale(patternScale));
+  const combinedTransform = magnifyTransform
+    ? calibrationTransform.mmul(magnifyTransform).mmul(patternToCalibrated)
+    : calibrationTransform.mmul(patternToCalibrated);
 
   if (markers.length === 0) {
     return null;
