@@ -3,7 +3,6 @@
 import { Matrix, inverse } from "ml-matrix";
 import React, {
   ChangeEvent,
-  WheelEvent as ReactWheelEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -349,14 +348,21 @@ export default function Page() {
     }
   }, [points, width, height, unitOfMeasure, getDefaultPoints]);
 
-  // Prevent the user from zooming
+  // Ref for the pinch zoom handler — updated each render so the native listener
+  // (registered once in noZoomRefCallback) always uses fresh state/callbacks.
+  const pinchZoomWheelHandlerRef = useRef<(event: WheelEvent) => void>(() => {})
+
+  // Prevent the user from zooming and handle pinch-zoom gesture.
+  // Registered as a non-passive native listener so preventDefault works.
   const noZoomRefCallback = useCallback((element: HTMLElement | null) => {
     if (element === null) {
       return;
     }
-    element.addEventListener("wheel", (e) => e.ctrlKey && e.preventDefault(), {
-      passive: false,
-    });
+    element.addEventListener(
+      "wheel",
+      (e) => pinchZoomWheelHandlerRef.current(e),
+      { passive: false, capture: true },
+    );
   }, []);
 
   const getCalibrationCenterScreenAnchor = useCallback(() => {
@@ -459,28 +465,27 @@ export default function Page() {
     [isCalibrating],
   );
 
-  const handleProjectPinchZoomCapture = useCallback(
-    (event: ReactWheelEvent<HTMLElement>) => {
-      const anchor = {
-        x:
-          event.clientX > 0
-            ? event.clientX
-            : getCalibrationCenterScreenAnchor().x,
-        y:
-          event.clientY > 0
-            ? event.clientY
-            : getCalibrationCenterScreenAnchor().y,
-      };
+  // Updated each render to capture fresh closures; called by the native wheel
+  // listener registered in noZoomRefCallback (which is { passive: false }).
+  pinchZoomWheelHandlerRef.current = (event: WheelEvent) => {
+    const anchor = {
+      x:
+        event.clientX > 0
+          ? event.clientX
+          : getCalibrationCenterScreenAnchor().x,
+      y:
+        event.clientY > 0
+          ? event.clientY
+          : getCalibrationCenterScreenAnchor().y,
+    };
 
-      handleProjectPinchZoomDelta(
-        event.deltaY,
-        event.ctrlKey || event.metaKey,
-        anchor,
-        () => event.preventDefault(),
-      );
-    },
-    [handleProjectPinchZoomDelta, getCalibrationCenterScreenAnchor],
-  );
+    handleProjectPinchZoomDelta(
+      event.deltaY,
+      event.ctrlKey || event.metaKey,
+      anchor,
+      () => event.preventDefault(),
+    );
+  };
 
   const handleProjectGestureStart = useCallback(
     (event: Event) => {
@@ -958,7 +963,6 @@ export default function Page() {
     <main
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
-      onWheelCapture={handleProjectPinchZoomCapture}
       onKeyDown={resetIdle}
       ref={noZoomRefCallback}
       className={`${menusHidden && "cursor-none"} ${isDarkTheme(displaySettings.theme) && "dark bg-black"} w-screen h-screen absolute overflow-hidden touch-none`}
@@ -1164,7 +1168,7 @@ export default function Page() {
               setDebugLowResBase={setDebugLowResBase}
             />
             {!isCalibrating && (
-              // Layer order (low -> high): image data (Draggable/PDF), overlays, markers, UI.
+              // Layer order (low -> high): image data (Draggable/PDF), markers, overlays (grid/border/messages), UI.
               <div onPointerDown={() => setSelectedMarkerId(null)}>
                 <MeasureCanvas
                   className={`relative z-0 ${visible(!isCalibrating)}`}
