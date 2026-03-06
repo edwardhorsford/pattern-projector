@@ -88,7 +88,6 @@ export default function PdfLoupe({
   const localTransform = useTransformContext();
 
   const {
-    erosions,
     layers,
     patternScale,
     recolourHex,
@@ -120,8 +119,6 @@ export default function PdfLoupe({
   perspectiveRef.current = perspective;
   const localTransformRef = useRef(localTransform);
   localTransformRef.current = localTransform;
-  const erosionsRef = useRef(erosions);
-  erosionsRef.current = erosions;
   const layersRef = useRef(layers);
   layersRef.current = layers;
   const patternScaleRef = useRef(patternScale);
@@ -288,7 +285,6 @@ export default function PdfLoupe({
       const currentPerspective = perspectiveRef.current;
       const currentLocalTransform = localTransformRef.current;
       const currentPatternScale = patternScaleRef.current;
-      const currentErosions = erosionsRef.current;
       const currentLayers = layersRef.current;
       const currentRecolourHex = recolourHexRef.current;
       const currentThemeFilter = themeFilterRef.current;
@@ -417,8 +413,10 @@ export default function PdfLoupe({
       }
 
       // Post-processing parameters.
-      const scaleRatio = renderScale / baseScale;
-      const effectiveErosionsChrome = Math.round(currentErosions * scaleRatio);
+      // Erosion is intentionally disabled in the loupe — the enlarged view is
+      // already high-resolution and erosion would make lines look thinner than
+      // they actually are, harming placement accuracy.
+      const effectiveErosionsChrome = 0;
       const useRecolour = !!currentRecolourHex && !isSafariRef.current;
       const cssFilter = isSafariRef.current
         ? undefined
@@ -506,7 +504,7 @@ export default function PdfLoupe({
           buffer: rawImageData.data.buffer,
           width: pixelSize,
           height: pixelSize,
-          erosions: currentErosions,
+          erosions: 0,
           recolourHex: safariRecolourHex ?? undefined,
         };
         const worker = getWorker();
