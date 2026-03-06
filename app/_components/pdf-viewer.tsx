@@ -21,7 +21,8 @@ import { PDF_TO_CSS_UNITS } from "@/_lib/pixels-per-inch";
 import { RenderContext } from "@/_hooks/use-render-context";
 import { useTransformerContext } from "@/_hooks/use-transform-context";
 import { Matrix } from "ml-matrix";
-import PdfHighResViewport from "@/_components/pdf-high-res-viewport";
+import PdfHighResViewport from "@/_components/pdf-high-res-viewport"
+import PdfLoupe from "@/_components/pdf-loupe";
 import {
   LineDirection,
   StitchSettings,
@@ -362,14 +363,23 @@ function PdfViewer({
                   )}
                 </div>
                 {value != 0 && (index === 0 || tileBaseWidth > 0) && (
-                  <PdfHighResViewport
-                    perspective={perspective}
-                    calibrationTransform={calibrationTransform}
-                    pageNumber={value}
-                    pageOffsetXBase={pageOffsetXBase}
-                    pageOffsetYBase={pageOffsetYBase}
-                    magnifyTransform={magnifyTransform}
-                  />
+                  <>
+                    <PdfHighResViewport
+                      perspective={perspective}
+                      calibrationTransform={calibrationTransform}
+                      pageNumber={value}
+                      pageOffsetXBase={pageOffsetXBase}
+                      pageOffsetYBase={pageOffsetYBase}
+                      magnifyTransform={magnifyTransform}
+                    />
+                    <PdfLoupe
+                      perspective={perspective}
+                      calibrationTransform={calibrationTransform}
+                      pageNumber={value}
+                      pageOffsetXBase={pageOffsetXBase}
+                      pageOffsetYBase={pageOffsetYBase}
+                    />
+                  </>
                 )}
               </Fragment>
             );

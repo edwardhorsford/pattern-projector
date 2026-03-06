@@ -107,6 +107,17 @@ export default function MeasureCanvas({
   const END_CIRCLE_RADIUS = CSS_PIXELS_PER_INCH * TOUCH_AREA_INCHES;
   const LINE_TOUCH_RADIUS = CSS_PIXELS_PER_INCH * 0.5; // A slightly larger area for the line itself
 
+  /**
+   * Fires a "loupe-point" custom event so PdfLoupe can render a magnified
+   * inset centred on the given screen point. Pass null to hide the loupe.
+   * The string literal must match LOUPE_POINT_EVENT in pdf-loupe.tsx.
+   */
+  const dispatchLoupePoint = (screenPoint: Point | null) => {
+    document.dispatchEvent(
+      new CustomEvent<Point | null>("loupe-point", { detail: screenPoint }),
+    );
+  };
+
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     if (magnifying) {
@@ -176,6 +187,7 @@ export default function MeasureCanvas({
         { ...patternLine.points[0] },
         { ...patternLine.points[1] },
       ];
+      dispatchLoupePoint(null);
       e.stopPropagation();
       return;
     }
@@ -213,6 +225,7 @@ export default function MeasureCanvas({
       setIsDraggingWholeLine(false);
       lineDragPatternStart.current = null;
       lineDragInitialPoints.current = null;
+      dispatchLoupePoint(null);
       return;
     }
 
@@ -227,17 +240,20 @@ export default function MeasureCanvas({
       const patternToCalibrated = transform.mmul(scale(patternScale));
       const patternToClient = calibrationTransform.mmul(patternToCalibrated);
       let newHoveredEnd: { lineIndex: number; endIndex: 0 | 1 } | null = null;
+      let hoveredEndScreenPoint: Point | null = null;
       for (let i = 0; i < lines.length; i++) {
         const clientLine = transformLine(lines[i], patternToClient);
         for (const endIndex of [0, 1] as const) {
           if (dist(clientLine.points[endIndex], client) < END_CIRCLE_RADIUS) {
             newHoveredEnd = { lineIndex: i, endIndex };
+            hoveredEndScreenPoint = clientLine.points[endIndex];
             break;
           }
         }
         if (newHoveredEnd) break;
       }
       setHoveredEnd(newHoveredEnd);
+      dispatchLoupePoint(hoveredEndScreenPoint);
 
       // Check for line body hover (not near an endpoint).
       let newHoveredLine = -1;
@@ -309,6 +325,7 @@ export default function MeasureCanvas({
           newPoint: patternDestination,
           isConstrained: axisConstrained,
         });
+        dispatchLoupePoint(clientDestination);
       }
     }
   };
@@ -350,6 +367,7 @@ export default function MeasureCanvas({
       lineDragPatternStart.current = null;
       lineDragInitialPoints.current = null;
       dragOffset.current = null;
+      dispatchLoupePoint(null);
       return;
     }
 
@@ -388,6 +406,7 @@ export default function MeasureCanvas({
       newPoint: patternFinal,
       isConstrained: axisConstrained,
     });
+    dispatchLoupePoint(null);
   };
 
   function handleDeleteLine() {
@@ -613,6 +632,7 @@ export default function MeasureCanvas({
         onPointerLeave={() => {
           setHoveredEnd(null);
           setHoveredLineIndex(-1);
+          dispatchLoupePoint(null);
         }}
         className={`${isDraggingWholeLine ? "cursor-grabbing" : hoveredEnd !== null ? "cursor-crosshair" : hoveredLineIndex >= 0 ? "cursor-grab" : measuring ? "cursor-crosshair" : ""} h-screen w-screen`}
       >
