@@ -85,6 +85,7 @@ export function drawCircle(
 export function drawArrow(
   ctx: CanvasRenderingContext2D,
   line: SimpleLine,
+  skipCaps?: { start?: boolean; end?: boolean },
 ): void {
   const dx = line[1].x - line[0].x;
   const dy = line[1].y - line[0].y;
@@ -105,10 +106,14 @@ export function drawArrow(
   ctx.fill();
   ctx.moveTo(-arrowLength, 0);
   ctx.lineTo(-length, 0);
-  ctx.moveTo(0, whisker);
-  ctx.lineTo(0, -whisker);
-  ctx.moveTo(-length, -whisker);
-  ctx.lineTo(-length, whisker);
+  if (!skipCaps?.end) {
+    ctx.moveTo(0, whisker);
+    ctx.lineTo(0, -whisker);
+  }
+  if (!skipCaps?.start) {
+    ctx.moveTo(-length, -whisker);
+    ctx.lineTo(-length, whisker);
+  }
   ctx.stroke();
   ctx.restore();
 }

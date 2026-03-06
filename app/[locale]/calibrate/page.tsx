@@ -3,7 +3,6 @@
 import { Matrix, inverse } from "ml-matrix";
 import React, {
   ChangeEvent,
-  WheelEvent as ReactWheelEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -165,6 +164,8 @@ export default function Page() {
   const [markers, setMarkers] = useState<Marker[]>([]);
   const [markingMode, setMarkingMode] = useState<boolean>(false);
   const [clearingMode, setClearingMode] = useState<boolean>(false);
+  // Which marker is currently selected (for hover-select-drag-delete interaction)
+  const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
 
   // Ref for file input to allow control panel to trigger file open
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -347,14 +348,23 @@ export default function Page() {
     }
   }, [points, width, height, unitOfMeasure, getDefaultPoints]);
 
-  // Prevent the user from zooming
+  // Ref for the pinch zoom handler — updated each render so the native listener
+  // (registered once in noZoomRefCallback) always uses fresh state/callbacks.
+  const pinchZoomWheelHandlerRef = useRef<(event: WheelEvent) => void>(
+    () => {},
+  );
+
+  // Prevent the user from zooming and handle pinch-zoom gesture.
+  // Registered as a non-passive native listener so preventDefault works.
   const noZoomRefCallback = useCallback((element: HTMLElement | null) => {
     if (element === null) {
       return;
     }
-    element.addEventListener("wheel", (e) => e.ctrlKey && e.preventDefault(), {
-      passive: false,
-    });
+    element.addEventListener(
+      "wheel",
+      (e) => pinchZoomWheelHandlerRef.current(e),
+      { passive: false, capture: true },
+    );
   }, []);
 
   const getCalibrationCenterScreenAnchor = useCallback(() => {
@@ -457,28 +467,27 @@ export default function Page() {
     [isCalibrating],
   );
 
-  const handleProjectPinchZoomCapture = useCallback(
-    (event: ReactWheelEvent<HTMLElement>) => {
-      const anchor = {
-        x:
-          event.clientX > 0
-            ? event.clientX
-            : getCalibrationCenterScreenAnchor().x,
-        y:
-          event.clientY > 0
-            ? event.clientY
-            : getCalibrationCenterScreenAnchor().y,
-      };
+  // Updated each render to capture fresh closures; called by the native wheel
+  // listener registered in noZoomRefCallback (which is { passive: false }).
+  pinchZoomWheelHandlerRef.current = (event: WheelEvent) => {
+    const anchor = {
+      x:
+        event.clientX > 0
+          ? event.clientX
+          : getCalibrationCenterScreenAnchor().x,
+      y:
+        event.clientY > 0
+          ? event.clientY
+          : getCalibrationCenterScreenAnchor().y,
+    };
 
-      handleProjectPinchZoomDelta(
-        event.deltaY,
-        event.ctrlKey || event.metaKey,
-        anchor,
-        () => event.preventDefault(),
-      );
-    },
-    [handleProjectPinchZoomDelta, getCalibrationCenterScreenAnchor],
-  );
+    handleProjectPinchZoomDelta(
+      event.deltaY,
+      event.ctrlKey || event.metaKey,
+      anchor,
+      () => event.preventDefault(),
+    );
+  };
 
   const handleProjectGestureStart = useCallback(
     (event: Event) => {
@@ -729,9 +738,20 @@ export default function Page() {
     }
     if (previousFileKeyRef.current !== currentFileKey) {
       setMarkers([]);
+      setSelectedMarkerId(null);
     }
     previousFileKeyRef.current = currentFileKey;
   }, [file]);
+
+  // Clear selectedMarkerId if the selected marker no longer exists (e.g. after clearMarkers).
+  useEffect(() => {
+    if (
+      selectedMarkerId !== null &&
+      !markers.some((m) => m.id === selectedMarkerId)
+    ) {
+      setSelectedMarkerId(null);
+    }
+  }, [markers, selectedMarkerId]);
 
   useEffect(() => {
     window.addEventListener("keydown", handleProjectZoomShortcut);
@@ -945,7 +965,6 @@ export default function Page() {
     <main
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
-      onWheelCapture={handleProjectPinchZoomCapture}
       onKeyDown={resetIdle}
       ref={noZoomRefCallback}
       className={`${menusHidden && "cursor-none"} ${isDarkTheme(displaySettings.theme) && "dark bg-black"} w-screen h-screen absolute overflow-hidden touch-none`}
@@ -1151,135 +1170,150 @@ export default function Page() {
               setDebugLowResBase={setDebugLowResBase}
             />
             {!isCalibrating && (
-              // Layer order (low -> high): image data (Draggable/PDF), overlays, markers, UI.
-              <MeasureCanvas
-                className={`relative z-0 ${visible(!isCalibrating)}`}
-                perspective={perspective}
-                calibrationTransform={calibrationTransform}
-                unitOfMeasure={unitOfMeasure}
-                measuring={measuring}
-                setMeasuring={setMeasuring}
-                file={file}
-                gridCenter={calibrationCenter}
-                zoomedOut={zoomedOut}
-                magnifying={magnifying}
-                magnifyTransform={magnifyTransform}
-                menusHidden={menusHidden}
-                menuStates={menuStates}
-                isDarkTheme={isDarkTheme(displaySettings.theme)}
-                lines={lines}
-                dispatchLines={dispatchLines}
-                selectedLine={selectedLine}
-                setSelectedLine={setSelectedLine}
-                patternScale={patternScaleFactor}
-                accentColor={secondaryColor(displaySettings.theme)}
-              >
-                <Draggable
-                  className={`absolute ${menusHidden && "!cursor-none"} `}
+              // Layer order (low -> high): image data (Draggable/PDF), markers, overlays (grid/border/messages), UI.
+              <div onPointerDown={() => setSelectedMarkerId(null)}>
+                <MeasureCanvas
+                  className={`relative z-0 ${visible(!isCalibrating)}`}
                   perspective={perspective}
-                  isCalibrating={isCalibrating}
-                  unitOfMeasure={unitOfMeasure}
                   calibrationTransform={calibrationTransform}
-                  setCalibrationTransform={setCalibrationTransform}
-                  setPerspective={setPerspective}
-                  magnifying={magnifying}
-                  setMagnifying={setMagnifying}
-                  magnifyTransform={magnifyTransform}
-                  setMagnifyTransform={setMagnifyTransform}
-                  setRestoreTransforms={setRestoreTransforms}
-                  restoreTransforms={restoreTransforms}
-                  zoomedOut={zoomedOut}
-                  setZoomedOut={setZoomedOut}
-                  layoutWidth={layoutWidth}
-                  layoutHeight={layoutHeight}
-                  calibrationCenter={calibrationCenter}
-                  patternScale={patternScaleFactor}
-                  menuStates={menuStates}
+                  unitOfMeasure={unitOfMeasure}
+                  measuring={measuring}
+                  setMeasuring={setMeasuring}
                   file={file}
-                  markingMode={markingMode}
-                  setMarkingMode={setMarkingMode}
-                  clearingMode={clearingMode}
-                  setClearingMode={setClearingMode}
-                  markers={markers}
-                  setMarkers={setMarkers}
-                >
-                  {file === null || file.type === "application/pdf" ? (
-                    <PdfViewer
-                      file={file}
-                      setPageCount={setPageCount}
-                      pageCount={pageCount}
-                      setLayers={setLayers}
-                      layers={layers}
-                      setLayoutWidth={setLayoutWidth}
-                      setLayoutHeight={setLayoutHeight}
-                      lineThickness={lineThickness}
-                      stitchSettings={stitchSettings}
-                      filter={
-                        isColourTheme(displaySettings.theme)
-                          ? "none"
-                          : themeRecolourFilter(displaySettings.theme)
-                      }
-                      canvasBackground={
-                        isDarkTheme(displaySettings.theme)
-                          ? "#000000"
-                          : "#ffffff"
-                      }
-                      recolourHex={recolourHex}
-                      dispatchStitchSettings={dispatchStitchSettings}
-                      setLineThicknessStatus={setLineThicknessStatus}
-                      setFileLoadStatus={setFileLoadStatus}
-                      magnifying={magnifying}
-                      magnifyTransform={magnifyTransform}
-                      gridCenter={calibrationCenter}
-                      patternScale={patternScaleFactor}
-                      setMenuStates={setMenuStates}
-                      renderVersion={pdfRenderKey}
-                      perspective={perspective}
-                      calibrationTransform={calibrationTransform}
-                      showHighResOverlay={showHighResOverlay}
-                      debugTintHighRes={debugTintHighRes}
-                      debugLowResBase={debugLowResBase}
-                    />
-                  ) : (
-                    <SvgViewer
-                      dataUrl={dataUrl ?? ""}
-                      setFileLoadStatus={setFileLoadStatus}
-                      setLayoutWidth={setLayoutWidth}
-                      setLayoutHeight={setLayoutHeight}
-                      setPageCount={setPageCount}
-                      layers={layers}
-                      setLayers={setLayers}
-                      svgStyle={svgStyle}
-                      patternScale={patternScaleFactor}
-                      setMenuStates={setMenuStates}
-                      patternScaleFactor={patternScaleFactor}
-                    />
-                  )}
-                </Draggable>
-                <OverlayCanvas
-                  className={`absolute top-0 z-20 pointer-events-none`}
-                  points={points}
-                  width={width}
-                  height={height}
-                  unitOfMeasure={unitOfMeasure}
-                  displaySettings={displaySettings}
-                  calibrationTransform={calibrationTransform}
+                  gridCenter={calibrationCenter}
                   zoomedOut={zoomedOut}
                   magnifying={magnifying}
                   magnifyTransform={magnifyTransform}
-                  restoreTransforms={restoreTransforms}
-                  patternScale={String(patternScaleFactor)}
-                />
-                <MarkerCanvas
-                  markers={markers}
-                  calibrationTransform={calibrationTransform}
-                  magnifyTransform={magnifyTransform}
+                  menusHidden={menusHidden}
+                  menuStates={menuStates}
+                  isDarkTheme={isDarkTheme(displaySettings.theme)}
+                  lines={lines}
+                  dispatchLines={dispatchLines}
+                  selectedLine={selectedLine}
+                  setSelectedLine={setSelectedLine}
                   patternScale={patternScaleFactor}
-                  unitOfMeasure={unitOfMeasure}
-                  theme={displaySettings.theme}
-                  className="z-30"
-                />
-              </MeasureCanvas>
+                  accentColor={secondaryColor(displaySettings.theme)}
+                >
+                  <Draggable
+                    className={`absolute ${menusHidden && "!cursor-none"} `}
+                    perspective={perspective}
+                    isCalibrating={isCalibrating}
+                    unitOfMeasure={unitOfMeasure}
+                    calibrationTransform={calibrationTransform}
+                    setCalibrationTransform={setCalibrationTransform}
+                    setPerspective={setPerspective}
+                    magnifying={magnifying}
+                    setMagnifying={setMagnifying}
+                    magnifyTransform={magnifyTransform}
+                    setMagnifyTransform={setMagnifyTransform}
+                    setRestoreTransforms={setRestoreTransforms}
+                    restoreTransforms={restoreTransforms}
+                    zoomedOut={zoomedOut}
+                    setZoomedOut={setZoomedOut}
+                    layoutWidth={layoutWidth}
+                    layoutHeight={layoutHeight}
+                    calibrationCenter={calibrationCenter}
+                    patternScale={patternScaleFactor}
+                    menuStates={menuStates}
+                    file={file}
+                    markingMode={markingMode}
+                    setMarkingMode={setMarkingMode}
+                    clearingMode={clearingMode}
+                    setClearingMode={setClearingMode}
+                    markers={markers}
+                    setMarkers={setMarkers}
+                  >
+                    {file === null || file.type === "application/pdf" ? (
+                      <PdfViewer
+                        file={file}
+                        setPageCount={setPageCount}
+                        pageCount={pageCount}
+                        setLayers={setLayers}
+                        layers={layers}
+                        setLayoutWidth={setLayoutWidth}
+                        setLayoutHeight={setLayoutHeight}
+                        lineThickness={lineThickness}
+                        stitchSettings={stitchSettings}
+                        filter={
+                          isColourTheme(displaySettings.theme)
+                            ? "none"
+                            : themeRecolourFilter(displaySettings.theme)
+                        }
+                        canvasBackground={
+                          isDarkTheme(displaySettings.theme)
+                            ? "#000000"
+                            : "#ffffff"
+                        }
+                        recolourHex={recolourHex}
+                        dispatchStitchSettings={dispatchStitchSettings}
+                        setLineThicknessStatus={setLineThicknessStatus}
+                        setFileLoadStatus={setFileLoadStatus}
+                        magnifying={magnifying}
+                        magnifyTransform={magnifyTransform}
+                        gridCenter={calibrationCenter}
+                        patternScale={patternScaleFactor}
+                        setMenuStates={setMenuStates}
+                        renderVersion={pdfRenderKey}
+                        perspective={perspective}
+                        calibrationTransform={calibrationTransform}
+                        showHighResOverlay={showHighResOverlay}
+                        debugTintHighRes={debugTintHighRes}
+                        debugLowResBase={debugLowResBase}
+                      />
+                    ) : (
+                      <SvgViewer
+                        dataUrl={dataUrl ?? ""}
+                        setFileLoadStatus={setFileLoadStatus}
+                        setLayoutWidth={setLayoutWidth}
+                        setLayoutHeight={setLayoutHeight}
+                        setPageCount={setPageCount}
+                        layers={layers}
+                        setLayers={setLayers}
+                        svgStyle={svgStyle}
+                        patternScale={patternScaleFactor}
+                        setMenuStates={setMenuStates}
+                        patternScaleFactor={patternScaleFactor}
+                      />
+                    )}
+                  </Draggable>
+                  <OverlayCanvas
+                    className={`absolute top-0 z-[35] pointer-events-none`}
+                    points={points}
+                    width={width}
+                    height={height}
+                    unitOfMeasure={unitOfMeasure}
+                    displaySettings={displaySettings}
+                    calibrationTransform={calibrationTransform}
+                    zoomedOut={zoomedOut}
+                    magnifying={magnifying}
+                    magnifyTransform={magnifyTransform}
+                    restoreTransforms={restoreTransforms}
+                    patternScale={String(patternScaleFactor)}
+                  />
+                  <MarkerCanvas
+                    markers={markers}
+                    calibrationTransform={calibrationTransform}
+                    magnifyTransform={magnifyTransform}
+                    patternScale={patternScaleFactor}
+                    unitOfMeasure={unitOfMeasure}
+                    theme={displaySettings.theme}
+                    className="z-30"
+                    selectedMarkerId={selectedMarkerId}
+                    onSelectMarker={setSelectedMarkerId}
+                    onMoveMarker={(id, newPosition) => {
+                      setMarkers(
+                        markers.map((m) =>
+                          m.id === id ? { ...m, position: newPosition } : m,
+                        ),
+                      );
+                    }}
+                    onDeleteMarker={(id) => {
+                      setMarkers(markers.filter((m) => m.id !== id));
+                      setSelectedMarkerId(null);
+                    }}
+                  />
+                </MeasureCanvas>
+              </div>
             )}
 
             {/* Keep interactive UI above all transformed content and overlay layers. */}
@@ -1388,6 +1422,17 @@ export default function Page() {
                         detail: {
                           type: "delta",
                           delta,
+                          anchor: getCalibrationCenterScreenAnchor(),
+                        },
+                      }),
+                    );
+                  }}
+                  onSetScale={(scale) => {
+                    window.dispatchEvent(
+                      new CustomEvent<ProjectScaleDetail>("project-scale", {
+                        detail: {
+                          type: "set",
+                          scale,
                           anchor: getCalibrationCenterScreenAnchor(),
                         },
                       }),

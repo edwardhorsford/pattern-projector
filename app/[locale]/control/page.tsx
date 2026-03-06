@@ -402,6 +402,8 @@ function Preview({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  // Holds current wheel handler without re-binding the DOM listener on prop changes
+  const handleWheelRef = useRef<(event: WheelEvent) => void>(() => {});
   const [isDragging, setIsDragging] = useState(false);
   const [containerWidth, setContainerWidth] = useState(400);
   const accentColor = secondaryColor(theme);
@@ -425,6 +427,17 @@ function Preview({
     updateWidth();
     window.addEventListener("resize", updateWidth);
     return () => window.removeEventListener("resize", updateWidth);
+  }, []);
+
+  // Register wheel handler as non-passive so preventDefault works inside it.
+  // Uses wrapperRef which is always mounted, unlike the inner containerRef which
+  // only renders when layoutWidth/layoutHeight are non-zero.
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => handleWheelRef.current(e);
+    el.addEventListener("wheel", handler, { passive: false, capture: true });
+    return () => el.removeEventListener("wheel", handler, true);
   }, []);
 
   // Calculate scale to fit the PDF in the preview container
@@ -659,7 +672,9 @@ function Preview({
     updateHoverPointFromPointerEvent(e);
   };
 
-  const handleWheelCapture = (event: React.WheelEvent<HTMLDivElement>) => {
+  // Update the wheel handler ref on every render so it always uses fresh closures,
+  // while the DOM listener registered above stays bound once per mount
+  handleWheelRef.current = (event: WheelEvent) => {
     const modifierPressed =
       event.ctrlKey ||
       event.metaKey ||
@@ -672,7 +687,11 @@ function Preview({
 
     event.preventDefault();
 
-    const rect = event.currentTarget.getBoundingClientRect();
+    if (!containerRef.current) {
+      return;
+    }
+
+    const rect = containerRef.current.getBoundingClientRect();
     const point = screenToPdfCoords(
       event.clientX - rect.left,
       event.clientY - rect.top,
@@ -850,6 +869,7 @@ function Preview({
       </div>
       <div
         ref={containerRef}
+        data-control-preview-map="true"
         className="relative bg-gray-300 dark:bg-gray-700 rounded-lg overflow-hidden mx-auto"
         style={{
           width: scaledWidth,
@@ -874,7 +894,6 @@ function Preview({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         onPointerLeave={handlePointerLeave}
-        onWheelCapture={handleWheelCapture}
       >
         {/* PDF area representation */}
         <div
@@ -1442,6 +1461,18 @@ export default function ControlPanelPage() {
       handleAction("markViewCenter");
     }
   }, [KeyCode.KeyX]);
+
+  // Keyboard shortcut Escape to cancel any active tool
+  useKeyDown(() => {
+    handleAction("cancelAllTools");
+  }, [KeyCode.Escape]);
+
+  // Keyboard shortcut Backspace to delete the selected line
+  useKeyDown(() => {
+    if (state.selectedLine >= 0) {
+      handleAction("deleteLine");
+    }
+  }, [KeyCode.Backspace]);
 
   // Keyboard shortcut Cmd/Ctrl+Z for undo last marker placement
   useEffect(() => {

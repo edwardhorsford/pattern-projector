@@ -128,19 +128,5 @@ export function getIsInvalidatedCalibrationContextWithPointerEvent(
     context.clientScreenLeft === null || current.clientScreenLeft === null
       ? false
       : Math.abs(context.clientScreenLeft - current.clientScreenLeft) > 3;
-  if (context.clientScreenTop !== current.clientScreenTop) {
-    console.log(
-      "clientScreenTop:",
-      context.clientScreenTop,
-      current.clientScreenTop,
-    );
-  }
-  if (context.clientScreenLeft !== current.clientScreenLeft) {
-    console.log(
-      "clientScreenLeft:",
-      context.clientScreenLeft,
-      current.clientScreenLeft,
-    );
-  }
   return (topDiff || leftDiff) && !context.fullScreen;
 }

@@ -30,9 +30,10 @@ test("gets perspective transform with the same inputs and outputs as opencv-pyth
   ];
 
   const matrix = getPerspectiveTransform(src, dst);
+  const matrixArr = matrix.to1DArray();
 
-  for (let i = 0; i < matrix.length; i++) {
-    expect(matrix[i]).toBeCloseTo(openCVMatrix[i]);
+  for (let i = 0; i < matrixArr.length; i++) {
+    expect(matrixArr[i]).toBeCloseTo(openCVMatrix[i]);
   }
 });
 

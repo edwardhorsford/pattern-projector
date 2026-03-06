@@ -15,7 +15,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { drawLine, drawArrow } from "@/_lib/drawing";
+import { drawLine, drawArrow, drawCircle } from "@/_lib/drawing";
 import { useTransformContext } from "@/_hooks/use-transform-context";
 
 import { KeyCode } from "@/_lib/key-code";
@@ -79,12 +79,26 @@ export default function MeasureCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dragOffset = useRef<Point | null>(null);
   const previousFileKey = useRef<string | null>(null);
+  const draggingWholeLine = useRef<boolean>(false);
+  const lineDragPatternStart = useRef<Point | null>(null);
+  const lineDragInitialPoints = useRef<[Point, Point] | null>(null);
 
   const [axisConstrained, setAxisConstrained] = useState<boolean>(false);
+  const [hoveredEnd, setHoveredEnd] = useState<{
+    lineIndex: number;
+    endIndex: 0 | 1;
+  } | null>(null);
+  const [hoveredLineIndex, setHoveredLineIndex] = useState<number>(-1);
+  const [isDraggingWholeLine, setIsDraggingWholeLine] =
+    useState<boolean>(false);
 
   const transform = useTransformContext();
 
-  const disablePointer = measuring || dragOffset.current;
+  const disablePointer =
+    measuring ||
+    dragOffset.current !== null ||
+    hoveredEnd !== null ||
+    hoveredLineIndex >= 0;
 
   // Use a consistent physical size for the touch area (1/2 inch).
   const TOUCH_AREA_INCHES = 0.5;
@@ -93,6 +107,9 @@ export default function MeasureCanvas({
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
+    if (magnifying) {
+      return;
+    }
     const client = { x: e.clientX, y: e.clientY };
     const patternToCalibrated = transform.mmul(scale(patternScale));
     const patternToClient = calibrationTransform.mmul(patternToCalibrated);
@@ -128,6 +145,10 @@ export default function MeasureCanvas({
             });
           }
           e.stopPropagation();
+          draggingWholeLine.current = false;
+          lineDragPatternStart.current = null;
+          lineDragInitialPoints.current = null;
+          setHoveredEnd({ lineIndex: i, endIndex: 1 });
           return;
         }
       }
@@ -139,8 +160,18 @@ export default function MeasureCanvas({
     }
 
     if (lineToSelect !== -1) {
-      setSelectedLine(lineToSelect === selectedLine ? -1 : lineToSelect);
-      dragOffset.current = null;
+      const patternLine = lines[lineToSelect];
+      const pattern = transformPoint(client, inverse(patternToClient));
+      setSelectedLine(lineToSelect);
+      setHoveredLineIndex(lineToSelect);
+      dragOffset.current = { x: 0, y: 0 };
+      draggingWholeLine.current = true;
+      setIsDraggingWholeLine(true);
+      lineDragPatternStart.current = pattern;
+      lineDragInitialPoints.current = [
+        { ...patternLine.points[0] },
+        { ...patternLine.points[1] },
+      ];
       e.stopPropagation();
       return;
     }
@@ -173,42 +204,143 @@ export default function MeasureCanvas({
       e.stopPropagation();
       // If the mouse button is released, end the drag.
       dragOffset.current = null;
+      draggingWholeLine.current = false;
+      setIsDraggingWholeLine(false);
+      lineDragPatternStart.current = null;
+      lineDragInitialPoints.current = null;
       return;
     }
 
-    // Dragging an end of a line?
+    // Not dragging — update endpoint hover state.
+    if (!dragOffset.current) {
+      if (magnifying) {
+        setHoveredEnd(null);
+        setHoveredLineIndex(-1);
+        return;
+      }
+      const client = { x: e.clientX, y: e.clientY };
+      const patternToCalibrated = transform.mmul(scale(patternScale));
+      const patternToClient = calibrationTransform.mmul(patternToCalibrated);
+      let newHoveredEnd: { lineIndex: number; endIndex: 0 | 1 } | null = null;
+      for (let i = 0; i < lines.length; i++) {
+        const clientLine = transformLine(lines[i], patternToClient);
+        for (const endIndex of [0, 1] as const) {
+          if (dist(clientLine.points[endIndex], client) < END_CIRCLE_RADIUS) {
+            newHoveredEnd = { lineIndex: i, endIndex };
+            break;
+          }
+        }
+        if (newHoveredEnd) break;
+      }
+      setHoveredEnd(newHoveredEnd);
+
+      // Check for line body hover (not near an endpoint).
+      let newHoveredLine = -1;
+      if (!newHoveredEnd) {
+        for (let i = 0; i < lines.length; i++) {
+          const clientLine = transformLine(lines[i], patternToClient);
+          if (distToLine(clientLine.points, client) < LINE_TOUCH_RADIUS) {
+            newHoveredLine = i;
+            break;
+          }
+        }
+      }
+      setHoveredLineIndex(newHoveredLine);
+    }
+
+    // Dragging a line?
     if (selectedLine >= 0 && dragOffset.current) {
       e.stopPropagation();
       const client = { x: e.clientX, y: e.clientY };
       const patternToCalibrated = transform.mmul(scale(patternScale));
-      const clientDestination = {
-        x: client.x + dragOffset.current.x,
-        y: client.y + dragOffset.current.y,
-      };
+      const patternToClient = calibrationTransform.mmul(patternToCalibrated);
 
-      const matLine = transformLine(lines[selectedLine], patternToCalibrated);
-      let matFinal = transformPoint(clientDestination, perspective);
-      if (axisConstrained) {
-        matFinal = constrained(matFinal, matLine.points[0]);
+      if (
+        draggingWholeLine.current &&
+        lineDragPatternStart.current &&
+        lineDragInitialPoints.current
+      ) {
+        // Move both endpoints by the pattern-space delta from the drag start.
+        const currentPattern = transformPoint(client, inverse(patternToClient));
+        const dx = currentPattern.x - lineDragPatternStart.current.x;
+        const dy = currentPattern.y - lineDragPatternStart.current.y;
+        dispatchLines({
+          type: "update-both-points",
+          index: selectedLine,
+          newP0: {
+            x: lineDragInitialPoints.current[0].x + dx,
+            y: lineDragInitialPoints.current[0].y + dy,
+          },
+          newP1: {
+            x: lineDragInitialPoints.current[1].x + dx,
+            y: lineDragInitialPoints.current[1].y + dy,
+          },
+        });
+      } else {
+        // Dragging one endpoint.
+        const clientDestination = {
+          x: client.x + dragOffset.current.x,
+          y: client.y + dragOffset.current.y,
+        };
+
+        const matLine = transformLine(lines[selectedLine], patternToCalibrated);
+        let matFinal = transformPoint(clientDestination, perspective);
+        if (axisConstrained) {
+          matFinal = constrained(matFinal, matLine.points[0]);
+        }
+        const patternDestination = transformPoint(
+          matFinal,
+          inverse(patternToCalibrated),
+        );
+
+        dispatchLines({
+          type: "update-point",
+          index: selectedLine,
+          pointIndex: 1, // Always dragging the second point
+          newPoint: patternDestination,
+          isConstrained: axisConstrained,
+        });
       }
-      const patternDestination = transformPoint(
-        matFinal,
-        inverse(patternToCalibrated),
-      );
-
-      dispatchLines({
-        type: "update-point",
-        index: selectedLine,
-        pointIndex: 1, // Always dragging the second point
-        newPoint: patternDestination,
-        isConstrained: axisConstrained,
-      });
     }
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     if (!dragOffset.current) {
+      return;
+    }
+
+    e.stopPropagation();
+
+    if (
+      draggingWholeLine.current &&
+      lineDragPatternStart.current &&
+      lineDragInitialPoints.current
+    ) {
+      // Finalise whole-line drag.
+      const client = { x: e.clientX, y: e.clientY };
+      const patternToCalibrated = transform.mmul(scale(patternScale));
+      const patternToClient = calibrationTransform.mmul(patternToCalibrated);
+      const currentPattern = transformPoint(client, inverse(patternToClient));
+      const dx = currentPattern.x - lineDragPatternStart.current.x;
+      const dy = currentPattern.y - lineDragPatternStart.current.y;
+      dispatchLines({
+        type: "update-both-points",
+        index: selectedLine,
+        newP0: {
+          x: lineDragInitialPoints.current[0].x + dx,
+          y: lineDragInitialPoints.current[0].y + dy,
+        },
+        newP1: {
+          x: lineDragInitialPoints.current[1].x + dx,
+          y: lineDragInitialPoints.current[1].y + dy,
+        },
+      });
+      draggingWholeLine.current = false;
+      setIsDraggingWholeLine(false);
+      lineDragPatternStart.current = null;
+      lineDragInitialPoints.current = null;
+      dragOffset.current = null;
       return;
     }
 
@@ -219,7 +351,6 @@ export default function MeasureCanvas({
 
     dragOffset.current = null;
 
-    e.stopPropagation();
     const patternToCalibrated = transform.mmul(scale(patternScale));
     const patternLine = lines[selectedLine];
     const patternAnchor = patternLine.points[0];
@@ -294,13 +425,16 @@ export default function MeasureCanvas({
         // When magnified, include magnifyTransform to match Draggable's
         // CSS transform chain: cal × mag × local × scale.
         const patternToClient = magnifyTransform
-          ? calibrationTransform.mmul(magnifyTransform).mmul(patternToCalibrated)
+          ? calibrationTransform
+              .mmul(magnifyTransform)
+              .mmul(patternToCalibrated)
           : calibrationTransform.mmul(patternToCalibrated);
         for (let i = 0; i < lines.length; i++) {
           if (i !== selectedLine) {
             drawLine(ctx, transformLine(lines[i], patternToClient).points);
           }
         }
+
         if (lines.length > 0 && selectedLine >= 0) {
           // Style selected line differently.
           ctx.strokeStyle = accentColor;
@@ -321,12 +455,70 @@ export default function MeasureCanvas({
           const calMag = magnifyTransform
             ? calibrationTransform.mmul(magnifyTransform)
             : calibrationTransform;
-          const clientLine = transformLine(
-            scaledMatLine,
-            calMag,
-          ).points;
-          drawArrow(ctx, clientLine);
+          const clientLine = transformLine(scaledMatLine, calMag).points;
+          drawArrow(
+            ctx,
+            clientLine,
+            hoveredEnd?.lineIndex === selectedLine
+              ? {
+                  start: hoveredEnd.endIndex === 0,
+                  end: hoveredEnd.endIndex === 1,
+                }
+              : undefined,
+          );
           drawMeasurementsAt(ctx, matLine, clientLine[1]);
+        }
+
+        // Draw dashed body overlay on hovered line — rendered last so it sits on top.
+        if (hoveredLineIndex >= 0 && hoveredLineIndex < lines.length) {
+          const hClientLine = transformLine(
+            lines[hoveredLineIndex],
+            patternToClient,
+          );
+          const hColor =
+            hoveredLineIndex === selectedLine ? accentColor : "#FF4500";
+          ctx.save();
+          // First pass: erase the solid line in the gap intervals to make transparent gaps.
+          ctx.globalCompositeOperation = "destination-out";
+          ctx.setLineDash([6, 6]);
+          ctx.lineDashOffset = 0;
+          drawLine(ctx, hClientLine.points);
+          // Second pass: draw coloured dashes in the remaining intervals.
+          ctx.globalCompositeOperation = "source-over";
+          ctx.strokeStyle = hColor;
+          ctx.setLineDash([6, 6]);
+          ctx.lineDashOffset = 6;
+          drawLine(ctx, hClientLine.points);
+          ctx.restore();
+        }
+
+        // Draw dashed end cap on hovered endpoint — rendered last so it sits on top.
+        if (hoveredEnd !== null && hoveredEnd.lineIndex < lines.length) {
+          const hClientLine = transformLine(
+            lines[hoveredEnd.lineIndex],
+            patternToClient,
+          );
+          const p0 = hClientLine.points[0];
+          const p1 = hClientLine.points[1];
+          const hPoint = hClientLine.points[hoveredEnd.endIndex];
+          const angle = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+          const whisker = 16;
+          ctx.save();
+          ctx.strokeStyle =
+            hoveredEnd.lineIndex === selectedLine ? accentColor : "#FF4500";
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(
+            hPoint.x + Math.cos(angle + Math.PI / 2) * whisker,
+            hPoint.y + Math.sin(angle + Math.PI / 2) * whisker,
+          );
+          ctx.lineTo(
+            hPoint.x + Math.cos(angle - Math.PI / 2) * whisker,
+            hPoint.y + Math.sin(angle - Math.PI / 2) * whisker,
+          );
+          ctx.stroke();
+          drawCircle(ctx, hPoint, 30);
+          ctx.restore();
         }
       }
     }
@@ -340,7 +532,7 @@ export default function MeasureCanvas({
       ctx.font = "24px sans-serif";
       ctx.strokeStyle = isDarkTheme ? "#000" : "#fff";
       ctx.fillStyle = isDarkTheme ? "#fff" : "#000";
-      const text = `${magnifying ? Number(line.distance) / 5 : line.distance}${line.unitOfMeasure.toLocaleLowerCase()} ${line.angle}°`; // When magnifying, show the input distance (1/5 scale)
+      const text = `${line.distance}${line.unitOfMeasure.toLocaleLowerCase()} ${line.angle}°`;
       ctx.lineWidth = 4;
       const location = { x: p1.x, y: p1.y - END_CIRCLE_RADIUS - 8 };
       ctx.strokeText(text, location.x, location.y);
@@ -356,6 +548,8 @@ export default function MeasureCanvas({
     lines,
     transform,
     selectedLine,
+    hoveredEnd,
+    hoveredLineIndex,
     measuring,
     isDarkTheme,
     patternScale,
@@ -392,7 +586,11 @@ export default function MeasureCanvas({
         onPointerDownCapture={handlePointerDown}
         onPointerMoveCapture={handlePointerMove}
         onPointerUpCapture={handlePointerUp}
-        className={`${measuring ? "cursor-crosshair" : ""} h-screen w-screen`}
+        onPointerLeave={() => {
+          setHoveredEnd(null);
+          setHoveredLineIndex(-1);
+        }}
+        className={`${isDraggingWholeLine ? "cursor-grabbing" : hoveredEnd !== null ? "cursor-crosshair" : hoveredLineIndex >= 0 ? "cursor-grab" : measuring ? "cursor-crosshair" : ""} h-screen w-screen`}
       >
         <div className={`${disablePointer ? "pointer-events-none" : ""}`}>
           {children}

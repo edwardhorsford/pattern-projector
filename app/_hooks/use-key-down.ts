@@ -9,6 +9,14 @@ export const useKeyDown = (
     (e: KeyboardEvent) => {
       const keyDown = keyCodes.some((keyCode) => e.key === keyCode);
 
+      // Don't intercept keydown events when an input or textarea element is focused
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+
       // Only intercept keydown events when no modifier keys are pressed to prevent issues like CTRL-V not working #369
       // Removing shiftKey because it is used for snapping when using the line tool
       if (keyDown && !e.ctrlKey && !e.metaKey && !e.altKey) {
