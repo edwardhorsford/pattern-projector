@@ -20,6 +20,11 @@ import { useTransformContext } from "@/_hooks/use-transform-context";
 
 import { KeyCode } from "@/_lib/key-code";
 import LineMenu from "@/_components/menus/line-menu";
+import {
+  LOUPE_DISPLAY_PX,
+  LOUPE_GAP,
+  SCREEN_MARGIN,
+} from "@/_components/pdf-loupe";
 import { useKeyDown } from "@/_hooks/use-key-down";
 import { useKeyUp } from "@/_hooks/use-key-up";
 import { Unit } from "@/_lib/unit";
@@ -212,6 +217,7 @@ export default function MeasureCanvas({
       x: 0,
       y: 0,
     };
+    dispatchLoupePoint(client);
     e.stopPropagation();
   };
 
@@ -253,7 +259,14 @@ export default function MeasureCanvas({
         if (newHoveredEnd) break;
       }
       setHoveredEnd(newHoveredEnd);
-      dispatchLoupePoint(hoveredEndScreenPoint);
+      // When measuring and not over an existing endpoint, show the loupe at
+      // the cursor so the user can see where the new line's first point will land.
+      const loupePoint = newHoveredEnd
+        ? hoveredEndScreenPoint
+        : measuring
+          ? client
+          : null;
+      dispatchLoupePoint(loupePoint);
 
       // Check for line body hover (not near an endpoint).
       let newHoveredLine = -1;
@@ -577,9 +590,28 @@ export default function MeasureCanvas({
       ctx.fillStyle = isDarkTheme ? "#fff" : "#000";
       const text = `${line.distance}${line.unitOfMeasure.toLocaleLowerCase()} ${line.angle}°`;
       ctx.lineWidth = 4;
-      const location = { x: p1.x, y: p1.y - END_CIRCLE_RADIUS - 8 };
-      ctx.strokeText(text, location.x, location.y);
-      ctx.fillText(text, location.x, location.y);
+
+      // Measure text width so we can choose a position that avoids screen
+      // edges and the loupe (which sits top-right or top-left of the endpoint).
+      const textWidth = ctx.measureText(text).width;
+      const textHeight = 24;
+      const gap = END_CIRCLE_RADIUS + 8;
+      const screenW = window.innerWidth;
+      const screenH = window.innerHeight;
+
+      // When the loupe is forced below the endpoint (near top of screen),
+      // always place the text above so they never occupy the same side.
+      const loupeIsBelow = p1.y - LOUPE_GAP - LOUPE_DISPLAY_PX < SCREEN_MARGIN;
+      // Prefer below the endpoint; fall back above if near the bottom edge
+      // or the loupe has taken the bottom position.
+      const useAbove = loupeIsBelow || p1.y + gap + textHeight > screenH - 10;
+      const y = useAbove ? p1.y - gap : p1.y + gap + textHeight;
+      // Prefer to the right; fall back to left if near the right edge.
+      const useLeft = p1.x + gap + textWidth > screenW - 10;
+      const x = useLeft ? p1.x - gap - textWidth : p1.x + gap;
+
+      ctx.strokeText(text, x, y);
+      ctx.fillText(text, x, y);
       ctx.restore();
     }
   }, [

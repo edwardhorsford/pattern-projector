@@ -21,7 +21,7 @@ import { PDF_TO_CSS_UNITS } from "@/_lib/pixels-per-inch";
 import { RenderContext } from "@/_hooks/use-render-context";
 import { useTransformerContext } from "@/_hooks/use-transform-context";
 import { Matrix } from "ml-matrix";
-import PdfHighResViewport from "@/_components/pdf-high-res-viewport"
+import PdfHighResViewport from "@/_components/pdf-high-res-viewport";
 import PdfLoupe from "@/_components/pdf-loupe";
 import {
   LineDirection,
