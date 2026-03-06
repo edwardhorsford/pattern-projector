@@ -48,6 +48,7 @@ export default function MeasureCanvas({
   isDarkTheme,
   lines,
   dispatchLines,
+  pushLinesSnapshot,
   selectedLine,
   setSelectedLine,
   patternScale,
@@ -70,6 +71,7 @@ export default function MeasureCanvas({
   isDarkTheme: boolean;
   lines: Line[];
   dispatchLines: Dispatch<LinesAction>;
+  pushLinesSnapshot: () => void;
   selectedLine: number;
   setSelectedLine: Dispatch<SetStateAction<number>>;
   patternScale: number;
@@ -130,6 +132,7 @@ export default function MeasureCanvas({
         const clientEnd = clientLine.points[end];
         const d = dist(clientEnd, client);
         if (d < scaledEndCircleRadius) {
+          pushLinesSnapshot();
           setSelectedLine(i);
           dragOffset.current = {
             x: clientEnd.x - client.x,
@@ -165,6 +168,7 @@ export default function MeasureCanvas({
       setSelectedLine(lineToSelect);
       setHoveredLineIndex(lineToSelect);
       dragOffset.current = { x: 0, y: 0 };
+      pushLinesSnapshot();
       draggingWholeLine.current = true;
       setIsDraggingWholeLine(true);
       lineDragPatternStart.current = pattern;
@@ -186,6 +190,7 @@ export default function MeasureCanvas({
 
     // Create a new line and start dragging its end.
     const pattern = transformPoint(client, inverse(patternToClient));
+    pushLinesSnapshot();
     dispatchLines({
       type: "add",
       line: createLine(pattern, pattern, unitOfMeasure),
@@ -249,7 +254,11 @@ export default function MeasureCanvas({
     }
 
     // Dragging a line?
-    if (selectedLine >= 0 && dragOffset.current) {
+    if (
+      selectedLine >= 0 &&
+      selectedLine < lines.length &&
+      dragOffset.current
+    ) {
       e.stopPropagation();
       const client = { x: e.clientX, y: e.clientY };
       const patternToCalibrated = transform.mmul(scale(patternScale));
@@ -351,6 +360,10 @@ export default function MeasureCanvas({
 
     dragOffset.current = null;
 
+    if (selectedLine < 0 || selectedLine >= lines.length) {
+      return;
+    }
+
     const patternToCalibrated = transform.mmul(scale(patternScale));
     const patternLine = lines[selectedLine];
     const patternAnchor = patternLine.points[0];
@@ -394,6 +407,13 @@ export default function MeasureCanvas({
     }
   }, [measuring, lines.length, selectedLine]);
 
+  // Clamp selectedLine if the lines array shrinks (e.g. after undo or delete).
+  useEffect(() => {
+    if (selectedLine >= lines.length) {
+      setSelectedLine(lines.length - 1);
+    }
+  }, [lines.length, selectedLine, setSelectedLine]);
+
   useKeyDown(() => {
     setAxisConstrained(true);
   }, [KeyCode.Shift]);
@@ -435,7 +455,11 @@ export default function MeasureCanvas({
           }
         }
 
-        if (lines.length > 0 && selectedLine >= 0) {
+        if (
+          lines.length > 0 &&
+          selectedLine >= 0 &&
+          selectedLine < lines.length
+        ) {
           // Style selected line differently.
           ctx.strokeStyle = accentColor;
 
@@ -605,6 +629,7 @@ export default function MeasureCanvas({
         setSelectedLine={setSelectedLine}
         lines={lines}
         dispatchLines={dispatchLines}
+        pushLinesSnapshot={pushLinesSnapshot}
         handleDeleteLine={handleDeleteLine}
         gridCenter={gridCenter}
         setMeasuring={setMeasuring}

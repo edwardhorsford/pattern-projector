@@ -23,12 +23,14 @@ export default function MovementPad({
   dispatch,
   fullScreenHandle,
   theme,
+  onBeforeMove,
 }: {
   corners: Set<number>;
   setCorners: (corners: Set<number>) => void;
   dispatch: Dispatch<PointAction>;
   fullScreenHandle: FullScreenHandle;
   theme: Theme;
+  onBeforeMove?: () => void;
 }) {
   const t = useTranslations("MovementPad");
   const border = "border-2";
@@ -60,6 +62,7 @@ export default function MovementPad({
   }
 
   function handleStart(direction: Direction) {
+    onBeforeMove?.();
     handleMove(direction, PIXEL_LIST[0]);
     let i = 0;
     setIntervalFunc(

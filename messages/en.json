@@ -384,6 +384,10 @@
     "deleteLine": "Delete line",
     "flipAlong": "Flip along line",
     "translate": "Move pattern by line length",
+    "offsetLines": "Add offset lines (O)",
+    "offsetDistance": "Offset distance",
+    "offsetApply": "Add lines",
+    "cancel": "Cancel",
     "line": "line",
     "lines": "lines"
   },

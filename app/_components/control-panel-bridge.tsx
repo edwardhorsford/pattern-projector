@@ -153,6 +153,8 @@ interface ControlPanelBridgeProps {
   // Markers for "mark complete" feature
   markers: Marker[];
   setMarkers: (markers: Marker[]) => void;
+  pushMarkersSnapshot: () => void;
+  pushCalibrationSnapshot?: () => void;
   markingMode: boolean;
   setMarkingMode: (value: boolean) => void;
   clearingMode: boolean;
@@ -239,6 +241,8 @@ export function ControlPanelBridge({
   lineThicknessStatus,
   markers,
   setMarkers,
+  pushMarkersSnapshot,
+  pushCalibrationSnapshot,
   markingMode,
   setMarkingMode,
   clearingMode,
@@ -961,6 +965,7 @@ export function ControlPanelBridge({
     if (!isCalibrating && !zoomedOut && !magnifying) {
       const center = calculateCalibrationCenterPoint();
       if (center) {
+        pushMarkersSnapshot();
         const newMarker = createMarker(center);
         setMarkers([...markers, newMarker]);
       }
@@ -983,26 +988,6 @@ export function ControlPanelBridge({
       setSelectedLine(-1);
     }
   }, [KeyCode.Backspace]);
-
-  // Keyboard shortcut Cmd/Ctrl+Z for undo last marker placement
-  useEffect(() => {
-    const handleUndo = (e: KeyboardEvent) => {
-      // Check for Cmd+Z (Mac) or Ctrl+Z (Windows/Linux)
-      if ((e.metaKey || e.ctrlKey) && e.key === "z" && !e.shiftKey) {
-        // Only undo markers when projecting (not calibrating), not in special modes
-        if (!isCalibrating && !zoomedOut && !magnifying && markers.length > 0) {
-          e.preventDefault();
-          // Remove the most recently placed marker (last in array)
-          const newMarkers = [...markers];
-          newMarkers.pop();
-          setMarkers(newMarkers);
-        }
-      }
-    };
-
-    document.addEventListener("keydown", handleUndo);
-    return () => document.removeEventListener("keydown", handleUndo);
-  }, [isCalibrating, zoomedOut, magnifying, markers, setMarkers]);
 
   useEffect(() => {
     const handleProjectScaleEvent = (event: Event) => {
@@ -1317,6 +1302,7 @@ export function ControlPanelBridge({
             clearAppData();
             break;
           case "applyCalibrationPreset": {
+            pushCalibrationSnapshot?.();
             const preset =
               params === "extreme"
                 ? "extreme"
@@ -1337,6 +1323,7 @@ export function ControlPanelBridge({
             break;
           }
           case "setCalibrationSizePreset": {
+            pushCalibrationSnapshot?.();
             const { width: presetWidth, height: presetHeight } = (params as {
               width: string;
               height: string;
@@ -1407,6 +1394,7 @@ export function ControlPanelBridge({
             };
             const offset = getOffset(direction, pixels);
             if (corners.size > 0) {
+              pushCalibrationSnapshot?.();
               dispatchPoints({ type: "offset", offset, corners });
             }
             break;
@@ -1616,6 +1604,7 @@ export function ControlPanelBridge({
             // Place a marker at the center of the current viewport
             const center = calculateCalibrationCenterPoint();
             if (center) {
+              pushMarkersSnapshot();
               const newMarker = createMarker(center);
               setMarkers([...markers, newMarker]);
             }
@@ -1623,6 +1612,7 @@ export function ControlPanelBridge({
           }
           case "addMarker": {
             const position = params as Point;
+            pushMarkersSnapshot();
             const newMarker = createMarker(position);
             setMarkers([...markers, newMarker]);
             break;

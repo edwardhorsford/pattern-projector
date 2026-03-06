@@ -38,6 +38,7 @@ export default function CalibrationCanvas({
   corners,
   setCorners,
   fullScreenHandle,
+  pushCalibrationSnapshot,
 }: {
   className: string | undefined;
   points: Point[];
@@ -50,6 +51,7 @@ export default function CalibrationCanvas({
   corners: Set<number>;
   setCorners: Dispatch<SetStateAction<Set<number>>>;
   fullScreenHandle: FullScreenHandle;
+  pushCalibrationSnapshot?: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [hoverCorners, setHoverCorners] = useState<Set<number>>(new Set());
@@ -193,8 +195,17 @@ export default function CalibrationCanvas({
     [KeyCode.Tab],
   );
 
+  // Wrap dispatch to snapshot calibration state before each arrow-key move.
+  const dispatchWithSnapshot = useCallback(
+    (action: PointAction) => {
+      pushCalibrationSnapshot?.();
+      dispatch(action);
+    },
+    [dispatch, pushCalibrationSnapshot],
+  );
+
   useProgArrowKeyPoints(
-    dispatch,
+    dispatchWithSnapshot,
     corners,
     isCalibrating,
     fullScreenHandle.active,
@@ -203,11 +214,16 @@ export default function CalibrationCanvas({
   /** Returns the fixed pattern-space position for a given corner index. */
   function getPatternCorner(corner: number): Point {
     switch (corner) {
-      case 0: return { x: 0, y: 0 };
-      case 1: return { x: width, y: 0 };
-      case 2: return { x: width, y: height };
-      case 3: return { x: 0, y: height };
-      default: return { x: 0, y: 0 };
+      case 0:
+        return { x: 0, y: 0 };
+      case 1:
+        return { x: width, y: 0 };
+      case 2:
+        return { x: width, y: height };
+      case 3:
+        return { x: 0, y: height };
+      default:
+        return { x: 0, y: 0 };
     }
   }
 
@@ -215,13 +231,20 @@ export default function CalibrationCanvas({
     const p = { x: e.clientX, y: e.clientY };
     const selectedCorners = selectCorners(p);
     if (selectedCorners.size) {
+      pushCalibrationSnapshot?.();
       setDragPoint(p);
       setCorners(selectedCorners);
       setHoverCorners(new Set());
 
       if (selectedCorners.size === 2) {
         // For edge drags, capture pattern-space context so we can drag in pattern space.
-        const pm = getPerspectiveTransformFromPoints(points, width, height, 1.0, false);
+        const pm = getPerspectiveTransformFromPoints(
+          points,
+          width,
+          height,
+          1.0,
+          false,
+        );
         const pmInverse = inverse(pm);
         dragInitialMatrixRef.current = pm;
         dragInitialInverseMatrixRef.current = pmInverse;
@@ -240,11 +263,13 @@ export default function CalibrationCanvas({
     const p = { x: e.clientX, y: e.clientY };
     if (dragPoint === null) {
       setHoverCorners(selectCorners(p));
-    } else if (corners.size === 2 &&
-        dragPatternStartRef.current !== null &&
-        dragInitialInverseMatrixRef.current !== null &&
-        dragInitialMatrixRef.current !== null &&
-        dragInitialPointsRef.current !== null) {
+    } else if (
+      corners.size === 2 &&
+      dragPatternStartRef.current !== null &&
+      dragInitialInverseMatrixRef.current !== null &&
+      dragInitialMatrixRef.current !== null &&
+      dragInitialPointsRef.current !== null
+    ) {
       // Edge drag in pattern space:
       // Convert current pointer to pattern space, constrain to the relevant
       // axis, then project the new pattern positions back to screen space using
@@ -263,8 +288,14 @@ export default function CalibrationCanvas({
       const newPoints = [...dragInitialPointsRef.current];
       for (const corner of corners) {
         const basePattern = getPatternCorner(corner);
-        const newPattern = { x: basePattern.x + patternDx, y: basePattern.y + patternDy };
-        newPoints[corner] = transformPoint(newPattern, dragInitialMatrixRef.current);
+        const newPattern = {
+          x: basePattern.x + patternDx,
+          y: basePattern.y + patternDy,
+        };
+        newPoints[corner] = transformPoint(
+          newPattern,
+          dragInitialMatrixRef.current,
+        );
       }
       dispatch({ type: "set", points: newPoints });
     } else if (corners.size) {
