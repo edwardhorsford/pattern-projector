@@ -254,7 +254,11 @@ export default function MeasureCanvas({
     }
 
     // Dragging a line?
-    if (selectedLine >= 0 && selectedLine < lines.length && dragOffset.current) {
+    if (
+      selectedLine >= 0 &&
+      selectedLine < lines.length &&
+      dragOffset.current
+    ) {
       e.stopPropagation();
       const client = { x: e.clientX, y: e.clientY };
       const patternToCalibrated = transform.mmul(scale(patternScale));
@@ -451,7 +455,11 @@ export default function MeasureCanvas({
           }
         }
 
-        if (lines.length > 0 && selectedLine >= 0 && selectedLine < lines.length) {
+        if (
+          lines.length > 0 &&
+          selectedLine >= 0 &&
+          selectedLine < lines.length
+        ) {
           // Style selected line differently.
           ctx.strokeStyle = accentColor;
 

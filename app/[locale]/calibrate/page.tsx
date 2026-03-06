@@ -208,18 +208,24 @@ export default function Page() {
 
   // Calibration undo stack — separate from the project-mode undo stack.
   type CalibrationSnapshot = {
-    points: Point[]
-    widthInput: string
-    heightInput: string
-  }
-  const calibrationUndoStackRef = useRef<CalibrationSnapshot[]>([])
+    points: Point[];
+    widthInput: string;
+    heightInput: string;
+  };
+  const calibrationUndoStackRef = useRef<CalibrationSnapshot[]>([]);
   // Stable refs for calibration snapshot so the callback never has stale closures.
-  const pointsRef = useRef<Point[]>(points)
-  const widthInputRef = useRef<string>(widthInput)
-  const heightInputRef = useRef<string>(heightInput)
-  useEffect(() => { pointsRef.current = points }, [points])
-  useEffect(() => { widthInputRef.current = widthInput }, [widthInput])
-  useEffect(() => { heightInputRef.current = heightInput }, [heightInput])
+  const pointsRef = useRef<Point[]>(points);
+  const widthInputRef = useRef<string>(widthInput);
+  const heightInputRef = useRef<string>(heightInput);
+  useEffect(() => {
+    pointsRef.current = points;
+  }, [points]);
+  useEffect(() => {
+    widthInputRef.current = widthInput;
+  }, [widthInput]);
+  useEffect(() => {
+    heightInputRef.current = heightInput;
+  }, [heightInput]);
   const pushCalibrationSnapshot = useCallback(() => {
     calibrationUndoStackRef.current = [
       ...calibrationUndoStackRef.current.slice(-19),
@@ -228,8 +234,8 @@ export default function Page() {
         widthInput: widthInputRef.current,
         heightInput: heightInputRef.current,
       },
-    ]
-  }, [])
+    ];
+  }, []);
 
   // Incremented to force PdfViewer to remount and re-render all pages from scratch
   const [pdfRenderKey, setPdfRenderKey] = useState(0);
@@ -816,12 +822,21 @@ export default function Page() {
         // Calibration mode: undo corner/grid moves and dimension changes.
         if (calibrationUndoStackRef.current.length === 0) return;
         e.preventDefault();
-        const snap = calibrationUndoStackRef.current[calibrationUndoStackRef.current.length - 1];
-        calibrationUndoStackRef.current = calibrationUndoStackRef.current.slice(0, -1);
+        const snap =
+          calibrationUndoStackRef.current[
+            calibrationUndoStackRef.current.length - 1
+          ];
+        calibrationUndoStackRef.current = calibrationUndoStackRef.current.slice(
+          0,
+          -1,
+        );
         dispatch({ type: "set", points: snap.points });
         setWidthInput(snap.widthInput);
         setHeightInput(snap.heightInput);
-        updateLocalSettings({ width: snap.widthInput, height: snap.heightInput });
+        updateLocalSettings({
+          width: snap.widthInput,
+          height: snap.heightInput,
+        });
         return;
       }
       if (zoomedOut || magnifying) return;
@@ -837,7 +852,14 @@ export default function Page() {
     };
     document.addEventListener("keydown", handleUndo);
     return () => document.removeEventListener("keydown", handleUndo);
-  }, [isCalibrating, zoomedOut, magnifying, setMarkers, dispatchLines, dispatch]);
+  }, [
+    isCalibrating,
+    zoomedOut,
+    magnifying,
+    setMarkers,
+    dispatchLines,
+    dispatch,
+  ]);
 
   useEffect(() => {
     window.addEventListener("keydown", handleProjectZoomShortcut);
