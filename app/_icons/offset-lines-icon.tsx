@@ -1,20 +1,22 @@
 // offset-lines-icon.tsx
-export default function OffsetLinesIcon({
-  ariaLabel,
-}: {
-  ariaLabel: string
-}) {
+export default function OffsetLinesIcon({ ariaLabel }: { ariaLabel: string }) {
   return (
     <svg
       aria-label={ariaLabel}
       xmlns="http://www.w3.org/2000/svg"
       height="24"
-      viewBox="0 -960 960 960"
+      viewBox="0 0 24 24"
       width="24"
-      fill="currentColor"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
     >
-      {/* Two parallel horizontal lines with a double-headed arrow showing the gap */}
-      <path d="M80-680h800v80H80v-80zm0 380h800v80H80v-80zM440-600v280h80v-280h-80zm40-80-100 80h200l-100-80zm0 440 100-80H380l100 80z" />
+      {/* Solid source line */}
+      <line x1="2" y1="12" x2="22" y2="12" />
+      {/* Dashed offset lines */}
+      <line x1="2" y1="4" x2="22" y2="4" strokeDasharray="2 4" />
+      <line x1="2" y1="20" x2="22" y2="20" strokeDasharray="2 4" />
     </svg>
-  )
+  );
 }

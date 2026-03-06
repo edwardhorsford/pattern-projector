@@ -89,7 +89,7 @@ import { toggleFullScreen } from "@/_lib/full-screen";
 import { usePdfThumbnail } from "@/_hooks/use-pdf-thumbnail";
 import { Marker } from "@/_lib/marker";
 import MarkerCanvas from "@/_components/canvases/marker-canvas";
-import linesReducer from "@/_reducers/linesReducer";
+import linesReducer, { Line } from "@/_reducers/linesReducer";
 
 const defaultStitchSettings: StitchSettings = {
   key: "stitchSettings:default",
@@ -177,6 +177,33 @@ export default function Page() {
   );
   const [lines, dispatchLines] = useReducer(linesReducer, []);
   const [selectedLine, setSelectedLine] = useState<number>(-1);
+
+  // Unified undo stack for both lines and markers, kept in chronological order.
+  type UndoEntry =
+    | { type: "lines"; snapshot: Line[] }
+    | { type: "markers"; snapshot: Marker[] };
+  const undoStackRef = useRef<UndoEntry[]>([]);
+  // Stable refs so snapshot callbacks always capture latest state without stale closures.
+  const linesRef = useRef<Line[]>(lines);
+  const markersRef = useRef<Marker[]>(markers);
+  useEffect(() => {
+    linesRef.current = lines;
+  }, [lines]);
+  useEffect(() => {
+    markersRef.current = markers;
+  }, [markers]);
+  const pushLinesSnapshot = useCallback(() => {
+    undoStackRef.current = [
+      ...undoStackRef.current.slice(-19),
+      { type: "lines", snapshot: [...linesRef.current] },
+    ];
+  }, []);
+  const pushMarkersSnapshot = useCallback(() => {
+    undoStackRef.current = [
+      ...undoStackRef.current.slice(-19),
+      { type: "markers", snapshot: [...markersRef.current] },
+    ];
+  }, []);;
   // Incremented to force PdfViewer to remount and re-render all pages from scratch
   const [pdfRenderKey, setPdfRenderKey] = useState(0);
   const [showHighResOverlay, setShowHighResOverlay] = useState(true);
@@ -739,6 +766,7 @@ export default function Page() {
     if (previousFileKeyRef.current !== currentFileKey) {
       setMarkers([]);
       setSelectedMarkerId(null);
+      undoStackRef.current = [];
     }
     previousFileKeyRef.current = currentFileKey;
   }, [file]);
@@ -752,6 +780,25 @@ export default function Page() {
       setSelectedMarkerId(null);
     }
   }, [markers, selectedMarkerId]);
+
+  // Unified Cmd/Ctrl+Z undo: pops from shared stack in the order actions were taken.
+  useEffect(() => {
+    const handleUndo = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key !== "z" || e.shiftKey) return;
+      if (isCalibrating || zoomedOut || magnifying) return;
+      if (undoStackRef.current.length === 0) return;
+      e.preventDefault();
+      const entry = undoStackRef.current[undoStackRef.current.length - 1];
+      undoStackRef.current = undoStackRef.current.slice(0, -1);
+      if (entry.type === "lines") {
+        dispatchLines({ type: "set", lines: entry.snapshot });
+      } else {
+        setMarkers(entry.snapshot);
+      }
+    };
+    document.addEventListener("keydown", handleUndo);
+    return () => document.removeEventListener("keydown", handleUndo);
+  }, [isCalibrating, zoomedOut, magnifying, setMarkers, dispatchLines]);
 
   useEffect(() => {
     window.addEventListener("keydown", handleProjectZoomShortcut);
@@ -1159,6 +1206,7 @@ export default function Page() {
               setClearingMode={setClearingMode}
               lines={lines}
               dispatchLines={dispatchLines}
+              pushMarkersSnapshot={pushMarkersSnapshot}
               selectedLine={selectedLine}
               setSelectedLine={setSelectedLine}
               forcePdfRerender={() => setPdfRenderKey((k) => k + 1)}
@@ -1189,6 +1237,7 @@ export default function Page() {
                   isDarkTheme={isDarkTheme(displaySettings.theme)}
                   lines={lines}
                   dispatchLines={dispatchLines}
+                  pushLinesSnapshot={pushLinesSnapshot}
                   selectedLine={selectedLine}
                   setSelectedLine={setSelectedLine}
                   patternScale={patternScaleFactor}
