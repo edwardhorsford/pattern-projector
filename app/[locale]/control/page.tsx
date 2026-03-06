@@ -403,7 +403,7 @@ function Preview({
   const containerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   // Holds current wheel handler without re-binding the DOM listener on prop changes
-  const handleWheelRef = useRef<(event: WheelEvent) => void>(() => {})
+  const handleWheelRef = useRef<(event: WheelEvent) => void>(() => {});
   const [isDragging, setIsDragging] = useState(false);
   const [containerWidth, setContainerWidth] = useState(400);
   const accentColor = secondaryColor(theme);
@@ -433,12 +433,12 @@ function Preview({
   // Uses wrapperRef which is always mounted, unlike the inner containerRef which
   // only renders when layoutWidth/layoutHeight are non-zero.
   useEffect(() => {
-    const el = wrapperRef.current
-    if (!el) return
-    const handler = (e: WheelEvent) => handleWheelRef.current(e)
-    el.addEventListener("wheel", handler, { passive: false, capture: true })
-    return () => el.removeEventListener("wheel", handler, true)
-  }, [])
+    const el = wrapperRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => handleWheelRef.current(e);
+    el.addEventListener("wheel", handler, { passive: false, capture: true });
+    return () => el.removeEventListener("wheel", handler, true);
+  }, []);
 
   // Calculate scale to fit the PDF in the preview container
   // Both sizes are capped to prevent size jumps when rotating

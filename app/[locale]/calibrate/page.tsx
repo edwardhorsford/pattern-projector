@@ -350,7 +350,9 @@ export default function Page() {
 
   // Ref for the pinch zoom handler — updated each render so the native listener
   // (registered once in noZoomRefCallback) always uses fresh state/callbacks.
-  const pinchZoomWheelHandlerRef = useRef<(event: WheelEvent) => void>(() => {})
+  const pinchZoomWheelHandlerRef = useRef<(event: WheelEvent) => void>(
+    () => {},
+  );
 
   // Prevent the user from zooming and handle pinch-zoom gesture.
   // Registered as a non-passive native listener so preventDefault works.
