@@ -38,6 +38,7 @@ export default function CalibrationCanvas({
   corners,
   setCorners,
   fullScreenHandle,
+  pushCalibrationSnapshot,
 }: {
   className: string | undefined;
   points: Point[];
@@ -50,6 +51,7 @@ export default function CalibrationCanvas({
   corners: Set<number>;
   setCorners: Dispatch<SetStateAction<Set<number>>>;
   fullScreenHandle: FullScreenHandle;
+  pushCalibrationSnapshot?: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [hoverCorners, setHoverCorners] = useState<Set<number>>(new Set());
@@ -193,8 +195,17 @@ export default function CalibrationCanvas({
     [KeyCode.Tab],
   );
 
+  // Wrap dispatch to snapshot calibration state before each arrow-key move.
+  const dispatchWithSnapshot = useCallback(
+    (action: PointAction) => {
+      pushCalibrationSnapshot?.();
+      dispatch(action);
+    },
+    [dispatch, pushCalibrationSnapshot],
+  );
+
   useProgArrowKeyPoints(
-    dispatch,
+    dispatchWithSnapshot,
     corners,
     isCalibrating,
     fullScreenHandle.active,
@@ -215,6 +226,7 @@ export default function CalibrationCanvas({
     const p = { x: e.clientX, y: e.clientY };
     const selectedCorners = selectCorners(p);
     if (selectedCorners.size) {
+      pushCalibrationSnapshot?.();
       setDragPoint(p);
       setCorners(selectedCorners);
       setHoverCorners(new Set());

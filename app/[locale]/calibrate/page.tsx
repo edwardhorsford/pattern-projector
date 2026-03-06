@@ -88,6 +88,7 @@ import SvgViewer from "@/_components/svg-viewer";
 import { toggleFullScreen } from "@/_lib/full-screen";
 import { usePdfThumbnail } from "@/_hooks/use-pdf-thumbnail";
 import { Marker } from "@/_lib/marker";
+import { Point } from "@/_lib/point";
 import MarkerCanvas from "@/_components/canvases/marker-canvas";
 import linesReducer, { Line } from "@/_reducers/linesReducer";
 
@@ -203,7 +204,33 @@ export default function Page() {
       ...undoStackRef.current.slice(-19),
       { type: "markers", snapshot: [...markersRef.current] },
     ];
-  }, []);;
+  }, []);
+
+  // Calibration undo stack — separate from the project-mode undo stack.
+  type CalibrationSnapshot = {
+    points: Point[]
+    widthInput: string
+    heightInput: string
+  }
+  const calibrationUndoStackRef = useRef<CalibrationSnapshot[]>([])
+  // Stable refs for calibration snapshot so the callback never has stale closures.
+  const pointsRef = useRef<Point[]>(points)
+  const widthInputRef = useRef<string>(widthInput)
+  const heightInputRef = useRef<string>(heightInput)
+  useEffect(() => { pointsRef.current = points }, [points])
+  useEffect(() => { widthInputRef.current = widthInput }, [widthInput])
+  useEffect(() => { heightInputRef.current = heightInput }, [heightInput])
+  const pushCalibrationSnapshot = useCallback(() => {
+    calibrationUndoStackRef.current = [
+      ...calibrationUndoStackRef.current.slice(-19),
+      {
+        points: [...pointsRef.current],
+        widthInput: widthInputRef.current,
+        heightInput: heightInputRef.current,
+      },
+    ]
+  }, [])
+
   // Incremented to force PdfViewer to remount and re-render all pages from scratch
   const [pdfRenderKey, setPdfRenderKey] = useState(0);
   const [showHighResOverlay, setShowHighResOverlay] = useState(true);
@@ -785,7 +812,19 @@ export default function Page() {
   useEffect(() => {
     const handleUndo = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.key !== "z" || e.shiftKey) return;
-      if (isCalibrating || zoomedOut || magnifying) return;
+      if (isCalibrating) {
+        // Calibration mode: undo corner/grid moves and dimension changes.
+        if (calibrationUndoStackRef.current.length === 0) return;
+        e.preventDefault();
+        const snap = calibrationUndoStackRef.current[calibrationUndoStackRef.current.length - 1];
+        calibrationUndoStackRef.current = calibrationUndoStackRef.current.slice(0, -1);
+        dispatch({ type: "set", points: snap.points });
+        setWidthInput(snap.widthInput);
+        setHeightInput(snap.heightInput);
+        updateLocalSettings({ width: snap.widthInput, height: snap.heightInput });
+        return;
+      }
+      if (zoomedOut || magnifying) return;
       if (undoStackRef.current.length === 0) return;
       e.preventDefault();
       const entry = undoStackRef.current[undoStackRef.current.length - 1];
@@ -798,7 +837,7 @@ export default function Page() {
     };
     document.addEventListener("keydown", handleUndo);
     return () => document.removeEventListener("keydown", handleUndo);
-  }, [isCalibrating, zoomedOut, magnifying, setMarkers, dispatchLines]);
+  }, [isCalibrating, zoomedOut, magnifying, setMarkers, dispatchLines, dispatch]);
 
   useEffect(() => {
     window.addEventListener("keydown", handleProjectZoomShortcut);
@@ -1097,6 +1136,7 @@ export default function Page() {
               corners={corners}
               setCorners={setCorners}
               fullScreenHandle={fullScreenHandle}
+              pushCalibrationSnapshot={pushCalibrationSnapshot}
             />
           )}
           {isCalibrating && showingMovePad && (
@@ -1106,6 +1146,7 @@ export default function Page() {
               dispatch={dispatch}
               fullScreenHandle={fullScreenHandle}
               theme={displaySettings.theme}
+              onBeforeMove={pushCalibrationSnapshot}
             />
           )}
 
@@ -1155,6 +1196,7 @@ export default function Page() {
                 updateLocalSettings({ unitOfMeasure: newUnit });
               }}
               handleResetCalibration={() => {
+                pushCalibrationSnapshot();
                 localStorage.setItem(
                   "calibrationContext",
                   JSON.stringify(
@@ -1207,6 +1249,7 @@ export default function Page() {
               lines={lines}
               dispatchLines={dispatchLines}
               pushMarkersSnapshot={pushMarkersSnapshot}
+              pushCalibrationSnapshot={pushCalibrationSnapshot}
               selectedLine={selectedLine}
               setSelectedLine={setSelectedLine}
               forcePdfRerender={() => setPdfRenderKey((k) => k + 1)}

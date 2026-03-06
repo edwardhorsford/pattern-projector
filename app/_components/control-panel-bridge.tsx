@@ -154,6 +154,7 @@ interface ControlPanelBridgeProps {
   markers: Marker[];
   setMarkers: (markers: Marker[]) => void;
   pushMarkersSnapshot: () => void;
+  pushCalibrationSnapshot?: () => void;
   markingMode: boolean;
   setMarkingMode: (value: boolean) => void;
   clearingMode: boolean;
@@ -241,6 +242,7 @@ export function ControlPanelBridge({
   markers,
   setMarkers,
   pushMarkersSnapshot,
+  pushCalibrationSnapshot,
   markingMode,
   setMarkingMode,
   clearingMode,
@@ -1300,6 +1302,7 @@ export function ControlPanelBridge({
             clearAppData();
             break;
           case "applyCalibrationPreset": {
+            pushCalibrationSnapshot?.();
             const preset =
               params === "extreme"
                 ? "extreme"
@@ -1320,6 +1323,7 @@ export function ControlPanelBridge({
             break;
           }
           case "setCalibrationSizePreset": {
+            pushCalibrationSnapshot?.();
             const { width: presetWidth, height: presetHeight } = (params as {
               width: string;
               height: string;
@@ -1390,6 +1394,7 @@ export function ControlPanelBridge({
             };
             const offset = getOffset(direction, pixels);
             if (corners.size > 0) {
+              pushCalibrationSnapshot?.();
               dispatchPoints({ type: "offset", offset, corners });
             }
             break;
