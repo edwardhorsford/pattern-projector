@@ -3,7 +3,9 @@
   "name": "Pattern Projector",
   "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
   "postCreateCommand": "yarn install",
-  "postStartCommand": "yarn dev",
+  "postAttachCommand": {
+    "server": "yarn dev"
+  },
   "forwardPorts": [3000],
   "portsAttributes": {
     "3000": {
