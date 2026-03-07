@@ -3,7 +3,12 @@ import { useCallback, useEffect, useState } from "react";
 
 const PIXEL_LIST = [1, 10, 20, 40];
 export default function useProgArrowKeyHandler(
-  handler: (key: KeyCode, px: number, fullScreen: boolean) => void,
+  handler: (
+    key: KeyCode,
+    px: number,
+    fullScreen: boolean,
+    shiftKey?: boolean,
+  ) => void,
   active: boolean,
   pixelList: number[] = PIXEL_LIST,
   fullScreen: boolean,
@@ -28,7 +33,7 @@ export default function useProgArrowKeyHandler(
               }, 600),
             );
           }
-          handler(e.code, pixelList[pixelIdx], fullScreen);
+          handler(e.code, pixelList[pixelIdx], fullScreen, e.shiftKey);
           break;
         default:
           break;

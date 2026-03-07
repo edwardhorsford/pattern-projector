@@ -2,6 +2,7 @@ import useProgArrowKeyHandler from "@/_hooks/use-prog-arrow-key-handler";
 import { Point } from "@/_lib/point";
 import { translate } from "@/_lib/geometry";
 import { Matrix } from "ml-matrix";
+import { measureEndSelectedRef } from "@/_lib/measure-end-selected";
 
 export default function useProgArrowKeyToMatrix(
   active: boolean,
@@ -10,6 +11,9 @@ export default function useProgArrowKeyToMatrix(
 ) {
   const PIXEL_LIST = [1, 2, 4];
   function moveWithArrowKey(key: string, px: number) {
+    // Don't pan when a measurement endpoint is selected — arrow keys nudge
+    // the endpoint instead.
+    if (measureEndSelectedRef.current) return;
     let newOffset: Point = { x: 0, y: 0 };
     const dist = px * scale;
     // Negate offsets: pressing "right" should move viewport right,

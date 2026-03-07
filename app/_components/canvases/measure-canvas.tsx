@@ -11,6 +11,7 @@ import Matrix, { inverse } from "ml-matrix";
 import React, {
   Dispatch,
   SetStateAction,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -20,9 +21,17 @@ import { useTransformContext } from "@/_hooks/use-transform-context";
 
 import { KeyCode } from "@/_lib/key-code";
 import LineMenu from "@/_components/menus/line-menu";
+import {
+  LOUPE_DISPLAY_PX,
+  LOUPE_GAP,
+  LOUPE_POINT_EVENT,
+  SCREEN_MARGIN,
+} from "@/_components/pdf-loupe";
 import { useKeyDown } from "@/_hooks/use-key-down";
 import { useKeyUp } from "@/_hooks/use-key-up";
+import useProgArrowKeyHandler from "@/_hooks/use-prog-arrow-key-handler";
 import { Unit } from "@/_lib/unit";
+import { measureEndSelectedRef } from "@/_lib/measure-end-selected";
 import { MenuStates } from "@/_lib/menu-states";
 import {
   Line,
@@ -84,6 +93,10 @@ export default function MeasureCanvas({
   const draggingWholeLine = useRef<boolean>(false);
   const lineDragPatternStart = useRef<Point | null>(null);
   const lineDragInitialPoints = useRef<[Point, Point] | null>(null);
+  // Tracks raw pointer client position during an endpoint drag so the Shift-release
+  // handler can re-dispatch the unconstrained loupe position without waiting for
+  // the next pointermove event.
+  const lastDragClientRef = useRef<Point | null>(null);
 
   const [axisConstrained, setAxisConstrained] = useState<boolean>(false);
   const [hoveredEnd, setHoveredEnd] = useState<{
@@ -93,6 +106,23 @@ export default function MeasureCanvas({
   const [hoveredLineIndex, setHoveredLineIndex] = useState<number>(-1);
   const [isDraggingWholeLine, setIsDraggingWholeLine] =
     useState<boolean>(false);
+
+  // Tracks the last-touched endpoint, enabling arrow-key nudging.
+  const [selectedEnd, setSelectedEnd] = useState<{
+    lineIndex: number;
+    endIndex: 0 | 1;
+  } | null>(null);
+
+  // Timer used to keep the loupe visible for a few seconds after the last nudge/click.
+  const loupeLingerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  // True while a linger timer is running — prevents handlePointerMove's hover-null
+  // dispatch from killing the loupe immediately after pointer up.
+  const loupeLingerActiveRef = useRef(false);
+
+  // Ref-based Tab handler so it always reads the latest state without re-registering the listener.
+  const tabHandlerRef = useRef<() => void>(() => {});
 
   const transform = useTransformContext();
 
@@ -106,6 +136,28 @@ export default function MeasureCanvas({
   const TOUCH_AREA_INCHES = 0.5;
   const END_CIRCLE_RADIUS = CSS_PIXELS_PER_INCH * TOUCH_AREA_INCHES;
   const LINE_TOUCH_RADIUS = CSS_PIXELS_PER_INCH * 0.5; // A slightly larger area for the line itself
+
+  /**
+   * Fires a "loupe-point" custom event so PdfLoupe can render a magnified
+   * inset centred on the given screen point. Pass null to hide the loupe.
+   * The string literal must match LOUPE_POINT_EVENT in pdf-loupe.tsx.
+   */
+  const dispatchLoupePoint = (screenPoint: Point | null) => {
+    document.dispatchEvent(
+      new CustomEvent<Point | null>(LOUPE_POINT_EVENT, { detail: screenPoint }),
+    );
+  };
+
+  /** Start (or restart) the loupe linger timer. Blocks hover-null dispatches. */
+  const startLoupeLingerTimer = () => {
+    loupeLingerActiveRef.current = true;
+    if (loupeLingerTimerRef.current) clearTimeout(loupeLingerTimerRef.current);
+    loupeLingerTimerRef.current = setTimeout(() => {
+      dispatchLoupePoint(null);
+      loupeLingerTimerRef.current = null;
+      loupeLingerActiveRef.current = false;
+    }, 2000);
+  };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -152,6 +204,9 @@ export default function MeasureCanvas({
           lineDragPatternStart.current = null;
           lineDragInitialPoints.current = null;
           setHoveredEnd({ lineIndex: i, endIndex: 1 });
+          // Show the loupe immediately on click so the user can see the endpoint position.
+          dispatchLoupePoint(clientEnd);
+          startLoupeLingerTimer();
           return;
         }
       }
@@ -176,11 +231,14 @@ export default function MeasureCanvas({
         { ...patternLine.points[0] },
         { ...patternLine.points[1] },
       ];
+      setSelectedEnd(null);
+      dispatchLoupePoint(null);
       e.stopPropagation();
       return;
     }
 
     // Nothing selected.
+    setSelectedEnd(null);
     setSelectedLine(-1);
     dragOffset.current = null;
 
@@ -200,6 +258,7 @@ export default function MeasureCanvas({
       x: 0,
       y: 0,
     };
+    dispatchLoupePoint(client);
     e.stopPropagation();
   };
 
@@ -213,6 +272,7 @@ export default function MeasureCanvas({
       setIsDraggingWholeLine(false);
       lineDragPatternStart.current = null;
       lineDragInitialPoints.current = null;
+      dispatchLoupePoint(null);
       return;
     }
 
@@ -227,17 +287,29 @@ export default function MeasureCanvas({
       const patternToCalibrated = transform.mmul(scale(patternScale));
       const patternToClient = calibrationTransform.mmul(patternToCalibrated);
       let newHoveredEnd: { lineIndex: number; endIndex: 0 | 1 } | null = null;
+      let hoveredEndScreenPoint: Point | null = null;
       for (let i = 0; i < lines.length; i++) {
         const clientLine = transformLine(lines[i], patternToClient);
         for (const endIndex of [0, 1] as const) {
           if (dist(clientLine.points[endIndex], client) < END_CIRCLE_RADIUS) {
             newHoveredEnd = { lineIndex: i, endIndex };
+            hoveredEndScreenPoint = clientLine.points[endIndex];
             break;
           }
         }
         if (newHoveredEnd) break;
       }
       setHoveredEnd(newHoveredEnd);
+      // When measuring and not over an existing endpoint, show the loupe at
+      // the cursor so the user can see where the new line's first point will land.
+      const loupePoint = newHoveredEnd
+        ? hoveredEndScreenPoint
+        : measuring
+          ? client
+          : loupeLingerActiveRef.current
+            ? undefined // linger active — don't override the post-drag loupe
+            : null;
+      if (loupePoint !== undefined) dispatchLoupePoint(loupePoint);
 
       // Check for line body hover (not near an endpoint).
       let newHoveredLine = -1;
@@ -287,6 +359,7 @@ export default function MeasureCanvas({
         });
       } else {
         // Dragging one endpoint.
+        lastDragClientRef.current = client;
         const clientDestination = {
           x: client.x + dragOffset.current.x,
           y: client.y + dragOffset.current.y,
@@ -309,6 +382,13 @@ export default function MeasureCanvas({
           newPoint: patternDestination,
           isConstrained: axisConstrained,
         });
+        // Dispatch the *actual* endpoint screen position (constrained when shift held).
+        dispatchLoupePoint(
+          transformPoint(
+            patternDestination,
+            calibrationTransform.mmul(patternToCalibrated),
+          ),
+        );
       }
     }
   };
@@ -350,6 +430,7 @@ export default function MeasureCanvas({
       lineDragPatternStart.current = null;
       lineDragInitialPoints.current = null;
       dragOffset.current = null;
+      dispatchLoupePoint(null);
       return;
     }
 
@@ -388,6 +469,16 @@ export default function MeasureCanvas({
       newPoint: patternFinal,
       isConstrained: axisConstrained,
     });
+    // Mark this endpoint as selected for arrow-key nudging.
+    const newSelectedEnd = { lineIndex: selectedLine, endIndex: 1 as const };
+    setSelectedEnd(newSelectedEnd);
+    // Show loupe at the final endpoint position and keep it visible briefly.
+    const finalScreenPt = transformPoint(
+      patternFinal,
+      calibrationTransform.mmul(patternToCalibrated),
+    );
+    dispatchLoupePoint(finalScreenPt);
+    startLoupeLingerTimer();
   };
 
   function handleDeleteLine() {
@@ -414,13 +505,281 @@ export default function MeasureCanvas({
     }
   }, [lines.length, selectedLine, setSelectedLine]);
 
+  // Clear selectedEnd if the referenced line is deleted.
+  useEffect(() => {
+    if (selectedEnd && selectedEnd.lineIndex >= lines.length) {
+      setSelectedEnd(null);
+    }
+  }, [lines.length, selectedEnd]);
+
   useKeyDown(() => {
     setAxisConstrained(true);
+    // If we're mid endpoint-drag, immediately apply the constrained position —
+    // both to the line data and to the loupe — so the user doesn't have to move
+    // the mouse before the constraint is visually applied.
+    if (
+      dragOffset.current &&
+      lastDragClientRef.current &&
+      !draggingWholeLine.current
+    ) {
+      const {
+        transform: t,
+        patternScale: ps,
+        calibrationTransform: ct,
+        perspective: p,
+        dispatchLines: dl,
+        selectedLine: sl,
+        lines: ls,
+      } = nudgeStateRef.current;
+      if (sl < 0) return;
+      const patternToCalibrated = t.mmul(scale(ps));
+      const clientDestination = {
+        x: lastDragClientRef.current.x + dragOffset.current.x,
+        y: lastDragClientRef.current.y + dragOffset.current.y,
+      };
+      const matFinal = transformPoint(clientDestination, p);
+      const matLine = transformLine(ls[sl], patternToCalibrated);
+      const matFinalConstrained = constrained(matFinal, matLine.points[0]);
+      const patternDest = transformPoint(
+        matFinalConstrained,
+        inverse(patternToCalibrated),
+      );
+      dl({
+        type: "update-point",
+        index: sl,
+        pointIndex: 1,
+        newPoint: patternDest,
+        isConstrained: true,
+      });
+      dispatchLoupePoint(
+        transformPoint(patternDest, ct.mmul(patternToCalibrated)),
+      );
+    }
   }, [KeyCode.Shift]);
 
   useKeyUp(() => {
     setAxisConstrained(false);
+    // If we're mid endpoint-drag, immediately apply the unconstrained position —
+    // both to the line data and to the loupe — so the user doesn't have to move
+    // the mouse before the constraint is visually released.
+    if (
+      dragOffset.current &&
+      lastDragClientRef.current &&
+      !draggingWholeLine.current
+    ) {
+      const {
+        transform: t,
+        patternScale: ps,
+        calibrationTransform: ct,
+        perspective: p,
+        dispatchLines: dl,
+        selectedLine: sl,
+      } = nudgeStateRef.current;
+      if (sl < 0) return;
+      const patternToCalibrated = t.mmul(scale(ps));
+      const clientDestination = {
+        x: lastDragClientRef.current.x + dragOffset.current.x,
+        y: lastDragClientRef.current.y + dragOffset.current.y,
+      };
+      const matFinal = transformPoint(clientDestination, p);
+      const patternDest = transformPoint(
+        matFinal,
+        inverse(patternToCalibrated),
+      );
+      dl({
+        type: "update-point",
+        index: sl,
+        pointIndex: 1,
+        newPoint: patternDest,
+        isConstrained: false,
+      });
+      dispatchLoupePoint(
+        transformPoint(patternDest, ct.mmul(patternToCalibrated)),
+      );
+    }
   }, [KeyCode.Shift]);
+
+  useKeyDown(() => {
+    setSelectedEnd(null);
+    if (loupeLingerTimerRef.current) clearTimeout(loupeLingerTimerRef.current);
+    loupeLingerTimerRef.current = null;
+    loupeLingerActiveRef.current = false;
+    dispatchLoupePoint(null);
+  }, [KeyCode.Escape]);
+
+  // Bundle all mutable nudge values into a single stable ref so the nudge
+  // handler never needs to be recreated, and always reads the latest values.
+  const nudgeStateRef = useRef({
+    selectedEnd,
+    selectedLine,
+    lines,
+    transform,
+    patternScale,
+    calibrationTransform,
+    perspective,
+    dispatchLines,
+    pushLinesSnapshot,
+    unitOfMeasure,
+  });
+  nudgeStateRef.current = {
+    selectedEnd,
+    selectedLine,
+    lines,
+    transform,
+    patternScale,
+    calibrationTransform,
+    perspective,
+    dispatchLines,
+    pushLinesSnapshot,
+    unitOfMeasure,
+  };
+
+  /**
+   * Nudges the selected endpoint by `step` pattern-space units in the arrow
+   * direction. The arrow direction is resolved in screen space so the movement
+   * always matches what the user sees (respects rotation and flip).
+   * Shows the loupe at the new position and auto-hides it after 2 seconds.
+   */
+  const nudgeSelectedEnd = useCallback(
+    (key: KeyCode, step: number, _fullScreen: boolean, shiftKey = false) => {
+      const {
+        selectedEnd: end,
+        lines: currentLines,
+        transform: t,
+        patternScale: ps,
+        calibrationTransform: cal,
+        dispatchLines: dl,
+        pushLinesSnapshot: snap,
+      } = nudgeStateRef.current;
+
+      if (!end) return;
+      const { lineIndex, endIndex } = end;
+      if (lineIndex < 0 || lineIndex >= currentLines.length) return;
+
+      const patternPoint = currentLines[lineIndex].points[endIndex];
+
+      // shiftKey is read directly from the keyboard event (via useProgArrowKeyHandler)
+      // to avoid the stuck-key problem where axisConstrained state can remain true
+      // if the keyup event was missed.
+      const effectiveStep = shiftKey ? step * 10 : step;
+
+      // Compute the nudge direction in screen space, then map it back to
+      // pattern space. This correctly handles rotation and flip — pressing
+      // "left" always moves the endpoint leftward in the visible (loupe) view
+      // regardless of how the pattern has been rotated or flipped.
+      const patternToClient = cal.mmul(t.mmul(scale(ps)));
+      const screenPt = transformPoint(patternPoint, patternToClient);
+      const screenDelta =
+        key === KeyCode.ArrowLeft
+          ? { x: -1, y: 0 }
+          : key === KeyCode.ArrowRight
+            ? { x: 1, y: 0 }
+            : key === KeyCode.ArrowUp
+              ? { x: 0, y: -1 }
+              : { x: 0, y: 1 };
+      const screenPt2 = {
+        x: screenPt.x + screenDelta.x,
+        y: screenPt.y + screenDelta.y,
+      };
+      const patternPt2 = transformPoint(screenPt2, inverse(patternToClient));
+      const dx = patternPt2.x - patternPoint.x;
+      const dy = patternPt2.y - patternPoint.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      const newPatternPt =
+        len > 0
+          ? {
+              x: patternPoint.x + (dx / len) * effectiveStep,
+              y: patternPoint.y + (dy / len) * effectiveStep,
+            }
+          : patternPoint;
+
+      snap();
+      dl({
+        type: "update-point",
+        index: lineIndex,
+        pointIndex: endIndex,
+        newPoint: newPatternPt,
+        isConstrained: false,
+      });
+
+      // Convert new pattern position to screen for the loupe.
+      const newScreenPt = transformPoint(newPatternPt, patternToClient);
+
+      dispatchLoupePoint(newScreenPt);
+      startLoupeLingerTimer();
+    },
+    [],
+  );
+
+  // Step sizes in pattern-space units (cm or in) that increase as the key is held.
+  const nudgeStepList =
+    unitOfMeasure === Unit.IN
+      ? [1 / 32, 1 / 16, 1 / 8, 1 / 4] // 1/32" increments up to 1/4"
+      : [0.05, 0.1, 0.25, 0.5]; // 0.5 mm increments up to 5 mm
+
+  useProgArrowKeyHandler(
+    nudgeSelectedEnd,
+    selectedEnd !== null && !magnifying,
+    nudgeStepList,
+    false,
+  );
+
+  // Sync the shared measurement-end-selected flag so Draggable can suppress
+  // canvas panning while an endpoint is selected for nudging.
+  useEffect(() => {
+    measureEndSelectedRef.current = selectedEnd !== null;
+    return () => {
+      measureEndSelectedRef.current = false;
+    };
+  }, [selectedEnd]);
+
+  // Tab: cycle between the two ends of the selected line.
+  tabHandlerRef.current = () => {
+    if (!selectedEnd) return;
+    const newEndIndex = (selectedEnd.endIndex === 0 ? 1 : 0) as 0 | 1;
+    const newEnd = { lineIndex: selectedEnd.lineIndex, endIndex: newEndIndex };
+    setSelectedEnd(newEnd);
+    // Show loupe at the newly selected endpoint.
+    const line = lines[newEnd.lineIndex];
+    if (line) {
+      const patternToClient = calibrationTransform.mmul(
+        transform.mmul(scale(patternScale)),
+      );
+      const pt = transformPoint(line.points[newEnd.endIndex], patternToClient);
+      dispatchLoupePoint(pt);
+      startLoupeLingerTimer();
+    }
+  };
+  useKeyDown(() => tabHandlerRef.current(), [KeyCode.Tab]);
+
+  // Clean up the loupe linger timer on unmount.
+  useEffect(
+    () => () => {
+      if (loupeLingerTimerRef.current)
+        clearTimeout(loupeLingerTimerRef.current);
+      loupeLingerActiveRef.current = false;
+    },
+    [],
+  );
+
+  // When the lines change (e.g. undo/redo) while an endpoint is selected,
+  // move the loupe to the updated endpoint position so it stays in sync.
+  useEffect(() => {
+    if (!selectedEnd) return;
+    if (dragOffset.current !== null) return; // actively dragging — we handle this ourselves
+    const line = lines[selectedEnd.lineIndex];
+    if (!line) return;
+    const patternToClient = calibrationTransform.mmul(
+      transform.mmul(scale(patternScale)),
+    );
+    const pt = transformPoint(
+      line.points[selectedEnd.endIndex],
+      patternToClient,
+    );
+    dispatchLoupePoint(pt);
+    startLoupeLingerTimer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines]);
 
   useEffect(() => {
     dispatchLines({
@@ -516,7 +875,14 @@ export default function MeasureCanvas({
           ctx.restore();
         }
 
-        // Draw dashed end cap on hovered endpoint — rendered last so it sits on top.
+        // Draw end cap on hovered or selected endpoint.
+        // "Selected" (last-touched, ready to nudge) shows a solid whisker + circle.
+        // Hover-only shows a dashed whisker + circle.
+        const isEndpointSelected = (lineIdx: number, endIdx: 0 | 1) =>
+          selectedEnd !== null &&
+          selectedEnd.lineIndex === lineIdx &&
+          selectedEnd.endIndex === endIdx;
+
         if (hoveredEnd !== null && hoveredEnd.lineIndex < lines.length) {
           const hClientLine = transformLine(
             lines[hoveredEnd.lineIndex],
@@ -527,10 +893,18 @@ export default function MeasureCanvas({
           const hPoint = hClientLine.points[hoveredEnd.endIndex];
           const angle = Math.atan2(p1.y - p0.y, p1.x - p0.x);
           const whisker = 16;
+          const isSelected = isEndpointSelected(
+            hoveredEnd.lineIndex,
+            hoveredEnd.endIndex,
+          );
           ctx.save();
           ctx.strokeStyle =
             hoveredEnd.lineIndex === selectedLine ? accentColor : "#FF4500";
-          ctx.setLineDash([4, 4]);
+          if (isSelected) {
+            ctx.setLineDash([]);
+          } else {
+            ctx.setLineDash([4, 4]);
+          }
           ctx.beginPath();
           ctx.moveTo(
             hPoint.x + Math.cos(angle + Math.PI / 2) * whisker,
@@ -541,8 +915,44 @@ export default function MeasureCanvas({
             hPoint.y + Math.sin(angle - Math.PI / 2) * whisker,
           );
           ctx.stroke();
+          ctx.setLineDash([]);
           drawCircle(ctx, hPoint, 30);
           ctx.restore();
+        }
+
+        // Draw selected circle for endpoints that are selected but not currently hovered.
+        if (selectedEnd !== null && selectedEnd.lineIndex < lines.length) {
+          const hovered =
+            hoveredEnd !== null &&
+            hoveredEnd.lineIndex === selectedEnd.lineIndex &&
+            hoveredEnd.endIndex === selectedEnd.endIndex;
+          if (!hovered) {
+            const sClientLine = transformLine(
+              lines[selectedEnd.lineIndex],
+              patternToClient,
+            );
+            const sp0 = sClientLine.points[0];
+            const sp1 = sClientLine.points[1];
+            const sPoint = sClientLine.points[selectedEnd.endIndex];
+            const sAngle = Math.atan2(sp1.y - sp0.y, sp1.x - sp0.x);
+            const whisker = 16;
+            ctx.save();
+            ctx.strokeStyle =
+              selectedEnd.lineIndex === selectedLine ? accentColor : "#FF4500";
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(
+              sPoint.x + Math.cos(sAngle + Math.PI / 2) * whisker,
+              sPoint.y + Math.sin(sAngle + Math.PI / 2) * whisker,
+            );
+            ctx.lineTo(
+              sPoint.x + Math.cos(sAngle - Math.PI / 2) * whisker,
+              sPoint.y + Math.sin(sAngle - Math.PI / 2) * whisker,
+            );
+            ctx.stroke();
+            drawCircle(ctx, sPoint, 30);
+            ctx.restore();
+          }
         }
       }
     }
@@ -558,9 +968,28 @@ export default function MeasureCanvas({
       ctx.fillStyle = isDarkTheme ? "#fff" : "#000";
       const text = `${line.distance}${line.unitOfMeasure.toLocaleLowerCase()} ${line.angle}°`;
       ctx.lineWidth = 4;
-      const location = { x: p1.x, y: p1.y - END_CIRCLE_RADIUS - 8 };
-      ctx.strokeText(text, location.x, location.y);
-      ctx.fillText(text, location.x, location.y);
+
+      // Measure text width so we can choose a position that avoids screen
+      // edges and the loupe (which sits top-right or top-left of the endpoint).
+      const textWidth = ctx.measureText(text).width;
+      const textHeight = 24;
+      const gap = END_CIRCLE_RADIUS + 8;
+      const screenW = window.innerWidth;
+      const screenH = window.innerHeight;
+
+      // When the loupe is forced below the endpoint (near top of screen),
+      // always place the text above so they never occupy the same side.
+      const loupeIsBelow = p1.y - LOUPE_GAP - LOUPE_DISPLAY_PX < SCREEN_MARGIN;
+      // Prefer below the endpoint; fall back above if near the bottom edge
+      // or the loupe has taken the bottom position.
+      const useAbove = loupeIsBelow || p1.y + gap + textHeight > screenH - 10;
+      const y = useAbove ? p1.y - gap : p1.y + gap + textHeight;
+      // Prefer to the right; fall back to left if near the right edge.
+      const useLeft = p1.x + gap + textWidth > screenW - 10;
+      const x = useLeft ? p1.x - gap - textWidth : p1.x + gap;
+
+      ctx.strokeText(text, x, y);
+      ctx.fillText(text, x, y);
       ctx.restore();
     }
   }, [
@@ -577,6 +1006,7 @@ export default function MeasureCanvas({
     measuring,
     isDarkTheme,
     patternScale,
+    selectedEnd,
   ]);
 
   useEffect(() => {
@@ -601,6 +1031,7 @@ export default function MeasureCanvas({
     if (zoomedOut || magnifying) {
       setMeasuring(false);
       setSelectedLine(-1);
+      setSelectedEnd(null);
     }
   }, [zoomedOut, magnifying, setMeasuring, setSelectedLine]);
 
@@ -613,6 +1044,7 @@ export default function MeasureCanvas({
         onPointerLeave={() => {
           setHoveredEnd(null);
           setHoveredLineIndex(-1);
+          dispatchLoupePoint(null);
         }}
         className={`${isDraggingWholeLine ? "cursor-grabbing" : hoveredEnd !== null ? "cursor-crosshair" : hoveredLineIndex >= 0 ? "cursor-grab" : measuring ? "cursor-crosshair" : ""} h-screen w-screen`}
       >
