@@ -24,6 +24,7 @@ import LineMenu from "@/_components/menus/line-menu";
 import {
   LOUPE_DISPLAY_PX,
   LOUPE_GAP,
+  LOUPE_POINT_EVENT,
   SCREEN_MARGIN,
 } from "@/_components/pdf-loupe";
 import { useKeyDown } from "@/_hooks/use-key-down";
@@ -143,7 +144,7 @@ export default function MeasureCanvas({
    */
   const dispatchLoupePoint = (screenPoint: Point | null) => {
     document.dispatchEvent(
-      new CustomEvent<Point | null>("loupe-point", { detail: screenPoint }),
+      new CustomEvent<Point | null>(LOUPE_POINT_EVENT, { detail: screenPoint }),
     );
   };
 
@@ -521,8 +522,16 @@ export default function MeasureCanvas({
       lastDragClientRef.current &&
       !draggingWholeLine.current
     ) {
-      const { transform: t, patternScale: ps, calibrationTransform: ct, perspective: p, dispatchLines: dl, selectedLine: sl, lines: ls } =
-        nudgeStateRef.current
+      const {
+        transform: t,
+        patternScale: ps,
+        calibrationTransform: ct,
+        perspective: p,
+        dispatchLines: dl,
+        selectedLine: sl,
+        lines: ls,
+      } = nudgeStateRef.current
+      if (sl < 0) return
       const patternToCalibrated = t.mmul(scale(ps))
       const clientDestination = {
         x: lastDragClientRef.current.x + dragOffset.current.x,
@@ -532,15 +541,13 @@ export default function MeasureCanvas({
       const matLine = transformLine(ls[sl], patternToCalibrated)
       const matFinalConstrained = constrained(matFinal, matLine.points[0])
       const patternDest = transformPoint(matFinalConstrained, inverse(patternToCalibrated))
-      if (sl >= 0) {
-        dl({
-          type: "update-point",
-          index: sl,
-          pointIndex: 1,
-          newPoint: patternDest,
-          isConstrained: true,
-        })
-      }
+      dl({
+        type: "update-point",
+        index: sl,
+        pointIndex: 1,
+        newPoint: patternDest,
+        isConstrained: true,
+      })
       dispatchLoupePoint(transformPoint(patternDest, ct.mmul(patternToCalibrated)))
     }
   }, [KeyCode.Shift]);
@@ -555,8 +562,15 @@ export default function MeasureCanvas({
       lastDragClientRef.current &&
       !draggingWholeLine.current
     ) {
-      const { transform: t, patternScale: ps, calibrationTransform: ct, perspective: p, dispatchLines: dl, selectedLine: sl } =
-        nudgeStateRef.current
+      const {
+        transform: t,
+        patternScale: ps,
+        calibrationTransform: ct,
+        perspective: p,
+        dispatchLines: dl,
+        selectedLine: sl,
+      } = nudgeStateRef.current
+      if (sl < 0) return
       const patternToCalibrated = t.mmul(scale(ps))
       const clientDestination = {
         x: lastDragClientRef.current.x + dragOffset.current.x,
@@ -564,15 +578,13 @@ export default function MeasureCanvas({
       }
       const matFinal = transformPoint(clientDestination, p)
       const patternDest = transformPoint(matFinal, inverse(patternToCalibrated))
-      if (sl >= 0) {
-        dl({
-          type: "update-point",
-          index: sl,
-          pointIndex: 1,
-          newPoint: patternDest,
-          isConstrained: false,
-        })
-      }
+      dl({
+        type: "update-point",
+        index: sl,
+        pointIndex: 1,
+        newPoint: patternDest,
+        isConstrained: false,
+      })
       dispatchLoupePoint(transformPoint(patternDest, ct.mmul(patternToCalibrated)))
     }
   }, [KeyCode.Shift]);
@@ -597,7 +609,6 @@ export default function MeasureCanvas({
     perspective,
     dispatchLines,
     pushLinesSnapshot,
-    axisConstrained,
     unitOfMeasure,
   });
   nudgeStateRef.current = {
@@ -610,7 +621,6 @@ export default function MeasureCanvas({
     perspective,
     dispatchLines,
     pushLinesSnapshot,
-    axisConstrained,
     unitOfMeasure,
   };
 
@@ -630,7 +640,6 @@ export default function MeasureCanvas({
         calibrationTransform: cal,
         dispatchLines: dl,
         pushLinesSnapshot: snap,
-        axisConstrained: _axisConstrained,
       } = nudgeStateRef.current;
 
       if (!end) return;
@@ -672,9 +681,7 @@ export default function MeasureCanvas({
       const patternToClient = cal.mmul(t.mmul(scale(ps)));
       const newScreenPt = transformPoint(newPatternPt, patternToClient);
 
-      document.dispatchEvent(
-        new CustomEvent<Point | null>("loupe-point", { detail: newScreenPt }),
-      );
+      dispatchLoupePoint(newScreenPt);
       startLoupeLingerTimer();
     },
     [],
