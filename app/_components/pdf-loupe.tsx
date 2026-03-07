@@ -246,11 +246,12 @@ export default function PdfLoupe({
   snapCanvasPositionRef.current = snapCanvasPosition;
 
   /**
-   * Called when a render finishes (successfully or via Safari worker). Clears
-   * the in-flight flag and, if another point arrived while we were busy,
-   * schedules a fresh render so no request is silently dropped.
+   * Called when a render finishes (successfully or via Safari worker). Only
+   * clears the in-flight flag when the render ID matches the current one, so
+   * a cancelled render's catch block can't corrupt a newer render's state.
    */
-  const finishRender = useCallback(() => {
+  const finishRender = useCallback((renderId: number) => {
+    if (renderId !== renderIdRef.current) return;
     isRenderingRef.current = false;
     const pending = needsRenderRef.current;
     if (pending) {
@@ -268,6 +269,11 @@ export default function PdfLoupe({
       if (!currentPdf) return;
 
       if (isRenderingRef.current) {
+        // A render is already in-flight. Queue this point and return — the
+        // in-flight render will call finishRender when done, which picks up
+        // the latest queued point and starts a fresh render. This gives a
+        // steady ~10 fps update rate during key-hold rather than cancelling
+        // every render before it can commit.
         needsRenderRef.current = screenPoint;
         return;
       }
@@ -326,7 +332,7 @@ export default function PdfLoupe({
       if (rawRight <= rawLeft || rawBottom <= rawTop) {
         // Screen point is outside this page's bounds — hide this instance.
         container.style.display = "none";
-        finishRenderRef.current();
+        finishRenderRef.current(renderIdRef.current);
         return;
       }
 
@@ -351,7 +357,7 @@ export default function PdfLoupe({
       );
       if (renderScale <= baseScale) {
         container.style.display = "none";
-        finishRenderRef.current();
+        finishRenderRef.current(renderIdRef.current);
         return;
       }
 
@@ -377,7 +383,7 @@ export default function PdfLoupe({
         willReadFrequently: isSafariRef.current,
       });
       if (!ctx) {
-        finishRenderRef.current();
+        finishRenderRef.current(renderIdRef.current);
         return;
       }
 
@@ -398,12 +404,12 @@ export default function PdfLoupe({
       try {
         await renderTask.promise;
       } catch (_e) {
-        finishRenderRef.current();
+        finishRenderRef.current(thisRenderId);
         return;
       }
 
       if (thisRenderId !== renderIdRef.current) {
-        finishRenderRef.current();
+        finishRenderRef.current(thisRenderId);
         return;
       }
 
@@ -522,17 +528,17 @@ export default function PdfLoupe({
           const { id, bitmap } = event.data;
           if (id !== renderIdRef.current) {
             bitmap.close();
-            finishRenderRef.current();
+            finishRenderRef.current(thisRenderId);
             return;
           }
           commit(bitmap);
           bitmap.close();
-          finishRenderRef.current();
+          finishRenderRef.current(thisRenderId);
         };
         worker.postMessage(request, [request.buffer]);
       } else {
         commit(tempCanvas);
-        finishRenderRef.current();
+        finishRenderRef.current(thisRenderId);
       }
     },
     [pageNumber, getOrCreateContainer, getWorker],
