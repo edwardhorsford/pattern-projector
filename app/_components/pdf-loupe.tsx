@@ -87,13 +87,8 @@ export default function PdfLoupe({
 
   const localTransform = useTransformContext();
 
-  const {
-    layers,
-    patternScale,
-    recolourHex,
-    renderVersion,
-    themeFilter,
-  } = useRenderContext();
+  const { layers, patternScale, recolourHex, renderVersion, themeFilter } =
+    useRenderContext();
 
   // The loupe uses a wrapper div (for position, clip, border) containing the canvas.
   const containerRef = useRef<HTMLDivElement | null>(null);
