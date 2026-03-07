@@ -441,20 +441,35 @@ export default function PdfLoupe({
         const dest = canvas.getContext("2d", { alpha: false });
         if (!dest) return;
 
+        // Apply the rotation/flip component of localTransform so the loupe
+        // content matches the user's rotated/flipped view. The 2×2 submatrix
+        // of localTransform encodes rotation and flip (no translation, no
+        // patternScale) and is applied centred on the canvas so the endpoint
+        // — always at canvas centre — stays in place.
+        const centreX = pixelSize / 2;
+        const centreY = pixelSize / 2;
+        const lm = currentLocalTransform;
+        const la = lm.get(0, 0);
+        const lb = lm.get(1, 0);
+        const lc = lm.get(0, 1);
+        const ld = lm.get(1, 1);
+
+        dest.save();
         if (!isSafariRef.current) {
           dest.imageSmoothingEnabled = false;
           dest.filter = cssFilter ?? "none";
         }
-
+        dest.translate(centreX, centreY);
+        dest.transform(la, lb, lc, ld, 0, 0);
+        dest.translate(-centreX, -centreY);
         dest.drawImage(source, 0, 0);
+        dest.restore();
 
         // Draw gapped crosshair over the committed PDF content.
         dest.save();
         dest.filter = "none";
         dest.imageSmoothingEnabled = false;
 
-        const centreX = pixelSize / 2;
-        const centreY = pixelSize / 2;
         const armLength = Math.round(14 * currentDpr);
         const armGap = Math.round(3 * currentDpr);
 

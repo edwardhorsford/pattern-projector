@@ -530,25 +530,30 @@ export default function MeasureCanvas({
         dispatchLines: dl,
         selectedLine: sl,
         lines: ls,
-      } = nudgeStateRef.current
-      if (sl < 0) return
-      const patternToCalibrated = t.mmul(scale(ps))
+      } = nudgeStateRef.current;
+      if (sl < 0) return;
+      const patternToCalibrated = t.mmul(scale(ps));
       const clientDestination = {
         x: lastDragClientRef.current.x + dragOffset.current.x,
         y: lastDragClientRef.current.y + dragOffset.current.y,
-      }
-      const matFinal = transformPoint(clientDestination, p)
-      const matLine = transformLine(ls[sl], patternToCalibrated)
-      const matFinalConstrained = constrained(matFinal, matLine.points[0])
-      const patternDest = transformPoint(matFinalConstrained, inverse(patternToCalibrated))
+      };
+      const matFinal = transformPoint(clientDestination, p);
+      const matLine = transformLine(ls[sl], patternToCalibrated);
+      const matFinalConstrained = constrained(matFinal, matLine.points[0]);
+      const patternDest = transformPoint(
+        matFinalConstrained,
+        inverse(patternToCalibrated),
+      );
       dl({
         type: "update-point",
         index: sl,
         pointIndex: 1,
         newPoint: patternDest,
         isConstrained: true,
-      })
-      dispatchLoupePoint(transformPoint(patternDest, ct.mmul(patternToCalibrated)))
+      });
+      dispatchLoupePoint(
+        transformPoint(patternDest, ct.mmul(patternToCalibrated)),
+      );
     }
   }, [KeyCode.Shift]);
 
@@ -569,23 +574,28 @@ export default function MeasureCanvas({
         perspective: p,
         dispatchLines: dl,
         selectedLine: sl,
-      } = nudgeStateRef.current
-      if (sl < 0) return
-      const patternToCalibrated = t.mmul(scale(ps))
+      } = nudgeStateRef.current;
+      if (sl < 0) return;
+      const patternToCalibrated = t.mmul(scale(ps));
       const clientDestination = {
         x: lastDragClientRef.current.x + dragOffset.current.x,
         y: lastDragClientRef.current.y + dragOffset.current.y,
-      }
-      const matFinal = transformPoint(clientDestination, p)
-      const patternDest = transformPoint(matFinal, inverse(patternToCalibrated))
+      };
+      const matFinal = transformPoint(clientDestination, p);
+      const patternDest = transformPoint(
+        matFinal,
+        inverse(patternToCalibrated),
+      );
       dl({
         type: "update-point",
         index: sl,
         pointIndex: 1,
         newPoint: patternDest,
         isConstrained: false,
-      })
-      dispatchLoupePoint(transformPoint(patternDest, ct.mmul(patternToCalibrated)))
+      });
+      dispatchLoupePoint(
+        transformPoint(patternDest, ct.mmul(patternToCalibrated)),
+      );
     }
   }, [KeyCode.Shift]);
 
@@ -626,8 +636,8 @@ export default function MeasureCanvas({
 
   /**
    * Nudges the selected endpoint by `step` pattern-space units in the arrow
-   * direction. Step sizes are defined in physical units (cm or in) so the
-   * displayed distance always increments by a clean amount.
+   * direction. The arrow direction is resolved in screen space so the movement
+   * always matches what the user sees (respects rotation and flip).
    * Shows the loupe at the new position and auto-hides it after 2 seconds.
    */
   const nudgeSelectedEnd = useCallback(
@@ -653,20 +663,35 @@ export default function MeasureCanvas({
       // if the keyup event was missed.
       const effectiveStep = shiftKey ? step * 10 : step;
 
-      // Apply step directly in pattern space.
-      const offset =
+      // Compute the nudge direction in screen space, then map it back to
+      // pattern space. This correctly handles rotation and flip — pressing
+      // "left" always moves the endpoint leftward in the visible (loupe) view
+      // regardless of how the pattern has been rotated or flipped.
+      const patternToClient = cal.mmul(t.mmul(scale(ps)));
+      const screenPt = transformPoint(patternPoint, patternToClient);
+      const screenDelta =
         key === KeyCode.ArrowLeft
-          ? { x: -effectiveStep, y: 0 }
+          ? { x: -1, y: 0 }
           : key === KeyCode.ArrowRight
-            ? { x: effectiveStep, y: 0 }
+            ? { x: 1, y: 0 }
             : key === KeyCode.ArrowUp
-              ? { x: 0, y: -effectiveStep }
-              : { x: 0, y: effectiveStep };
-
-      const newPatternPt = {
-        x: patternPoint.x + offset.x,
-        y: patternPoint.y + offset.y,
+              ? { x: 0, y: -1 }
+              : { x: 0, y: 1 };
+      const screenPt2 = {
+        x: screenPt.x + screenDelta.x,
+        y: screenPt.y + screenDelta.y,
       };
+      const patternPt2 = transformPoint(screenPt2, inverse(patternToClient));
+      const dx = patternPt2.x - patternPoint.x;
+      const dy = patternPt2.y - patternPoint.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      const newPatternPt =
+        len > 0
+          ? {
+              x: patternPoint.x + (dx / len) * effectiveStep,
+              y: patternPoint.y + (dy / len) * effectiveStep,
+            }
+          : patternPoint;
 
       snap();
       dl({
@@ -678,7 +703,6 @@ export default function MeasureCanvas({
       });
 
       // Convert new pattern position to screen for the loupe.
-      const patternToClient = cal.mmul(t.mmul(scale(ps)));
       const newScreenPt = transformPoint(newPatternPt, patternToClient);
 
       dispatchLoupePoint(newScreenPt);
