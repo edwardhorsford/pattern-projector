@@ -5,11 +5,11 @@
     "calibrate": "Start Calibrating",
     "choose-language": "Language",
     "welcome": {
-      "title": "Welcome to Pattern Projector!",
-      "description": "Pattern projector is a free and open source web app that quickly calibrates projectors for sewing patterns. It also has tools for stitching together multiple page patterns, changing line thickness, inverting colors, flipping/rotating patterns, and more. To read about the latest updates, check out the <changeLogLink>changelog</changeLogLink>."
+      "title": "Welcome to Pattern Projector",
+      "description": "This is an enhanced fork of <upstreamLink>Pattern Projector</upstreamLink> (<upstreamGithubLink>original source</upstreamGithubLink>) — a free and open source web app for calibrating projectors for sewing patterns. This fork adds new features including a separate control panel window, mark complete markers, offset lines, a loupe view for line endpoints, and significantly improved rendering quality. To read about the changes, check out the <changeLogLink>changelog</changeLogLink>."
     },
     "requirements": {
-      "title": "What You’ll Need",
+      "title": "What you'll need",
       "projector": "Projector: at least 720p recommended",
       "mat": "A cutting mat with grid lines (optional)",
       "mount": "Tripod or wall/shelf/table mount for projector",
@@ -32,7 +32,7 @@
       "project": "When the projected grid is aligned with your mat, click (or tap) “Project.”"
     },
     "project": {
-      "title": "Projecting a Pattern",
+      "title": "Projecting a pattern",
       "open": "Click (or tap) <pdficon></pdficon> to open a pattern.",
       "move": "Move the PDF by clicking and dragging it around the screen.",
       "cut": "Cut along the projected design.",
@@ -46,7 +46,7 @@
         "description": "Show or hide the top menu."
       },
       "invert": {
-        "title": "Invert Colors",
+        "title": "Invert colours",
         "description": "When projecting, it's usually easier to see green or white lines on black. Click/tap once for green lines, twice for white lines, and three times to return to black lines."
       },
       "moveTool": {
@@ -62,7 +62,7 @@
         "description": "Change the thickness of the lines in the PDF pattern."
       },
       "flip": {
-        "title": "Flip Vertical (V) or Horizontal (H)",
+        "title": "Flip vertical (V) or horizontal (H)",
         "description": "Helpful when mirroring patterns in half."
       },
       "rotate": {
@@ -70,8 +70,8 @@
         "description": "Change the orientation of the pattern by 90 degrees."
       },
       "recenter": {
-        "title": "Center and Reset (C)",
-        "description": "Centers the pattern on the cutting mat and resets the rotation/flipping."
+        "title": "Centre and reset (C)",
+        "description": "Centres the pattern on the cutting mat and resets the rotation/flipping."
       },
       "magnify": {
         "title": "Magnify (M)",
@@ -91,7 +91,15 @@
       },
       "scale": {
         "title": "Show or hide the scale menu",
-        "description": "Change size of the pattern by entering a multiplier: between 0-1 will make the pattern smaller and greater than 1 will make the pattern larger."
+        "description": "Change the size of the pattern. Scale up to 10× is supported. Use keyboard shortcuts to adjust scale without triggering browser zoom."
+      },
+      "controlPanel": {
+        "title": "Control panel",
+        "description": "Open a separate window to control Pattern Projector from a second screen, without touching the projected display. Includes a mini map for navigation and pan buttons."
+      },
+      "markComplete": {
+        "title": "Mark complete (X)",
+        "description": "Place tick overlays on areas of the pattern as you cut them to track progress. Undo with Cmd-Z / Ctrl-Z."
       },
       "measure": {
         "title": "Line tool (L)",
@@ -100,20 +108,20 @@
     },
     "tools": "Tools",
     "lineTool": {
-      "title": "Line Tool",
+      "title": "Line tool",
       "description": "The line tool can be used to measure distances, mark lines on, rotate, flip, and move the PDF. Click (or tap) the line tool button, then click (or tap) on the PDF and drag to draw a line. Once a line is drawn, a menu will appear on the bottom of the screen with the following options:",
       "delete": {
         "title": "Delete line",
         "description": "Deletes the selected line."
       },
       "rotate": {
-        "title": "Align to center",
-        "description": "Rotates the PDF so the selected line is horizontal and centered on your mat.",
-        "use": "For aligning the grain of a pattern piece with the grain of your fabric: draw a line on the grain line of the pattern piece, then click (or tap) the align to center button."
+        "title": "Align to centre",
+        "description": "Rotates the PDF so the selected line is horizontal and centred on your mat.",
+        "use": "For aligning the grain of a pattern piece with the grain of your fabric: draw a line on the grain line of the pattern piece, then click (or tap) the align to centre button."
       },
       "previousNext": {
-        "title": "Bring previous/next line to center",
-        "description": "Moves the PDF so that the previous/next line drawn is horizontal and centered on your mat.",
+        "title": "Bring previous/next line to centre",
+        "description": "Moves the PDF so that the previous/next line drawn is horizontal and centred on your mat.",
         "use": "For moving between pattern pieces when cutting: draw a line on the grain line of each pattern piece, then move through the pattern pieces using these buttons. Delete lines as you move through the pattern pieces to keep track of which pieces are left to be cut."
       },
       "flip": {
@@ -134,11 +142,21 @@
       "angle": {
         "title": "Line angle",
         "description": "Displays the angle of the selected line (shown in purple). Other lines are orange.",
-        "use": "Enter a precise angle to rotate the line and pattern piece. Use the <alignIcon></alignIcon> align to center button to apply the rotation based on the entered angle."
+        "use": "Enter a precise angle to rotate the line and pattern piece. Use the <alignIcon></alignIcon> align to centre button to apply the rotation based on the entered angle."
+      },
+      "offset": {
+        "title": "Offset lines (O)",
+        "description": "Draw two parallel lines offset from the selected line — useful for adding seam allowance or marking pattern extensions.",
+        "use": "Select a line, then press O or use the offset button. Enter the offset distance and lines will be drawn on both sides."
+      },
+      "loupe": {
+        "title": "Loupe view",
+        "description": "A magnified view appears when dragging a line endpoint, for precise placement.",
+        "use": "Tab cycles between endpoints; arrow keys give fine adjustment (Shift for 10× speed)."
       }
     },
     "overlayOptions": {
-      "title": "Overlay Options",
+      "title": "Overlay options",
       "description": "The overlay options can be used to verify calibration while projecting and help with cutting patterns. The following options are available:",
       "border": {
         "title": "Border",
@@ -149,11 +167,11 @@
         "description": "Shows the calibration grid."
       },
       "paper": {
-        "title": "Paper Sheet",
+        "title": "Paper sheet",
         "description": "Shows a rectangle the size of a Letter or A4 piece of paper to verify calibration."
       },
       "flipLines": {
-        "title": "Flip Lines",
+        "title": "Flip lines",
         "description": "Shows lines that help with unfolding patterns. Line the fold line of the pattern up with the flip line and press flip horizontally or vertically to mirror the piece."
       },
       "flippedPattern": {
@@ -176,7 +194,7 @@
       }
     },
     "resources": {
-      "title": "Additional Resources",
+      "title": "Additional resources",
       "links": {
         "projectorsForSewing": {
           "title": "Projectors for Sewing Facebook Group",
@@ -190,7 +208,7 @@
     },
     "contribute": {
       "title": "Contribute to the project",
-      "donation": "If Pattern Projector has saved you money at the copyshop or freed you from a PDF viewer subscription, please consider <donateLink>buying me a coffee</donateLink> or supporting via <payPalLink>PayPal</payPalLink>!",
+      "donation": "Pattern Projector is free and open source.",
       "develop": "Help implement features and fix issues on <githubLink>GitHub</githubLink>.",
       "translate": "Translate this tool into more languages using <weblateLink>Weblate</weblateLink>.",
       "feedback": "Feedback and feature requests are welcome!"
@@ -204,10 +222,6 @@
     "descriptionIOS": "Download the app by tapping the share button <shareIcon></shareIcon> in the browser menu and then Add to Home Screen <addBoxIcon></addBoxIcon>.",
     "ok": "OK"
   },
-  "Mail": {
-      "title": "You've got mail",
-      "donate": "Donate"
-    },
   "Troubleshooting": {
     "notMatching": "Lines not matching your mat?",
     "title": "Calibration Troubleshooting",
@@ -286,7 +300,6 @@
     "hideMovement": "Hide move tool",
     "magnify": "Magnify (M)",
     "zoomOut": "Zoom out (Z)",
-    "mail": "Mail from Courtney",
     "invalidCalibration": "The calibration grid is not valid. Press 'Reset calibration' to try again."
   },
   "ScaleMenu": {
