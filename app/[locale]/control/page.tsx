@@ -71,6 +71,7 @@ import { Layers } from "@/_lib/layers";
 import {
   StitchSettings,
   LineDirection,
+  VerticalAlignment,
 } from "@/_lib/interfaces/stitch-settings";
 import { Marker, MARKER_SIZE_INCHES } from "@/_lib/marker";
 import { CSS_PIXELS_PER_INCH } from "@/_lib/pixels-per-inch";
@@ -87,6 +88,7 @@ const defaultStitchSettings: StitchSettings = {
   lineCount: 0,
   edgeInsets: { horizontal: 0, vertical: 0 },
   lineDirection: LineDirection.Column,
+  verticalAlignment: VerticalAlignment.Top,
 };
 
 // Viewport bounds for mini map (in pattern space — pre-pan/zoom pattern coordinates)
@@ -1416,8 +1418,13 @@ export default function ControlPanelPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (params.get("debug") === "true") {
+    const debugParam = params.get("debug")
+    if (debugParam === "true") {
       localStorage.setItem("debugMode", "true")
+    } else if (debugParam === "false") {
+      localStorage.removeItem("debugMode")
+    }
+    if (debugParam !== null) {
       params.delete("debug")
       const newUrl = `${window.location.pathname}${params.toString() ? "?" + params.toString() : ""}${window.location.hash}`
       window.history.replaceState({}, "", newUrl)

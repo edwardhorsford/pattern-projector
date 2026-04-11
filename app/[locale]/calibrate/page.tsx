@@ -1005,6 +1005,20 @@ export default function Page() {
     if (s.localeCompare("old") === 0) {
       setButtonColor(ButtonColor.GRAY);
     }
+
+    // Toggle debug mode via ?debug=true/false URL param (persists to localStorage)
+    const params = new URLSearchParams(window.location.search)
+    const debugParam = params.get("debug")
+    if (debugParam === "true") {
+      localStorage.setItem("debugMode", "true")
+    } else if (debugParam === "false") {
+      localStorage.removeItem("debugMode")
+    }
+    if (debugParam !== null) {
+      params.delete("debug")
+      const newUrl = `${window.location.pathname}${params.toString() ? "?" + params.toString() : ""}${window.location.hash}`
+      window.history.replaceState({}, "", newUrl)
+    }
   }, []);
 
   // Show a helpful error message when there is a client side error

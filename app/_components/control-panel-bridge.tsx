@@ -31,6 +31,7 @@ import Matrix from "ml-matrix";
 import {
   StitchSettings,
   LineDirection,
+  VerticalAlignment,
 } from "@/_lib/interfaces/stitch-settings";
 import { StitchSettingsAction } from "@/_reducers/stitchSettingsReducer";
 import { LayerAction } from "@/_reducers/layersReducer";
@@ -69,6 +70,7 @@ const defaultStitchSettings: StitchSettings = {
   edgeInsets: { horizontal: 0, vertical: 0 },
   pageRange: "1-",
   lineDirection: LineDirection.Column,
+  verticalAlignment: VerticalAlignment.Top,
 };
 
 type ProjectScaleDetail =
