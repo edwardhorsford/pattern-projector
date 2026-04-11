@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "main": "index.js",
-  "repository": "git@github.com:courtneypattison/pattern-projector.git",
-  "author": "courtneypattison <courtneyp@ttison.ca>",
+  "repository": "git@github.com:edwardhorsford/pattern-projector.git",
+  "author": "edwardhorsford",
   "license": "MIT",
   "scripts": {
     "dev": "next dev",

@@ -72,22 +72,8 @@ export default function Home() {
         <p>
           {t.rich("welcome.description", {
             changeLogLink: (chunks) => (
-              <a href="https://github.com/Pattern-Projector/pattern-projector/blob/beta/CHANGELOG.md">
+              <a href="https://github.com/edwardhorsford/pattern-projector/blob/main/CHANGELOG.md">
                 {chunks}
-              </a>
-            ),
-          })}
-        </p>
-        <p>
-          {t.rich("contribute.donation", {
-            donateLink: (chunk) => (
-              <a href="https://www.buymeacoffee.com/patternprojector">
-                {chunk}
-              </a>
-            ),
-            payPalLink: (chunk) => (
-              <a href="https://www.paypal.com/donate/?hosted_button_id=LF949PXS4RGYS">
-                {chunk}
               </a>
             ),
           })}
@@ -500,23 +486,9 @@ export default function Home() {
           <h2 id="contribute">{t("contribute.title")} #</h2>
         </a>
         <p>
-          {t.rich("contribute.donation", {
-            donateLink: (chunk) => (
-              <a href="https://www.buymeacoffee.com/patternprojector">
-                {chunk}
-              </a>
-            ),
-            payPalLink: (chunk) => (
-              <a href="https://www.paypal.com/donate/?hosted_button_id=LF949PXS4RGYS">
-                {chunk}
-              </a>
-            ),
-          })}
-        </p>
-        <p>
           {t.rich("contribute.develop", {
             githubLink: (chunk) => (
-              <a href="https://github.com/Pattern-Projector/pattern-projector">
+              <a href="https://github.com/edwardhorsford/pattern-projector">
                 {chunk}
               </a>
             ),
@@ -535,33 +507,17 @@ export default function Home() {
       </article>
       <footer className="bg-white rounded-lg shadow m-4 w-full flex justify-between items-center">
         <span className="text-sm text-gray-500 sm:text-center dark:text-gray-400 p-4">
-          © 2024{" "}
-          <a href="https://courtneypattison.com/" className="hover:underline">
-            Courtney Pattison
+          © 2026{" "}
+          <a href="https://github.com/edwardhorsford" className="hover:underline">
+            Edward Horsford
           </a>
         </span>
 
-        <IconButton href="https://github.com/Pattern-Projector/pattern-projector">
+        <IconButton href="https://github.com/edwardhorsford/pattern-projector">
           <GithubIcon ariaLabel={t("github")} />
         </IconButton>
-        <a
-          href="mailto:courtney@patternprojector.com"
-          className="hover:underline pr-24"
-        >
-          {t("contact")}
-        </a>
       </footer>
-      <script
-        data-name="BMC-Widget"
-        data-cfasync="false"
-        src="https://cdnjs.buymeacoffee.com/1.0.0/widget.prod.min.js"
-        data-id="patternprojector"
-        data-description="Support me on Buy me a coffee!"
-        data-color="#BD5FFF"
-        data-position="Right"
-        data-x_margin="18"
-        data-y_margin="18"
-      ></script>
+
     </main>
   );
 }
