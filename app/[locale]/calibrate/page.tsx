@@ -60,6 +60,7 @@ import OverlayCanvas from "@/_components/canvases/overlay-canvas";
 import stitchSettingsReducer from "@/_reducers/stitchSettingsReducer";
 import {
   LineDirection,
+  VerticalAlignment,
   StitchSettings,
 } from "@/_lib/interfaces/stitch-settings";
 import { IconButton } from "@/_components/buttons/icon-button";
@@ -97,6 +98,7 @@ const defaultStitchSettings: StitchSettings = {
   edgeInsets: { horizontal: 0, vertical: 0 },
   pageRange: "1-",
   lineDirection: LineDirection.Column,
+  verticalAlignment: VerticalAlignment.Top,
 };
 
 type ProjectScaleDetail =
@@ -679,6 +681,10 @@ export default function Page() {
         if (!stitchSettings.lineDirection) {
           // For people who saved stitch settings before Line Direction was an option
           stitchSettings.lineDirection = LineDirection.Column;
+        }
+        if (!stitchSettings.verticalAlignment) {
+          // For people who saved stitch settings before Vertical Alignment was an option
+          stitchSettings.verticalAlignment = VerticalAlignment.Top;
         }
         dispatchStitchSettings({ type: "set", stitchSettings });
       } else {

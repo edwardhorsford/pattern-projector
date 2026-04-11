@@ -1298,7 +1298,7 @@ function MovementPadControl({
 }
 
 export default function ControlPanelPage() {
-  const isDevMode = process.env.NODE_ENV === "development";
+  const [isDevMode, setIsDevMode] = useState(false);
   const t = useTranslations("ControlPanel");
   const tHeader = useTranslations("Header");
   const tStitch = useTranslations("StitchMenu");
@@ -1413,6 +1413,19 @@ export default function ControlPanelPage() {
           .debugLowResBase as boolean,
       );
   }, [(state as unknown as Record<string, unknown>).debugLowResBase]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get("debug") === "true") {
+      localStorage.setItem("debugMode", "true")
+      params.delete("debug")
+      const newUrl = `${window.location.pathname}${params.toString() ? "?" + params.toString() : ""}${window.location.hash}`
+      window.history.replaceState({}, "", newUrl)
+    }
+    setIsDevMode(
+      process.env.NODE_ENV === "development" || localStorage.getItem("debugMode") === "true",
+    )
+  }, [])
 
   useEffect(() => {
     if (!isDevMode) {
@@ -3720,6 +3733,18 @@ export default function ControlPanelPage() {
               >
                 Clear debug log
               </Button>
+
+              {process.env.NODE_ENV !== "development" && (
+                <Button
+                  onClick={() => {
+                    localStorage.removeItem("debugMode")
+                    setIsDevMode(false)
+                  }}
+                  className="text-xs px-3 py-1"
+                >
+                  Disable debug mode
+                </Button>
+              )}
             </div>
 
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-300">
