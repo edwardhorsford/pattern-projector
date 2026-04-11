@@ -314,7 +314,10 @@ function PdfViewer({
             transform:
               stitchSettings.verticalAlignment == VerticalAlignment.Bottom
                 ? `scaleY(-1)`
-                : `scaleY(1)`,((value, index) => {
+                : `scaleY(1)`,
+          }}
+        >
+          {pages.map((value, index) => {
             // Compute this slot's (row, col) position in the grid.
             // Row direction → gridAutoFlow "column" → fills down columns first.
             // Column direction → gridAutoFlow "row" → fills across rows first.
