@@ -60,6 +60,7 @@ import OverlayCanvas from "@/_components/canvases/overlay-canvas";
 import stitchSettingsReducer from "@/_reducers/stitchSettingsReducer";
 import {
   LineDirection,
+  VerticalAlignment,
   StitchSettings,
 } from "@/_lib/interfaces/stitch-settings";
 import { IconButton } from "@/_components/buttons/icon-button";
@@ -97,6 +98,7 @@ const defaultStitchSettings: StitchSettings = {
   edgeInsets: { horizontal: 0, vertical: 0 },
   pageRange: "1-",
   lineDirection: LineDirection.Column,
+  verticalAlignment: VerticalAlignment.Top,
 };
 
 type ProjectScaleDetail =
@@ -680,6 +682,10 @@ export default function Page() {
           // For people who saved stitch settings before Line Direction was an option
           stitchSettings.lineDirection = LineDirection.Column;
         }
+        if (!stitchSettings.verticalAlignment) {
+          // For people who saved stitch settings before Vertical Alignment was an option
+          stitchSettings.verticalAlignment = VerticalAlignment.Top;
+        }
         dispatchStitchSettings({ type: "set", stitchSettings });
       } else {
         dispatchStitchSettings({
@@ -998,6 +1004,20 @@ export default function Page() {
     }
     if (s.localeCompare("old") === 0) {
       setButtonColor(ButtonColor.GRAY);
+    }
+
+    // Toggle debug mode via ?debug=true/false URL param (persists to localStorage)
+    const params = new URLSearchParams(window.location.search)
+    const debugParam = params.get("debug")
+    if (debugParam === "true") {
+      localStorage.setItem("debugMode", "true")
+    } else if (debugParam === "false") {
+      localStorage.removeItem("debugMode")
+    }
+    if (debugParam !== null) {
+      params.delete("debug")
+      const newUrl = `${window.location.pathname}${params.toString() ? "?" + params.toString() : ""}${window.location.hash}`
+      window.history.replaceState({}, "", newUrl)
     }
   }, []);
 

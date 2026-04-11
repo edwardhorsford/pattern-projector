@@ -11,6 +11,7 @@ This release is specific to this fork and is not part of the upstream project.
 
 ### Added
 
+- Vertical alignment option for stitching — set the starting corner to bottom-left for patterns sliced that way.
 - Separate control panel window — control the projector from a laptop or second screen without touching the projected image. Includes a mini map for navigation and a pan pad.
 - Mark complete — place tick overlays on areas of the pattern as you cut them, to track progress. Undo with Cmd-Z / Ctrl-Z.
 - Offset lines — draw two parallel lines offset from a selected measurement line, for adding seam allowance or marking pattern extensions.
@@ -21,6 +22,7 @@ This release is specific to this fork and is not part of the upstream project.
 - Scale reset button (↺) to quickly return to 1×.
 - Toolbar can be docked to the bottom of the screen (persists across sessions).
 - DevContainer config for GitHub Codespaces.
+- Debug mode exposed via `?debug=true`
 
 ### Improved
 

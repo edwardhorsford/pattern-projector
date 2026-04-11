@@ -25,6 +25,7 @@ import PdfHighResViewport from "@/_components/pdf-high-res-viewport";
 import PdfLoupe from "@/_components/pdf-loupe";
 import {
   LineDirection,
+  VerticalAlignment,
   StitchSettings,
 } from "@/_lib/interfaces/stitch-settings";
 import { StitchSettingsAction } from "@/_reducers/stitchSettingsReducer";
@@ -310,6 +311,10 @@ function PdfViewer({
             // Keep page blending and stacking scoped to this container.
             isolation: "isolate",
             position: "relative",
+            transform:
+              stitchSettings.verticalAlignment == VerticalAlignment.Bottom
+                ? `scaleY(-1)`
+                : `scaleY(1)`,
           }}
         >
           {pages.map((value, index) => {
@@ -339,6 +344,10 @@ function PdfViewer({
                       cssEdgeInsets.vertical == 0
                         ? "normal"
                         : "darken",
+                    transform:
+                      stitchSettings.verticalAlignment == VerticalAlignment.Bottom
+                        ? `scaleY(-1)`
+                        : `scaleY(1)`,
                   }}
                 >
                   {value != 0 && (
