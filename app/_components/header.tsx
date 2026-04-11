@@ -64,7 +64,6 @@ import FullScreenIcon from "@/_icons/full-screen-icon";
 import { LoadStatusEnum } from "@/_lib/load-status-enum";
 import { ButtonStyle, getButtonStyleClasses } from "./theme/styles";
 import { ButtonColor, getColorClasses } from "./theme/colors";
-import MailIcon from "@/_icons/mail-icon";
 import ZoomInIcon from "@/_icons/zoom-in-icon";
 import { acceptedMimeTypes } from "@/_lib/is-valid-file";
 import { toggleFullScreen } from "@/_lib/full-screen";
@@ -105,8 +104,6 @@ export default function Header({
   fileLoadStatus,
   lineThicknessStatus,
   buttonColor,
-  mailOpen,
-  setMailOpen,
   invalidCalibration,
   file,
 }: {
@@ -144,14 +141,11 @@ export default function Header({
   fileLoadStatus: LoadStatusEnum;
   lineThicknessStatus: LoadStatusEnum;
   buttonColor: ButtonColor;
-  mailOpen: boolean;
-  setMailOpen: Dispatch<SetStateAction<boolean>>;
   invalidCalibration: boolean;
   file: File | null;
 }) {
   const [calibrationAlert, setCalibrationAlert] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const mailRead = useRef(true);
   const transformer = useTransformerContext();
   const t = useTranslations("Header");
 
@@ -236,11 +230,6 @@ export default function Header({
     );
   };
 
-  const handleOpenMail = () => {
-    setMailOpen(true);
-    localStorage.setItem("mailRead", Date.now().toString());
-  };
-
   const overlayOptions = {
     disabled: {
       icon: <GridOffIcon ariaLabel={t("overlayOptionDisabled")} />,
@@ -290,22 +279,6 @@ export default function Header({
       value: 4,
     },
   ];
-
-  useEffect(() => {
-    const mailReadDate = localStorage.getItem("mailRead");
-    if (mailReadDate) {
-      const mailReadTime = parseInt(mailReadDate);
-      const lastReleaseDate = new Date("2025-04-22").getTime();
-      // If mail was read after the last release date, style mail as read.
-      if (mailReadTime > lastReleaseDate) {
-        mailRead.current = true;
-      } else {
-        mailRead.current = false;
-      }
-    } else {
-      mailRead.current = false;
-    }
-  }, [mailOpen]);
 
   useKeyDown(() => {
     handleFlipHorizontal();
@@ -630,18 +603,6 @@ export default function Header({
             >
               <IconButton href="/">
                 <InfoIcon ariaLabel={t("info")} />
-              </IconButton>
-            </Tooltip>
-            <Tooltip
-              description={t("mail")}
-              className={visible(isCalibrating)}
-              top={isMenuAtBottom}
-            >
-              <IconButton
-                onClick={() => handleOpenMail()}
-                active={!mailRead.current}
-              >
-                <MailIcon ariaLabel={t("mail")} />
               </IconButton>
             </Tooltip>
             <SettingsDropdown

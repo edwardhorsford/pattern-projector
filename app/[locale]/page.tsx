@@ -37,6 +37,7 @@ import { ButtonStyle } from "@/_components/theme/styles";
 import ZoomInIcon from "@/_icons/zoom-in-icon";
 import TuneIcon from "@/_icons/tune-icon";
 import InlineInput from "@/_components/inline-input";
+import OffsetLinesIcon from "@/_icons/offset-lines-icon";
 
 const DynamicInstallButton = dynamic(
   () => import("@/_components/buttons/install-button"),
@@ -72,23 +73,15 @@ export default function Home() {
         <p>
           {t.rich("welcome.description", {
             changeLogLink: (chunks) => (
-              <a href="https://github.com/Pattern-Projector/pattern-projector/blob/beta/CHANGELOG.md">
+              <a href="https://github.com/edwardhorsford/pattern-projector/blob/main/CHANGELOG.md">
                 {chunks}
               </a>
             ),
-          })}
-        </p>
-        <p>
-          {t.rich("contribute.donation", {
-            donateLink: (chunk) => (
-              <a href="https://www.buymeacoffee.com/patternprojector">
-                {chunk}
-              </a>
+            upstreamLink: (chunks) => (
+              <a href="https://patternprojector.com">{chunks}</a>
             ),
-            payPalLink: (chunk) => (
-              <a href="https://www.paypal.com/donate/?hosted_button_id=LF949PXS4RGYS">
-                {chunk}
-              </a>
+            upstreamGithubLink: (chunks) => (
+              <a href="https://github.com/Pattern-Projector/pattern-projector">{chunks}</a>
             ),
           })}
         </p>
@@ -216,7 +209,7 @@ export default function Home() {
 
           <Definition
             icon={<InvertColorIcon ariaLabel="" />}
-            title={t("project.invert.title")}
+            title={<>{t("project.invert.title")}<ImprovedTag /></>}
           >
             {t("project.invert.description")}
           </Definition>
@@ -241,7 +234,7 @@ export default function Home() {
 
           <Definition
             icon={<LineWeightIcon ariaLabel="" />}
-            title={t("project.lineWeight.title")}
+            title={<>{t("project.lineWeight.title")}<ImprovedTag /></>}
           >
             {t("project.lineWeight.description")}
           </Definition>
@@ -274,7 +267,7 @@ export default function Home() {
 
           <Definition
             icon={<ZoomInIcon ariaLabel="" />}
-            title={t("project.magnify.title")}
+            title={<>{t("project.magnify.title")}<ImprovedTag /></>}
           >
             {t("project.magnify.description")}
           </Definition>
@@ -288,7 +281,7 @@ export default function Home() {
 
           <Definition
             icon={<MarkAndMeasureIcon ariaLabel="" />}
-            title={t("project.measure.title")}
+            title={<>{t("project.measure.title")}<ImprovedTag /></>}
           >
             {t.rich("project.measure.description", {
               lineToolLink: (chunk) => <a href="#line-tool">{chunk}</a>,
@@ -311,10 +304,11 @@ export default function Home() {
 
           <Definition
             icon={<TuneIcon ariaLabel="" />}
-            title={t("project.scale.title")}
+            title={<>{t("project.scale.title")}<ImprovedTag /></>}
           >
             {t("project.scale.description")}
           </Definition>
+
         </dl>
 
         <a href="#overlay-options">
@@ -383,7 +377,7 @@ export default function Home() {
                 <KeyboardArrowRightIcon ariaLabel="" />
               </>
             }
-            title={t("lineTool.previousNext.title")}
+            title={<>{t("lineTool.previousNext.title")}<ImprovedTag /></>}
           >
             {t("lineTool.previousNext.description")}
             <p>{t("lineTool.previousNext.use")}</p>
@@ -397,7 +391,7 @@ export default function Home() {
           </Definition>
           <Definition
             icon={<ShiftIcon ariaLabel="" />}
-            title={t("lineTool.move.title")}
+            title={<>{t("lineTool.move.title")}<ImprovedTag /></>}
           >
             {t("lineTool.move.description")}
             <p>{t("lineTool.move.use")}</p>
@@ -457,7 +451,33 @@ export default function Home() {
               })}
             </p>
           </Definition>
+
+          <Definition
+            icon={<OffsetLinesIcon ariaLabel="" />}
+            title={<>{t("lineTool.offset.title")}<NewTag /></>}
+          >
+            {t("lineTool.offset.description")}
+            <p>{t("lineTool.offset.use")}</p>
+          </Definition>
+
+          <Definition
+            icon={<ZoomInIcon ariaLabel="" />}
+            title={<>{t("lineTool.loupe.title")}<NewTag /></>}
+          >
+            {t("lineTool.loupe.description")}
+            <p>{t("lineTool.loupe.use")}</p>
+          </Definition>
         </dl>
+
+        <a href="#control-panel">
+          <h3 id="control-panel">{t("project.controlPanel.title")} #</h3>
+        </a>
+        <p>{t("project.controlPanel.description")}</p>
+
+        <a href="#mark-complete">
+          <h3 id="mark-complete">{t("project.markComplete.title")} #</h3>
+        </a>
+        <p>{t("project.markComplete.description")}</p>
 
         <a href="#faq">
           <h2 id="faq">{t("faq.title")} #</h2>
@@ -500,23 +520,9 @@ export default function Home() {
           <h2 id="contribute">{t("contribute.title")} #</h2>
         </a>
         <p>
-          {t.rich("contribute.donation", {
-            donateLink: (chunk) => (
-              <a href="https://www.buymeacoffee.com/patternprojector">
-                {chunk}
-              </a>
-            ),
-            payPalLink: (chunk) => (
-              <a href="https://www.paypal.com/donate/?hosted_button_id=LF949PXS4RGYS">
-                {chunk}
-              </a>
-            ),
-          })}
-        </p>
-        <p>
           {t.rich("contribute.develop", {
             githubLink: (chunk) => (
-              <a href="https://github.com/Pattern-Projector/pattern-projector">
+              <a href="https://github.com/edwardhorsford/pattern-projector">
                 {chunk}
               </a>
             ),
@@ -535,35 +541,37 @@ export default function Home() {
       </article>
       <footer className="bg-white rounded-lg shadow m-4 w-full flex justify-between items-center">
         <span className="text-sm text-gray-500 sm:text-center dark:text-gray-400 p-4">
-          © 2024{" "}
-          <a href="https://courtneypattison.com/" className="hover:underline">
-            Courtney Pattison
+          © 2026{" "}
+          <a
+            href="https://github.com/edwardhorsford"
+            className="hover:underline"
+          >
+            Edward Horsford
           </a>
         </span>
 
-        <IconButton href="https://github.com/Pattern-Projector/pattern-projector">
+        <IconButton href="https://github.com/edwardhorsford/pattern-projector">
           <GithubIcon ariaLabel={t("github")} />
         </IconButton>
-        <a
-          href="mailto:courtney@patternprojector.com"
-          className="hover:underline pr-24"
-        >
-          {t("contact")}
-        </a>
       </footer>
-      <script
-        data-name="BMC-Widget"
-        data-cfasync="false"
-        src="https://cdnjs.buymeacoffee.com/1.0.0/widget.prod.min.js"
-        data-id="patternprojector"
-        data-description="Support me on Buy me a coffee!"
-        data-color="#BD5FFF"
-        data-position="Right"
-        data-x_margin="18"
-        data-y_margin="18"
-      ></script>
     </main>
   );
+}
+
+function NewTag() {
+  return (
+    <span className="ml-1.5 text-xs bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 px-1.5 py-0.5 rounded font-medium align-middle">
+      New
+    </span>
+  )
+}
+
+function ImprovedTag() {
+  return (
+    <span className="ml-1.5 text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 px-1.5 py-0.5 rounded font-medium align-middle">
+      Improved
+    </span>
+  )
 }
 
 function Definition({
@@ -572,12 +580,12 @@ function Definition({
   children,
 }: {
   icon: any;
-  title: string;
+  title: ReactNode;
   children: ReactNode;
 }) {
   return (
     <>
-      <dt className="flex gap-2">
+      <dt className="flex items-center gap-2">
         {icon}
         {title}
       </dt>

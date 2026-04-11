@@ -5,7 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [Unreleased] - 2026-04-11
+
+This release is specific to this fork and is not part of the upstream project.
+
+### Added
+
+- Separate control panel window — control the projector from a laptop or second screen without touching the projected image. Includes a mini map for navigation and a pan pad.
+- Mark complete — place tick overlays on areas of the pattern as you cut them, to track progress. Undo with Cmd-Z / Ctrl-Z.
+- Offset lines — draw two parallel lines offset from a selected measurement line, for adding seam allowance or marking pattern extensions.
+- Loupe view when positioning line endpoints — magnified view appears when dragging a line end; arrow keys for fine adjustment.
+- High-resolution viewport overlay — renders only the visible portion of the PDF at full resolution, keeping the projected image sharp at any zoom level including in magnify mode.
+- New colour themes: Cyan, Amber, and Magenta.
+- Undo for lines, markers, and calibration grid changes (Cmd-Z / Ctrl-Z).
+- Scale reset button (↺) to quickly return to 1×.
+- Toolbar can be docked to the bottom of the screen (persists across sessions).
+- DevContainer config for GitHub Codespaces.
+
+### Improved
+
+- Significantly sharper and more colour-accurate PDF line rendering — replaced the approximate CSS filter chain with a direct luminance-to-colour mapping; lines are no longer faint or blurry after erosion.
+- Higher render resolution for non-Safari browsers.
+- Rendering moved to web workers — UI stays responsive during heavy renders; multi-page PDFs render pages in parallel.
+- Max scale increased to 10×, with non-linear steps and keyboard shortcuts that intercept browser zoom.
+- Calibration grid edges now drag in pattern space, preserving distortion of other corners.
+- Improved line snapping, angle display precision, hover effects on lines.
+- Various dark mode styling fixes.
+
+---
+
+## Pattern projector prior releases
+
+## [Beta - upstream unreleased] - 2026-01-01
+
+Upstream beta release.
 
 ### Added
 
@@ -213,7 +246,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Colored corners on calibration grid
 - Press and hold calibration corners to slow down movement
 
-[unreleased]: https://github.com/Pattern-Projector/pattern-projector/compare/main...beta
+[Beta - upstream unreleased]: https://github.com/Pattern-Projector/pattern-projector/compare/main...beta
 [1.3.0]: https://github.com/Pattern-Projector/pattern-projector/releases/tag/v1.3.0
 [1.2.1]: https://github.com/Pattern-Projector/pattern-projector/releases/tag/v1.2.1
 [1.2.0]: https://github.com/Pattern-Projector/pattern-projector/releases/tag/v1.2.0

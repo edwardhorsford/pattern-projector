@@ -73,7 +73,6 @@ import { LoadStatusEnum } from "@/_lib/load-status-enum";
 import LoadingSpinner from "@/_icons/loading-spinner";
 import TroubleshootingButton from "@/_components/troubleshooting-button";
 import { ButtonColor } from "@/_components/theme/colors";
-import MailModal from "@/_components/mail-modal";
 import SideMenu from "@/_components/menus/side-menu";
 import PatternScaleReducer from "@/_reducers/patternScaleReducer";
 import Modal from "@/_components/modal/modal";
@@ -158,7 +157,6 @@ export default function Page() {
   const [buttonColor, setButtonColor] = useState<ButtonColor>(
     ButtonColor.SECONDARY,
   );
-  const [mailOpen, setMailOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<null | string>(null);
 
   // Markers for "mark complete" feature - positions in pattern space
@@ -1505,8 +1503,6 @@ export default function Page() {
                   fileLoadStatus={fileLoadStatus}
                   lineThicknessStatus={lineThicknessStatus}
                   buttonColor={buttonColor}
-                  mailOpen={mailOpen}
-                  setMailOpen={setMailOpen}
                   invalidCalibration={checkIsConcave(points)}
                   file={file}
                 />
@@ -1515,7 +1511,6 @@ export default function Page() {
                     isDarkTheme={isDarkTheme(displaySettings.theme)}
                   />
                 )}
-                <MailModal open={mailOpen} setOpen={setMailOpen} />
               </menu>
 
               {!isCalibrating && file !== null && (
