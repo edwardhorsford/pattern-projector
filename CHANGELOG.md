@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Português (Brasil), Suomi, and 简体中文 translations
 - Opened file name shows in the stitch menu
 - Screenshot testing
+- Add vertical alignment option for stitching
 
 ### Fixed
 

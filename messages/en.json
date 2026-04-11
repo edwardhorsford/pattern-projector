@@ -297,6 +297,8 @@
   "StitchMenu": {
     "columnCount": "Columns",
     "rowCount": "Rows",
+    "topAlignment": "Top Aliged",
+    "bottomAlignment": "Bottom Aligned",
     "pageRange": "Stitch Pages",
     "horizontal": "Horizontal Overlap",
     "vertical": "Vertical Overlap",
