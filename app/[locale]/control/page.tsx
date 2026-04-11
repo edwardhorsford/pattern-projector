@@ -1417,22 +1417,23 @@ export default function ControlPanelPage() {
   }, [(state as unknown as Record<string, unknown>).debugLowResBase]);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const debugParam = params.get("debug")
+    const params = new URLSearchParams(window.location.search);
+    const debugParam = params.get("debug");
     if (debugParam === "true") {
-      localStorage.setItem("debugMode", "true")
+      localStorage.setItem("debugMode", "true");
     } else if (debugParam === "false") {
-      localStorage.removeItem("debugMode")
+      localStorage.removeItem("debugMode");
     }
     if (debugParam !== null) {
-      params.delete("debug")
-      const newUrl = `${window.location.pathname}${params.toString() ? "?" + params.toString() : ""}${window.location.hash}`
-      window.history.replaceState({}, "", newUrl)
+      params.delete("debug");
+      const newUrl = `${window.location.pathname}${params.toString() ? "?" + params.toString() : ""}${window.location.hash}`;
+      window.history.replaceState({}, "", newUrl);
     }
     setIsDevMode(
-      process.env.NODE_ENV === "development" || localStorage.getItem("debugMode") === "true",
-    )
-  }, [])
+      process.env.NODE_ENV === "development" ||
+        localStorage.getItem("debugMode") === "true",
+    );
+  }, []);
 
   useEffect(() => {
     if (!isDevMode) {
@@ -3744,8 +3745,8 @@ export default function ControlPanelPage() {
               {process.env.NODE_ENV !== "development" && (
                 <Button
                   onClick={() => {
-                    localStorage.removeItem("debugMode")
-                    setIsDevMode(false)
+                    localStorage.removeItem("debugMode");
+                    setIsDevMode(false);
                   }}
                   className="text-xs px-3 py-1"
                 >

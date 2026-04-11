@@ -47,12 +47,20 @@ any zoom level, including in magnify mode. The overlay is lazily rendered — if
 the user pans out of range the base canvas shows through briefly until it
 catches up.
 
+The improvement is most noticeable with large PDFs and when using the magnify
+tool, where the high-res overlay renders the magnified area at full clarity
+rather than scaling up a lower-res canvas.
+
 ## Rendering improvements
 
 ### Sharper, more accurate line rendering
 
 - Lines that appeared faint or grey are now rendered crisp and dark.
 - Line thickening (erosion) no longer blurs lines.
+- Erosion results are cached per line weight and theme colour, so switching between weights is
+  fast — the image is not re-processed from scratch.
+- During magnify mode, erosion is reduced because the computational cost scales
+  exponentially; the projected image still appears sharp at the larger zoom, reducing the need for erosion.
 - Added full Safari compatibility for the rendering pipeline (Safari does not
   support SVG filter references on canvas).
 - Colours now render exactly as defined — replaced the old approximate
@@ -73,6 +81,12 @@ Pixel processing runs off the main thread so the UI stays responsive during
 heavy renders. Each page gets its own worker, so multi-page PDFs render in
 parallel.
 
+### Rendering paused during calibration
+
+The PDF is not re-rendered while the user is adjusting the calibration grid.
+Previously, large PDFs would trigger a full re-render on every drag event,
+making calibration slow and unresponsive.
+
 ## Calibration & zoom fixes
 
 - **Drag calibration grid edges in pattern space** — previously dragging an
@@ -84,6 +98,8 @@ parallel.
 - **View stays centred when changing grid size preset**.
 - **Constrained (45° snap) line drawing** snaps closer to the actual cursor
   position.
+- **Screen size change warning** now includes a button to immediately save the
+  current calibration to the new screen size.
 
 ## Scale improvements
 

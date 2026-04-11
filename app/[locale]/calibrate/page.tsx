@@ -1007,17 +1007,17 @@ export default function Page() {
     }
 
     // Toggle debug mode via ?debug=true/false URL param (persists to localStorage)
-    const params = new URLSearchParams(window.location.search)
-    const debugParam = params.get("debug")
+    const params = new URLSearchParams(window.location.search);
+    const debugParam = params.get("debug");
     if (debugParam === "true") {
-      localStorage.setItem("debugMode", "true")
+      localStorage.setItem("debugMode", "true");
     } else if (debugParam === "false") {
-      localStorage.removeItem("debugMode")
+      localStorage.removeItem("debugMode");
     }
     if (debugParam !== null) {
-      params.delete("debug")
-      const newUrl = `${window.location.pathname}${params.toString() ? "?" + params.toString() : ""}${window.location.hash}`
-      window.history.replaceState({}, "", newUrl)
+      params.delete("debug");
+      const newUrl = `${window.location.pathname}${params.toString() ? "?" + params.toString() : ""}${window.location.hash}`;
+      window.history.replaceState({}, "", newUrl);
     }
   }, []);
 
