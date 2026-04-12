@@ -146,6 +146,11 @@ export default function PdfHighResViewport({
   const renderedPatternScaleRef = useRef<number | null>(null);
   const renderedCssLeftRef = useRef(0);
   const renderedCssTopRef = useRef(0);
+  // Page-div-relative canvas left/top for the zoom layout effect.
+  // The canvas is positioned inside the page div (its containing block), so
+  // left/top are relative to the page div, not the grid container.
+  const renderedPageDivLeftRef = useRef(0);
+  const renderedPageDivTopRef = useRef(0);
   // Content key captures all visual parameters so tile-skip detects any
   // change — not just patternScale / renderVersion.
   const renderedContentKeyRef = useRef<string | null>(null);
@@ -282,8 +287,8 @@ export default function PdfHighResViewport({
       canvas.style.transformOrigin = "0 0";
       return;
     }
-    const L = renderedCssLeftRef.current;
-    const T = renderedCssTopRef.current;
+    const L = renderedPageDivLeftRef.current;
+    const T = renderedPageDivTopRef.current;
     canvas.style.transformOrigin = "0 0";
     canvas.style.transform = `translate(${(L * (ratio - 1)).toFixed(1)}px, ${(T * (ratio - 1)).toFixed(1)}px) scale(${ratio.toFixed(4)})`;
   }, [patternScale]);
@@ -696,6 +701,8 @@ export default function PdfHighResViewport({
       renderedContentKeyRef.current = contentKey;
       renderedCssLeftRef.current = cssLeft;
       renderedCssTopRef.current = cssTop;
+      renderedPageDivLeftRef.current = cssLeft - pageOriginX;
+      renderedPageDivTopRef.current = cssTop - pageOriginY;
       renderedTileWidthRef.current = cssWidth;
       renderedTileHeightRef.current = cssHeight;
     };
@@ -751,8 +758,8 @@ export default function PdfHighResViewport({
           canvas.height = tilePixelH;
           canvas.style.width = `${canvasCssW}px`;
           canvas.style.height = `${canvasCssH}px`;
-          canvas.style.left = `${cssLeft}px`;
-          canvas.style.top = `${cssTop}px`;
+          canvas.style.left = `${cssLeft - pageOriginX}px`;
+          canvas.style.top = `${cssTop - pageOriginY}px`;
           canvas.style.filter = debugFilter;
           canvas.style.transformOrigin = "0 0";
           canvas.style.transform = "";
@@ -800,8 +807,8 @@ export default function PdfHighResViewport({
         canvas.height = tilePixelH;
         canvas.style.width = `${canvasCssW}px`;
         canvas.style.height = `${canvasCssH}px`;
-        canvas.style.left = `${cssLeft}px`;
-        canvas.style.top = `${cssTop}px`;
+        canvas.style.left = `${cssLeft - pageOriginX}px`;
+        canvas.style.top = `${cssTop - pageOriginY}px`;
         const dest = canvas.getContext("2d");
         if (!dest) return;
         dest.imageSmoothingEnabled = false;
