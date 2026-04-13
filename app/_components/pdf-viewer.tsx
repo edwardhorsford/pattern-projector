@@ -335,6 +335,13 @@ function PdfViewer({
                   style={{
                     width: insetWidth,
                     height: insetHeight,
+                    // position:relative makes this the containing block for the
+                    // absolutely-positioned PdfHighResViewport canvas. By placing
+                    // the high-res canvas inside this div it participates in the
+                    // same mix-blend-mode group as the base canvas, so the page
+                    // div's blend handles stitching overlap while the high-res
+                    // canvas composites normally (fully opaque) over the base.
+                    position: "relative",
                     // Background shows through when canvas is hidden during a
                     // cross-theme transition — must match the canvas background
                     // colour so the page area looks correct before the new render.
@@ -343,7 +350,9 @@ function PdfViewer({
                       cssEdgeInsets.horizontal == 0 &&
                       cssEdgeInsets.vertical == 0
                         ? "normal"
-                        : "darken",
+                        : canvasBackground === "#000000"
+                          ? "lighten"
+                          : "darken",
                     transform:
                       stitchSettings.verticalAlignment == VerticalAlignment.Bottom
                         ? `scaleY(-1)`
@@ -370,9 +379,7 @@ function PdfViewer({
                       onLoadSuccess={onPageLoadSuccess}
                     />
                   )}
-                </div>
-                {value != 0 && (index === 0 || tileBaseWidth > 0) && (
-                  <>
+                  {value != 0 && (index === 0 || tileBaseWidth > 0) && (
                     <PdfHighResViewport
                       perspective={perspective}
                       calibrationTransform={calibrationTransform}
@@ -381,14 +388,16 @@ function PdfViewer({
                       pageOffsetYBase={pageOffsetYBase}
                       magnifyTransform={magnifyTransform}
                     />
-                    <PdfLoupe
-                      perspective={perspective}
-                      calibrationTransform={calibrationTransform}
-                      pageNumber={value}
-                      pageOffsetXBase={pageOffsetXBase}
-                      pageOffsetYBase={pageOffsetYBase}
-                    />
-                  </>
+                  )}
+                </div>
+                {value != 0 && (index === 0 || tileBaseWidth > 0) && (
+                  <PdfLoupe
+                    perspective={perspective}
+                    calibrationTransform={calibrationTransform}
+                    pageNumber={value}
+                    pageOffsetXBase={pageOffsetXBase}
+                    pageOffsetYBase={pageOffsetYBase}
+                  />
                 )}
               </Fragment>
             );
