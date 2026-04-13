@@ -8,7 +8,7 @@ import type {
 } from "pdfjs-dist/types/src/display/api.js";
 import { PDFPageProxy } from "pdfjs-dist";
 import { PDF_TO_CSS_UNITS } from "@/_lib/pixels-per-inch";
-import { erodeImageData, erosionFilter } from "@/_lib/erode";
+import { erodeImageData, enhanceLineQualityFast, erosionFilter } from "@/_lib/erode";
 import useRenderContext from "@/_hooks/use-render-context";
 
 export default function CustomRenderer() {
@@ -118,6 +118,9 @@ export default function CustomRenderer() {
             erodeImageData(result, buffer);
             [result, buffer] = [buffer, result];
           }
+          // Darken grey anti-aliased edges and boost contrast — equivalent
+          // to the push-darks + contrast(1.5) SVG filters used on Chrome/Firefox.
+          enhanceLineQualityFast(result);
           ctx.putImageData(result, 0, 0);
         } else if (offscreen.current) {
           // draw offscreen canvas to onscreen canvas with filter.
