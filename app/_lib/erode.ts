@@ -1,7 +1,12 @@
-export function erosionFilter(erosions: number): string {
-  if (erosions <= 0) {
-    return "none";
-  }
+export function erosionFilter(
+  erosions: number,
+  /**
+   * When true, append `url(#recolor)` to the filter chain.
+   * The recolor filter maps black → the target colour and white → black
+   * via a single feColorMatrix SVG filter.
+   */
+  useRecolour: boolean = false,
+): string {
   const result = [];
   while (erosions > 0) {
     if (erosions >= 3) {
@@ -15,10 +20,14 @@ export function erosionFilter(erosions: number): string {
       erosions -= 1;
     }
   }
-  // Push grey anti-aliased edges back toward black, then boost contrast.
-  // This counteracts the blurring/fading that feMorphology introduces.
+  // Always push dark grey pixels toward black and boost contrast.
+  // At 0 erosions this cleans up grey anti-aliasing in the raw PDF render.
+  // At >0 erosions it counteracts the blurring/fading that feMorphology introduces.
   result.push("url(#push-darks)");
   result.push("contrast(1.5)");
+  if (useRecolour) {
+    result.push("url(#recolor)");
+  }
   return result.join(" ");
 }
 
@@ -114,4 +123,35 @@ function erodeAtIndex(
     }
   }
   return c;
+}
+
+/**
+ * Recolour ImageData in-place: maps black pixels to the target hex colour and
+ * white pixels to black, with luminance-proportional shading for grey tones.
+ * This is the pixel-level equivalent of the `#recolor` feColorMatrix SVG filter.
+ *
+ * Formula: output = targetColour × (1 - luminance(input))
+ *   Black input (luminance=0) → full target colour
+ *   White input (luminance=1) → black  (invisible on dark background)
+ *   Grey inputs → proportionally dimmer shades of the target colour
+ */
+export function recolourImageData(imageData: ImageData, hex: string) {
+  const v = hex.replace("#", "");
+  const n = v.length === 3 ? `${v[0]}${v[0]}${v[1]}${v[1]}${v[2]}${v[2]}` : v;
+  const parsed = Number.parseInt(n, 16);
+  const tR = ((parsed >> 16) & 255) / 255;
+  const tG = ((parsed >> 8) & 255) / 255;
+  const tB = (parsed & 255) / 255;
+
+  const data = imageData.data;
+  const len = data.length;
+  for (let i = 0; i < len; i += 4) {
+    const luminance =
+      (data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722) / 255;
+    const intensity = 1 - luminance;
+    data[i] = Math.round(intensity * tR * 255);
+    data[i + 1] = Math.round(intensity * tG * 255);
+    data[i + 2] = Math.round(intensity * tB * 255);
+    // Alpha unchanged
+  }
 }
